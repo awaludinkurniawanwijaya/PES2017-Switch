@@ -24,3 +24,7 @@ Press + to exit.
 3. Decide and implement a graphics backend. The current runtime Vulkan path cannot be assumed to work on Switch as-is.
 4. Adapt the runtime build to AArch64/devkitA64 and resolve unsupported POSIX/Android/desktop dependencies.
 5. Load legally obtained game data from the SD card; do not commit proprietary game files.
+
+
+## CI
+The GitHub Actions workflow `.github/workflows/switch-nro.yml` builds this bootstrap on pushes to this branch and uploads the `.nro` as an artifact.
