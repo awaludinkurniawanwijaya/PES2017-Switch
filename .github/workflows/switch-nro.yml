@@ -1,0 +1,40 @@
+name: Nintendo Switch NRO
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/switch-native-port
+    paths:
+      - "switch/**"
+      - ".github/workflows/switch-nro.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-switch-nro:
+    name: Build libnx homebrew bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build with devkitPro libnx
+        run: |
+          docker pull devkitpro/devkita64:latest
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/switch \
+            devkitpro/devkita64:latest \
+            make
+
+      - name: Verify NRO output
+        run: test -s switch/pes2017-switch-bootstrap.nro
+
+      - name: Upload NRO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes2017-switch-bootstrap
+          path: switch/pes2017-switch-bootstrap.nro
+          if-no-files-found: error
