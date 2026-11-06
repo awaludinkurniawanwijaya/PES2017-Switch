@@ -1,4 +1,5 @@
 #include <switch.h>
+#include <cstdio>
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -6,16 +7,20 @@ int main(int argc, char* argv[]) {
 
     consoleInit(nullptr);
 
-    printf("PES 2017 - Nintendo Switch port\n");
-    printf("--------------------------------\n");
-    printf("Native libnx bootstrap is running.\n");
-    printf("The PES runtime is not connected yet.\n\n");
-    printf("Press + to exit.\n");
+    PadState pad{};
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    padInitializeDefault(&pad);
+
+    std::printf("PES 2017 - Nintendo Switch port\n");
+    std::printf("--------------------------------\n");
+    std::printf("Native libnx bootstrap is running.\n");
+    std::printf("The PES runtime is not connected yet.\n\n");
+    std::printf("Press + to exit.\n");
 
     while (appletMainLoop()) {
-        hidScanInput();
-        const u64 down = hidKeysDown(CONTROLLER_P1_AUTO);
-        if (down & KEY_PLUS) {
+        padUpdate(&pad);
+        const u64 down = padGetButtonsDown(&pad);
+        if (down & HidNpadButton_Plus) {
             break;
         }
         consoleUpdate(nullptr);
