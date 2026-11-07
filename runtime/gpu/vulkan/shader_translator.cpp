@@ -1,7 +1,7 @@
 #include "shader_translator.h"
 #include "bindings.h"
 #include "spirv.h"
-#include "xenos_ucode.h"
+#include "../xe/xenos_ucode.h"
 
 #include <algorithm>
 #include <array>
