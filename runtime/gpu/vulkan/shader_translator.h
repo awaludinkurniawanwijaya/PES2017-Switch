@@ -16,7 +16,7 @@
 // to locations 0..15; a pixel shader reads those and writes colours to 0..3.
 namespace shader
 {
-    enum class Type { Vertex, Pixel };
+    using Type = xenos::ShaderType;
 
     struct Translation
     {
@@ -30,9 +30,6 @@ namespace shader
         // SPIR-V interface metadata: 0 = 2D, 1 = cube, 2 = 3D.
         uint8_t textureKinds[xenos::kTextureSlotCount]{};
 
-        // SPIR-V constant-loading requirements.
-        uint32_t constantsRead = 0;
-        bool addressedConstants = false;
         uint32_t instructionCount = 0;
         // Exports the hardware has no output for, dropped rather than failed.
         uint32_t droppedExports = 0;

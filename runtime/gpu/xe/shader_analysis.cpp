@@ -6,6 +6,62 @@
 
 namespace xenos
 {
+    namespace
+    {
+        void RecordConstant(
+            const Alu& op, uint32_t source, ShaderAnalysis& result)
+        {
+            if (op.SourceConstantIsAddressed(source))
+            {
+                result.addressedConstants = true;
+                return;
+            }
+
+            const uint32_t index =
+                op.SourceRegister(source) % kFloatConstantCount;
+            result.constantsRead = std::max(result.constantsRead, index + 1);
+        }
+
+        void AnalyzeAluConstants(const Alu& op, ShaderAnalysis& result)
+        {
+            const VectorOpcode vector = op.Vector();
+            const bool isKill =
+                vector == VectorOpcode::KillEq ||
+                vector == VectorOpcode::KillGt ||
+                vector == VectorOpcode::KillGe ||
+                vector == VectorOpcode::KillNe;
+
+            if (isKill ||
+                (op.IsExport()
+                    ? op.VectorResultMask() != 0
+                    : op.VectorWriteMask() != 0))
+            {
+                const uint32_t operands = VectorOperandCount(vector);
+                for (uint32_t source = 1; source <= operands; source++)
+                {
+                    if (!op.SourceIsTemp(source))
+                        RecordConstant(op, source, result);
+                }
+            }
+
+            const ScalarOpcode scalar = op.Scalar();
+            if (op.ScalarWriteMask() ||
+                scalar != ScalarOpcode::RetainPrev)
+            {
+                if (scalar == ScalarOpcode::RetainPrev ||
+                    scalar == ScalarOpcode::SetpClr)
+                    return;
+
+                const bool scalarConstant =
+                    scalar >= ScalarOpcode::Mulsc0 &&
+                    scalar <= ScalarOpcode::Subsc1;
+
+                if (scalarConstant || !op.SourceIsTemp(3))
+                    RecordConstant(op, 3, result);
+            }
+        }
+    }
+
     bool AnalyzeShader(
         ShaderType type,
         const uint32_t* words,
@@ -152,6 +208,7 @@ namespace xenos
                 }
 
                 Alu a{ words[at], words[at + 1], words[at + 2] };
+                AnalyzeAluConstants(a, result);
 
                 if (type == ShaderType::Pixel)
                 {

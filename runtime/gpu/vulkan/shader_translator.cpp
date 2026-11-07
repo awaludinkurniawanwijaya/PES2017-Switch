@@ -498,9 +498,6 @@ namespace
     Id Translator::LoadConstant(uint32_t index)
     {
         const uint32_t at32 = index % kFloatConstantCount;
-        // So the renderer can copy the window this program reads rather than
-        // all 256 of them.
-        m_result.constantsRead = std::max(m_result.constantsRead, at32 + 1);
         Id pointer = m_module.Pointer(StorageClass::Uniform, m_float4);
         Id zero = m_module.ConstantS(0);
         Id at = m_module.ConstantS(int32_t(at32));
@@ -512,9 +509,6 @@ namespace
     // than masked at translation time.
     Id Translator::LoadConstantRelative(uint32_t index, bool useA0)
     {
-        // The index is only known when the shader runs, so nothing can be left
-        // out of the copy.
-        m_result.addressedConstants = true;
         Id base = Emit(Op::Load, m_int, { useA0 ? m_a0 : m_addressRegister });
         Id at = Emit(Op::IAdd, m_int, { base, m_module.ConstantS(int32_t(index)) });
         Id wrapped = Emit(Op::UMod, m_uint,
@@ -2312,13 +2306,8 @@ namespace
 
     shader::Translation Translator::Run()
     {
-        const xenos::ShaderType xeType =
-            m_type == shader::Type::Vertex
-                ? xenos::ShaderType::Vertex
-                : xenos::ShaderType::Pixel;
-
         if (!xenos::AnalyzeShader(
-                xeType, m_words, m_count, m_flow,
+                m_type, m_words, m_count, m_flow,
                 m_result.analysis, m_result.error))
             return m_result;
         DeclareInterface();

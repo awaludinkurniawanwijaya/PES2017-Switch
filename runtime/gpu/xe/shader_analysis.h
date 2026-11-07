@@ -26,6 +26,10 @@ namespace xenos
         uint32_t vertexFetchStride[kVertexFetchSlotCount]{};
         uint32_t vertexFetchTail[kVertexFetchSlotCount]{};
 
+        // Float constant requirements shared by GPU backends.
+        uint32_t constantsRead = 0;
+        bool addressedConstants = false;
+
         uint32_t colourMask = 0;
         bool writesDepth = false;
         bool writesMemory = false;

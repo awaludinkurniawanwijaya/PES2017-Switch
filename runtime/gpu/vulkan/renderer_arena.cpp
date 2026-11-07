@@ -91,8 +91,10 @@ namespace vk::renderer::detail
     // the whole window when it indexes them with a run-time value.
     uint32_t ConstantsNeeded(const shader::Translation& program)
     {
-        if (program.addressedConstants) return 256;
-        return std::min(program.constantsRead, 256u);
+        if (program.analysis.addressedConstants)
+            return xenos::kFloatConstantCount;
+        return std::min(
+            program.analysis.constantsRead, xenos::kFloatConstantCount);
     }
 
     // Xenos takes three corners of a rectangle and works out the fourth as
