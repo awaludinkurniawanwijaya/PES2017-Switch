@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/switch-native-port
+      - work/switch-platform-seam
     paths:
       - "switch/**"
       - ".github/workflows/switch-nro.yml"
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   build-switch-nro:
-    name: Build libnx homebrew bootstrap
+    name: Build libnx homebrew NRO
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -30,7 +31,10 @@ jobs:
             make
 
       - name: Verify NRO output
-        run: test -s switch/pes2017-switch-bootstrap.nro
+        run: |
+          test -s switch/pes2017-switch-bootstrap.nro
+          file switch/pes2017-switch-bootstrap.nro
+          ls -lh switch/pes2017-switch-bootstrap.nro
 
       - name: Upload NRO artifact
         uses: actions/upload-artifact@v4
