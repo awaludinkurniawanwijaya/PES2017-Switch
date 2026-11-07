@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <cstddef>
+#include "../xe/shader_analysis.h"
 #include <string>
 #include <vector>
 
@@ -22,32 +24,15 @@ namespace shader
         std::string error;                  // why not, when not
         std::vector<uint32_t> spirv;
 
-        // What the pipeline has to bind for this shader to run.
-        uint32_t interpolatorMask = 0;      // interpolators read or written
-        uint32_t textureMask = 0;           // texture fetch constants sampled
-        // What each sampled slot is declared as: 0 a 2D image, 1 a cube map,
-        // 2 a 3D image. A view of another kind is invalid there.
-        uint8_t textureKinds[32]{};
-        uint32_t vertexFetchMask = 0;       // fetch constant groups read
-        // A group of six dwords is either one texture constant or three vertex
-        // ones, so the group mask alone names slots the program never reads --
-        // whose bits read as a vertex fetch of some enormous buffer. Exact slot:
-        // bit `group` of `vertexFetchSubs[sub]`.
-        uint32_t vertexFetchSubs[3]{};
-        // A draw reads `index * stride + tail` dwords of what a fetch constant
-        // points at, which is far less than the extent the constant declares.
-        uint32_t vertexFetchStride[96]{}, vertexFetchTail[96]{};
-        // The float constants the program actually reads: one past the highest
-        // index, or nothing if it reads none. A shader that reads four of them
-        // was still being handed a copy of all 256 -- 4 KB a draw, twelve
-        // megabytes a frame on the training level. `addressed` means it indexes
-        // them through a0 or aL, where the index is a run-time value and the
-        // whole window has to go across.
+        // Xenos-level resource and output analysis, shared by GPU backends.
+        xenos::ShaderAnalysis analysis;
+
+        // SPIR-V interface metadata: 0 = 2D, 1 = cube, 2 = 3D.
+        uint8_t textureKinds[xenos::kTextureSlotCount]{};
+
+        // SPIR-V constant-loading requirements.
         uint32_t constantsRead = 0;
         bool addressedConstants = false;
-        uint32_t colourMask = 0;            // colour targets a pixel shader writes
-        bool writesDepth = false;
-        bool writesMemory = false;          // uses the memory export path
         uint32_t instructionCount = 0;
         // Exports the hardware has no output for, dropped rather than failed.
         uint32_t droppedExports = 0;

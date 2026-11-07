@@ -133,7 +133,7 @@ namespace vk::renderer::detail
                                    uint32_t lowestVertex, uint32_t highestVertex,
                                    uint32_t rectangles, float modelScale)
     {
-        const uint32_t (&subs)[3] = program.vertexFetchSubs;
+        const uint32_t (&subs)[3] = program.analysis.vertexFetchSubs;
         ConstantOffsets out{ 0, 0, 0, 0, 0, false };
 
         out.vertexFloats = WriteConstantWindow(r, gpu::SQ_VS_CONST, 0,
@@ -227,7 +227,7 @@ namespace vk::renderer::detail
                 // a model near the end of a shared vertex heap is indexed from the
                 // heap's base, so the prefix below it is as large as the buffer.
                 const uint32_t slot = group * 3 + sub;
-                const uint32_t stride = program.vertexFetchStride[slot];
+                const uint32_t stride = program.analysis.vertexFetchStride[slot];
 
                 if (rectangles && stride)
                 {
@@ -253,7 +253,7 @@ namespace vk::renderer::detail
 
                 uint64_t from = uint64_t(lowestVertex) * stride;
                 uint64_t to = uint64_t(highestVertex) * stride +
-                              program.vertexFetchTail[slot];
+                              program.analysis.vertexFetchTail[slot];
                 // A small buffer is copied whole. The window assumes the fetch is
                 // indexed by the vertex index, and not every one is: PES 2017's
                 // crowd builds each billboard from a 4-entry corner table indexed

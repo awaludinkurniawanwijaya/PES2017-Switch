@@ -718,7 +718,7 @@ void vk::renderer::Draw(const gpu::RegisterFile& r, const gpu::DrawCall& call)
     // A vertex shader that exports to memory is a compute step: run it on the
     // CPU, where the guest's memory is, before anything reads what it writes.
     // A draw with no colour to write and no depth is nothing else.
-    if (vertex->translation.writesMemory && call.vertexCode)
+    if (vertex->translation.analysis.writesMemory && call.vertexCode)
     {
         xe_memexport::Job job{};
         job.registers = r.values;
@@ -1143,7 +1143,7 @@ void vk::renderer::Draw(const gpu::RegisterFile& r, const gpu::DrawCall& call)
         {
             const uint32_t* entry = fetch + slot * 4;
             if ((entry[0] & 3) != 3 || !entry[1]) continue;
-            const uint32_t stride = vertex->translation.vertexFetchStride[slot];
+            const uint32_t stride = vertex->translation.analysis.vertexFetchStride[slot];
             LOGK("verts:   fetch slot %u: arena %08X, %u dwords declared, stride %u",
                  slot, entry[0] & ~3u, (entry[1] >> 2) & 0xFFFFFF, stride);
             if (!stride || stride > 32) continue;
@@ -1264,13 +1264,13 @@ void vk::renderer::Draw(const gpu::RegisterFile& r, const gpu::DrawCall& call)
     // shader's reading wins, and the title has not been seen to disagree.
     uint8_t kinds[vk::textures::kSlots];
     for (uint32_t s = 0; s < vk::textures::kSlots; s++)
-        kinds[s] = (pixel->translation.textureMask & (1u << s))
+        kinds[s] = (pixel->translation.analysis.textureMask & (1u << s))
                        ? pixel->translation.textureKinds[s]
                        : vertex->translation.textureKinds[s];
     uint32_t scaledSlots = 0;
     gpu::detail::SetCurrentDrawStage("Draw_TextureSetFor");
     VkDescriptorSet textureSet = TextureSetFor(
-        r, vertex->translation.textureMask | pixel->translation.textureMask, kinds, scaledSlots);
+        r, vertex->translation.analysis.textureMask | pixel->translation.analysis.textureMask, kinds, scaledSlots);
     if (!textureSet) { Skip("no texture descriptor set"); return; }
 
     VkViewport viewport{};

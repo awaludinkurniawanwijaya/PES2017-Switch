@@ -40,8 +40,6 @@ namespace
         shader::Translation Run();
 
     private:
-        bool DecodeControlFlow();
-        void Analyze();
         void DeclareInterface();
         Id DeclareArrayBlock(Id element, uint32_t count, uint32_t stride, uint32_t set,
                              uint32_t binding, const char* name);
@@ -139,14 +137,10 @@ namespace
         Id m_textures[32]{};
         Id m_textureTypes[32]{};
         Id m_textureImageTypes[32]{};   // the image behind the sampled image
-        // A slot is only ever sampled at one dimensionality within one program.
-        FetchDimension m_textureDimensions[32]{};
         Id m_arena = 0;               // the frame arena, as dwords
         Id m_fetchConstants = 0;      // the vertex fetch constant file
         Id m_boolConstants = 0;       // the 256 boolean constants, as 8 dwords
         Id m_loopConstants = 0;       // the 32 loop constants, one dword each
-        bool m_linear = false;        // true if control flow has no loops, jumps or calls
-        bool m_forwardJumpsOnly = false; // true if control flow has only forward jumps (acyclic, no loops)
 
         // Sequencer state, in function variables because the dispatch loop reads
         // and writes it across blocks.
@@ -164,7 +158,6 @@ namespace
         // two need not share a basic block, so it lives in a variable.
         Id m_lastFetchBase = 0;         // pointer to a Function uint
         Id m_lastFetchEndian = 0;       // the fetch constant's endianness, 2 bits
-        bool m_haveFetchBase = false;   // whether any full fetch precedes
 
         // What the previous scalar produced, for the *_prev family. A variable,
         // not an SSA value: producer and reader can be in different blocks.
@@ -209,150 +202,6 @@ namespace
         return id;
     }
 
-
-    bool Translator::DecodeControlFlow()
-    {
-        size_t i = 0;
-        while (i + 3 <= m_count && m_flow.size() < 512)
-        {
-            ControlFlow first, second;
-            UnpackControlFlow(m_words[i], m_words[i + 1], m_words[i + 2], first, second);
-            i += 3;
-            for (const ControlFlow& cf : { first, second })
-            {
-                m_flow.push_back(cf);
-                if (cf.IsEnd()) return true;
-            }
-        }
-        m_result.error = "control flow does not terminate";
-        return false;
-    }
-
-
-    // What the program uses, read before anything is emitted: the interface is
-    // declared up front, and some of it -- whether a mini fetch has an address
-    // to reuse -- is a property of the whole program, not of the instruction.
-    void Translator::Analyze()
-    {
-        m_linear = true;
-        m_forwardJumpsOnly = true;
-        uint32_t jumps = 0;
-        for (uint32_t i = 0; i < m_flow.size(); i++)
-        {
-            const ControlFlow& cf = m_flow[i];
-            switch (cf.Opcode())
-            {
-            case ControlFlowOpcode::Nop:
-            case ControlFlowOpcode::Alloc:
-            case ControlFlowOpcode::MarkVsFetchDone:
-            case ControlFlowOpcode::Exec:
-            case ControlFlowOpcode::ExecEnd:
-            case ControlFlowOpcode::CondExec:
-            case ControlFlowOpcode::CondExecEnd:
-            case ControlFlowOpcode::CondExecPred:
-            case ControlFlowOpcode::CondExecPredEnd:
-            case ControlFlowOpcode::CondExecPredClean:
-            case ControlFlowOpcode::CondExecPredCleanEnd:
-                break;
-            case ControlFlowOpcode::CondJmp:
-                m_linear = false;
-                jumps++;
-                if (cf.Target() <= i)
-                    m_forwardJumpsOnly = false; // backward jump or self-loop
-                break;
-            default:
-                m_linear = false;
-                m_forwardJumpsOnly = false;
-                break;
-            }
-        }
-        if (jumps == 0 && m_linear)
-            m_forwardJumpsOnly = false;
-
-        uint32_t lastSlot = bindings::kFetchSlots;
-        for (const ControlFlow& cf : m_flow)
-        {
-            if (!cf.IsExec()) continue;
-            for (uint32_t n = 0; n < cf.Count(); n++)
-            {
-                const size_t at = size_t(cf.Address() + n) * 3;
-                if (at + 3 > m_count) continue;
-                if (cf.IsFetch(n))
-                {
-                    Fetch f{ m_words[at], m_words[at + 1], m_words[at + 2] };
-                    // A fetch reads its coordinates from a temporary, and for
-                    // a pixel shader that is an input like any other read
-                    // below: often the only read of that interpolator.
-                    if (m_type == shader::Type::Pixel && f.SourceRegister() < kInterpolatorCount)
-                        m_result.interpolatorMask |= 1u << f.SourceRegister();
-                    if (f.Opcode() == FetchOpcode::TextureFetch)
-                    {
-                        const uint32_t slot = f.ConstantIndex() & 31;
-                        m_result.textureMask |= 1u << slot;
-                        m_textureDimensions[slot] = f.Dimension();
-                    }
-                    else if (f.Opcode() == FetchOpcode::VertexFetch)
-                    {
-                        m_result.vertexFetchMask |= 1u << f.ConstantIndex();
-                        // The full fetch that computes the address a mini fetch
-                        // reuses sits in an earlier control flow instruction.
-                        // Only a full one names a constant, and so a slot.
-                        if (!f.IsMiniFetch() && f.MustBeOne())
-                        {
-                            m_haveFetchBase = true;
-                            if (f.ConstantSelect() < 3)
-                            {
-                                m_result.vertexFetchSubs[f.ConstantSelect()] |= 1u << f.ConstantIndex();
-                                lastSlot = f.VertexFetchSlot();
-                            }
-                        }
-                        // A mini fetch reuses the last full fetch's address, so its
-                        // reach belongs to that slot.
-                        if (lastSlot < bindings::kFetchSlots)
-                        {
-                            uint32_t& stride = m_result.vertexFetchStride[lastSlot];
-                            uint32_t& tail = m_result.vertexFetchTail[lastSlot];
-                            stride = std::max(stride, f.Stride());
-                            tail = std::max(tail, uint32_t(std::max(f.Offset(), 0)) + 4);
-                        }
-                    }
-                    continue;
-                }
-                Alu a{ m_words[at], m_words[at + 1], m_words[at + 2] };
-                // A pixel shader receives the interpolators pre-loaded into the
-                // low temporaries, so a temporary it reads is an input. It has to
-                // declare every one the vertex shader might write, since the two
-                // are translated apart and the pipeline matches them by location.
-                if (m_type == shader::Type::Pixel)
-                    for (uint32_t s = 1; s <= 3; s++)
-                        if (a.SourceIsTemp(s))
-                        {
-                            const uint32_t reg = a.SourceRegister(s) & 0x3F;
-                            if (reg < kInterpolatorCount) m_result.interpolatorMask |= 1u << reg;
-                        }
-                if (!a.IsExport()) continue;
-                const uint32_t dest = a.VectorDest();
-                if (m_type == shader::Type::Vertex)
-                {
-                    if (dest >= kExportMemoryAddress && dest <= kExportMemoryLast)
-                        m_result.writesMemory = true;
-                }
-                else
-                {
-                    if (dest < 4) m_result.colourMask |= 1u << dest;
-                    else if (dest == kExportDepth) m_result.writesDepth = true;
-                }
-            }
-        }
-
-        // And a vertex shader has to write every interpolator a pixel shader might
-        // read: an input with no output behind it is invalid, and the pixel side
-        // counts more than any one vertex shader exports. So every vertex shader
-        // exports all sixteen, zeroed until the program writes them -- sixty-four
-        // components, inside the device's 128.
-        if (m_type == shader::Type::Vertex)
-            m_result.interpolatorMask = (1u << kInterpolatorCount) - 1;
-    }
 
     // A block holding one array: `count` elements of `element`, `stride` bytes
     // apart. With `count` 0 the array is unsized and the block a read-only
@@ -494,7 +343,7 @@ namespace
 
         for (uint32_t slot = 0; slot < 32; slot++)
         {
-            if (!(m_result.textureMask & (1u << slot))) continue;
+            if (!(m_result.analysis.textureMask & (1u << slot))) continue;
             // Dimensionality comes from the fetch. A cube map is a cube, sampled
             // by the direction its face and coordinates stand for.
             // A 1D fetch samples a 2D image at v = 0: the texture cache makes
@@ -502,7 +351,7 @@ namespace
             // to a 2D texture the program only ever reads along a line, so a 1D
             // type here was a view-type mismatch on every such draw.
             uint32_t dim = 1;   // SPIR-V Dim: 1 = 2D, 2 = 3D, 3 = Cube
-            switch (m_textureDimensions[slot])
+            switch (m_result.analysis.textureDimensions[slot])
             {
             case FetchDimension::D3:   dim = 2; break;
             case FetchDimension::Cube: dim = 3; break;
@@ -526,8 +375,8 @@ namespace
             // Output variables.
         }
 
-        if (m_result.vertexFetchMask) DeclareVertexFetchInterface();
-        if (m_result.vertexFetchMask || m_result.textureMask) DeclareFetchConstants();
+        if (m_result.analysis.vertexFetchMask) DeclareVertexFetchInterface();
+        if (m_result.analysis.vertexFetchMask || m_result.analysis.textureMask) DeclareFetchConstants();
 
         // cond_exec tests a boolean constant.
         for (const ControlFlow& cf : m_flow)
@@ -537,7 +386,7 @@ namespace
 
         for (uint32_t i = 0; i < kInterpolatorCount; i++)
         {
-            if (!(m_result.interpolatorMask & (1u << i))) continue;
+            if (!(m_result.analysis.interpolatorMask & (1u << i))) continue;
             const bool input = m_type == shader::Type::Pixel;
             Id variable = m_module.Allocate();
             Module::Emit(m_module.Declarations(), Op::Variable,
@@ -598,7 +447,7 @@ namespace
             // the blender with whatever was in the register.
             for (uint32_t i = 0; i < 4; i++)
             {
-                if (!(m_result.colourMask & (1u << i))) continue;
+                if (!(m_result.analysis.colourMask & (1u << i))) continue;
                 m_colours[i] = m_module.Allocate();
                 Module::Emit(m_module.Declarations(), Op::Variable,
                              { pointerOutputFloat4, m_colours[i], uint32_t(StorageClass::Output) });
@@ -608,7 +457,7 @@ namespace
             }
             // oDepth: the cutscenes' close-up passes write it, and refusing the
             // program dropped their draws -- 105 a scene.
-            if (m_result.writesDepth)
+            if (m_result.analysis.writesDepth)
             {
                 m_fragDepth = m_module.Allocate();
                 Module::Emit(m_module.Declarations(), Op::Variable,
@@ -1478,7 +1327,7 @@ namespace
                          { m_lastFetchBase, Emit(Op::IAdd, m_uint,
                              { base, Emit(Op::IMul, m_uint, { index, stride }) }) });
         }
-        if (!m_haveFetchBase) { Fail("mini vertex fetch with no preceding full fetch", 0); return; }
+        if (!m_result.analysis.haveFetchBase) { Fail("mini vertex fetch with no preceding full fetch", 0); return; }
 
         Id address = Emit(Op::Load, m_uint, { m_lastFetchBase });
         if (op.Offset())
@@ -1794,7 +1643,7 @@ namespace
                          { uintPointer, slot, uint32_t(StorageClass::Function), zero });
             Module::EmitString(m_module.Debug(), Op::Name, { slot }, name);
         };
-        const bool needsSequencer = !m_linear && !m_forwardJumpsOnly;
+        const bool needsSequencer = !m_result.analysis.linear && !m_result.analysis.forwardJumpsOnly;
         if (needsSequencer) scalar(m_pc, "pc");
         scalar(m_lastFetchBase, "vertex_fetch_address");
         scalar(m_lastFetchEndian, "vertex_fetch_endian");
@@ -2164,7 +2013,7 @@ namespace
         //
         //   loop { switch (pc) { case 0: ...; pc = 1; ... default: break; } }
         const uint32_t caseCount = uint32_t(m_flow.size());
-        if (m_linear)
+        if (m_result.analysis.linear)
         {
             for (uint32_t i = 0; i < caseCount; i++)
             {
@@ -2173,7 +2022,7 @@ namespace
                 if (m_flow[i].IsEnd()) break;
             }
         }
-        else if (m_forwardJumpsOnly)
+        else if (m_result.analysis.forwardJumpsOnly)
         {
             // Lower acyclic forward jumps into structured OpSelectionMerge branches
             // without emitting OpLoopMerge or OpSwitch. This drops Mali driver compile times from 400s to <30ms!
@@ -2463,9 +2312,15 @@ namespace
 
     shader::Translation Translator::Run()
     {
-        if (m_count < 3) { m_result.error = "program is too short"; return m_result; }
-        if (!DecodeControlFlow()) return m_result;
-        Analyze();
+        const xenos::ShaderType xeType =
+            m_type == shader::Type::Vertex
+                ? xenos::ShaderType::Vertex
+                : xenos::ShaderType::Pixel;
+
+        if (!xenos::AnalyzeShader(
+                xeType, m_words, m_count, m_flow,
+                m_result.analysis, m_result.error))
+            return m_result;
         DeclareInterface();
         EmitBody();
         if (!m_result.error.empty()) return m_result;
@@ -2499,9 +2354,9 @@ std::string shader::Describe(const Translation& result)
     std::snprintf(text, sizeof text,
                   "%u instructions -> %zu SPIR-V words; interpolators %04X, colours %X,"
                   " textures %08X, vertex fetches %08X%s%s%s",
-                  result.instructionCount, result.spirv.size(), result.interpolatorMask,
-                  result.colourMask, result.textureMask, result.vertexFetchMask,
-                  result.writesDepth ? ", writes depth" : "",
-                  result.writesMemory ? ", memory export" : "", dropped);
+                  result.instructionCount, result.spirv.size(), result.analysis.interpolatorMask,
+                  result.analysis.colourMask, result.analysis.textureMask, result.analysis.vertexFetchMask,
+                  result.analysis.writesDepth ? ", writes depth" : "",
+                  result.analysis.writesMemory ? ", memory export" : "", dropped);
     return text;
 }
