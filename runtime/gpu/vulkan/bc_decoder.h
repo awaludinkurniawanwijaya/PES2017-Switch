@@ -19,10 +19,10 @@ namespace vk::bc
     enum class AdrenoBC { kAll, kHardware, kDxt1Only };
     AdrenoBC AdrenoMode();
 
-    // Decompress a BC texture into uncompressed formats (RGBA8, R8, RG8).
-    // Returns true on success and updates outVulkanFormat to the uncompressed VkFormat.
+    // Decompress a BC texture into API-independent output formats (RGBA8, R8, RG8).
+    // Returns true on success and sets outEncoding to the resulting texture encoding.
     bool Decompress(const gpu::TextureData& src, uint32_t xenosFormat,
-                    gpu::TextureData& dst, int& outVulkanFormat);
+                    gpu::TextureData& dst, gpu::TextureEncoding& outEncoding);
 
     // Prototype: a BC1 texture re-encoded as ASTC 4x4 LDR for a GPU that samples ASTC but
     // not BC (Adreno 650's stock driver). Sixteen bytes a block against RGBA8's sixty-four.
@@ -33,13 +33,13 @@ namespace vk::bc
     // dual-plane form: colour endpoints at 0..47 levels, alpha 255 or 0 in its own plane.
     // Returns false only for data that is not a whole number of blocks.
     bool TranscodeBc1ToAstc(const gpu::TextureData& src, gpu::TextureData& dst,
-                            int& outVulkanFormat);
+                            gpu::TextureEncoding& outEncoding);
 
     // BC1, BC2 and BC3 (Xenos formats 18/51, 19/52, 20/53) to ASTC 4x4: BC1 as above;
     // BC2/BC3 with an alpha plane (exact where alpha is constant or two-level, four levels
     // between the block's extremes otherwise). Same layout rules as TranscodeBc1ToAstc.
     bool TranscodeToAstc(const gpu::TextureData& src, uint32_t xenosFormat, gpu::TextureData& dst,
-                         int& outVulkanFormat);
+                         gpu::TextureEncoding& outEncoding);
 
     // One BC2 or BC3 block: sixteen bytes in, sixteen out.
     bool TranscodeBc23BlockToAstc(const uint8_t* block, bool bc3, uint8_t* astc);

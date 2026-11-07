@@ -169,9 +169,18 @@ namespace gpu
     };
     TextureExtents ExtentsOf(const TextureFetch& fetch);
 
+    // Output encoding of a software texture decoder. Independent of graphics APIs.
+    enum class TextureEncoding : uint8_t
+    {
+        R8,
+        Rg8,
+        Rgba8,
+        Astc4x4
+    };
+
     // Untiled if it was tiled, byte-swapped either way. The result is still in
-    // the guest's block format -- DXT stays DXT -- because that is what a Vulkan
-    // driver wants to be handed.
+    // the guest's block format -- DXT stays DXT -- because the backend may
+    // consume the guest's original block format.
     struct TextureData
     {
         bool ok = false;

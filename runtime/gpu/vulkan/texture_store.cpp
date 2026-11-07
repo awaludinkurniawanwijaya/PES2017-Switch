@@ -20,12 +20,12 @@
 #ifdef _WIN32
 // A desktop GPU samples BC itself, so nothing is converted and nothing is kept.
 bool vk::texstore::Open() { return false; }
-bool vk::texstore::Load(const gpu::TextureData&, uint32_t, gpu::TextureData&, int&, uint64_t& hash)
+bool vk::texstore::Load(const gpu::TextureData&, uint32_t, gpu::TextureData&, gpu::TextureEncoding&, uint64_t& hash)
 {
     hash = 0;
     return false;
 }
-void vk::texstore::Save(const gpu::TextureData&, uint32_t, uint64_t, const gpu::TextureData&, int) {}
+void vk::texstore::Save(const gpu::TextureData&, uint32_t, uint64_t, const gpu::TextureData&, gpu::TextureEncoding) {}
 vk::texstore::Stats vk::texstore::Counts() { return {}; }
 #else
 
@@ -39,7 +39,7 @@ namespace
     // its levels and its bytes. Bump kEncoder whenever the conversion's output
     // changes (bc_decoder.cpp), so that no session samples an older encoder's blocks.
     constexpr char kMagic[8] = { 'P', 'E', 'S', '1', '7', 'T', 'X', 'S' };
-    constexpr uint32_t kVersion = 1, kEncoder = 1;
+    constexpr uint32_t kVersion = 2, kEncoder = 1;
     constexpr uint32_t kRecordMagic = 0x31525854;   // "TXR1"
 
     struct FileHeader { char magic[8]; uint32_t version, encoder; };
@@ -59,7 +59,7 @@ namespace
         uint32_t magic;
         uint32_t levelCount;
         Key key;
-        int32_t vkFormat;
+        gpu::TextureEncoding encoding;
         uint32_t bytesPerBlock;
         uint64_t payloadBytes;
         uint64_t check;   // of everything above, so a torn head is not trusted
@@ -74,7 +74,7 @@ namespace
     struct Entry
     {
         Key key;
-        int32_t vkFormat;
+        gpu::TextureEncoding encoding;
         uint32_t bytesPerBlock;
         uint64_t payloadAt, payloadBytes;
         std::vector<StoredLevel> levels;
@@ -102,6 +102,20 @@ namespace
     uint64_t CheckOf(const RecordHead& head)
     {
         return Hash(reinterpret_cast<const uint8_t*>(&head), offsetof(RecordHead, check));
+    }
+
+    bool ValidEncoding(gpu::TextureEncoding encoding)
+    {
+        switch (encoding)
+        {
+        case gpu::TextureEncoding::R8:
+        case gpu::TextureEncoding::Rg8:
+        case gpu::TextureEncoding::Rgba8:
+        case gpu::TextureEncoding::Astc4x4:
+            return true;
+        default:
+            return false;
+        }
     }
 
     Key KeyOf(const gpu::TextureData& source, uint32_t xenosFormat, uint64_t hash)
@@ -183,9 +197,12 @@ namespace
             if (!ReadAll(s.fd, &head, sizeof head, at) || head.magic != kRecordMagic ||
                 head.check != CheckOf(head) || head.levelCount > 32)
                 break;
+
+            if (!ValidEncoding(head.encoding))
+                break;
             Entry entry;
             entry.key = head.key;
-            entry.vkFormat = head.vkFormat;
+            entry.encoding = head.encoding;
             entry.bytesPerBlock = head.bytesPerBlock;
             entry.levels.resize(head.levelCount);
             const uint64_t levelsAt = at + sizeof head;
@@ -312,7 +329,7 @@ bool vk::texstore::Open()
 }
 
 bool vk::texstore::Load(const gpu::TextureData& source, uint32_t xenosFormat, gpu::TextureData& out,
-                        int& vkFormat, uint64_t& hash)
+                        gpu::TextureEncoding& encoding, uint64_t& hash)
 {
     hash = 0;
     if (!Open()) return false;
@@ -336,7 +353,7 @@ bool vk::texstore::Load(const gpu::TextureData& source, uint32_t xenosFormat, gp
             return false;
         }
         const Entry& entry = found->second;
-        vkFormat = entry.vkFormat;
+        encoding = entry.encoding;
         out.levels.resize(entry.levels.size());
         for (size_t i = 0; i < entry.levels.size(); i++)
         {
@@ -372,13 +389,13 @@ bool vk::texstore::Load(const gpu::TextureData& source, uint32_t xenosFormat, gp
 }
 
 void vk::texstore::Save(const gpu::TextureData& source, uint32_t xenosFormat, uint64_t hash,
-                        const gpu::TextureData& converted, int vkFormat)
+                        const gpu::TextureData& converted, gpu::TextureEncoding encoding)
 {
-    if (!Open() || !converted.ok) return;
+    if (!Open() || !converted.ok || !ValidEncoding(encoding)) return;
     State& s = S();
     Entry entry;
     entry.key = KeyOf(source, xenosFormat, hash);
-    entry.vkFormat = vkFormat;
+    entry.encoding = encoding;
     entry.bytesPerBlock = converted.bytesPerBlock;
     entry.payloadBytes = converted.bytes.size();
     entry.levels.reserve(converted.levels.size());
@@ -387,11 +404,12 @@ void vk::texstore::Save(const gpu::TextureData& source, uint32_t xenosFormat, ui
                                  level.blocksHigh, level.layers, level.offset, level.size });
     if (entry.levels.size() > 32) return;
 
-    RecordHead head{};
+    RecordHead head;
+    std::memset(&head, 0, sizeof(head));
     head.magic = kRecordMagic;
     head.levelCount = uint32_t(entry.levels.size());
     head.key = entry.key;
-    head.vkFormat = vkFormat;
+    head.encoding = encoding;
     head.bytesPerBlock = entry.bytesPerBlock;
     head.payloadBytes = entry.payloadBytes;
     head.check = CheckOf(head);

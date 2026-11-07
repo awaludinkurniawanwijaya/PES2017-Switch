@@ -154,17 +154,30 @@ namespace
         std::atomic<uint64_t> textures{0}, refused{0}, bcBytes{0}, astcBytes{0}, rgbaBytes{0}, ns{0};
     } g_astc;
 
+    // Convert the API-independent decoder encoding at the Vulkan boundary.
+    VkFormat VkFormatForEncoding(gpu::TextureEncoding encoding)
+    {
+        switch (encoding)
+        {
+        case gpu::TextureEncoding::R8:     return VK_FORMAT_R8_UNORM;
+        case gpu::TextureEncoding::Rg8:    return VK_FORMAT_R8G8_UNORM;
+        case gpu::TextureEncoding::Rgba8:  return VK_FORMAT_R8G8B8A8_UNORM;
+        case gpu::TextureEncoding::Astc4x4: return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        }
+        return VK_FORMAT_UNDEFINED;
+    }
+
     // Software-decode `data` for a format DecodeInSoftware picked.
     bool DecodeBc(const gpu::TextureData& data, uint32_t xenosFormat, gpu::TextureData& out,
-                  int& format)
+                  gpu::TextureEncoding& encoding)
     {
         if (Bc1AsAstc(xenosFormat))
         {
             // Converted in an earlier session (texture_store.h): read back, not made again.
             uint64_t hash = 0;
-            if (vk::texstore::Load(data, xenosFormat, out, format, hash)) return true;
+            if (vk::texstore::Load(data, xenosFormat, out, encoding, hash)) return true;
             const auto t0 = std::chrono::steady_clock::now();
-            const bool ok = vk::bc::TranscodeToAstc(data, xenosFormat, out, format);
+            const bool ok = vk::bc::TranscodeToAstc(data, xenosFormat, out, encoding);
             g_astc.ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - t0).count());
             if (ok)
@@ -173,12 +186,12 @@ namespace
                 g_astc.bcBytes += data.bytes.size();
                 g_astc.astcBytes += out.bytes.size();
                 g_astc.rgbaBytes += (out.bytes.size() / 16) * 64;
-                if (hash) vk::texstore::Save(data, xenosFormat, hash, out, format);
+                if (hash) vk::texstore::Save(data, xenosFormat, hash, out, encoding);
                 return true;
             }
             g_astc.refused++;
         }
-        return vk::bc::Decompress(data, xenosFormat, out, format);
+        return vk::bc::Decompress(data, xenosFormat, out, encoding);
     }
 
     struct Image
@@ -993,10 +1006,10 @@ namespace
         const gpu::TextureData* pData = &data;
         if (DecodeInSoftware(xenosFormat))
         {
-            int decompFormat = 0;
+            gpu::TextureEncoding encoding{};
             Timed timed(g.timing, Timing::kDecode);
             g.timing.decodedBytes += data.bytes.size();
-            if (!DecodeBc(data, xenosFormat, decompressed, decompFormat))
+            if (!DecodeBc(data, xenosFormat, decompressed, encoding))
             {
                 Fail("software BC decompression failed", error);
                 LOGE("Texture upload: software BC decompression failed for xenosFormat %u (%ux%u, %zu levels): %s",
@@ -1004,7 +1017,12 @@ namespace
                      decompressed.error ? decompressed.error : "decoder failure");
                 return vk::textures::kNone;
             }
-            format = decompFormat;
+            format = int(VkFormatForEncoding(encoding));
+            if (format == VK_FORMAT_UNDEFINED)
+            {
+                Fail("unsupported decoded texture encoding", error);
+                return vk::textures::kNone;
+            }
             pData = &decompressed;
         }
 
@@ -1349,21 +1367,28 @@ namespace
         const gpu::TextureData* pData = &data;
         if (DecodeInSoftware(image.xenosFormat))
         {
-            int decompFormat = 0;
+            gpu::TextureEncoding encoding{};
             Timed timed(g.timing, Timing::kDecode);
             g.timing.decodedBytes += data.bytes.size();
-            if (!DecodeBc(data, image.xenosFormat, decompressed, decompFormat))
+            if (!DecodeBc(data, image.xenosFormat, decompressed, encoding))
             {
                 LOGE("Texture restage: software BC decompression failed for xenosFormat %u (%ux%u, %zu levels): %s",
                      image.xenosFormat, data.width, data.height, data.levels.size(),
                      decompressed.error ? decompressed.error : "decoder failure");
                 return false;
             }
-            if (image.format != VkFormat(decompFormat) &&
-                image.format != VkFormat(vk::formats::SrgbFormatFor(decompFormat)))
+            const VkFormat decodedFormat = VkFormatForEncoding(encoding);
+            if (decodedFormat == VK_FORMAT_UNDEFINED)
+            {
+                LOGE("Texture restage: unsupported decoded texture encoding for xenosFormat %u",
+                     image.xenosFormat);
+                return false;
+            }
+            const VkFormat decodedSrgb = VkFormat(vk::formats::SrgbFormatFor(int(decodedFormat)));
+            if (image.format != decodedFormat && image.format != decodedSrgb)
             {
                 LOGE("Texture restage: format mismatch for xenosFormat %u (got %d, image has %d)",
-                     image.xenosFormat, decompFormat, int(image.format));
+                     image.xenosFormat, int(decodedFormat), int(image.format));
                 return false;
             }
             pData = &decompressed;

@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
-
-namespace gpu { struct TextureData; }
+#include "../texture.h"
 
 // Textures already converted for the host, kept on disk between runs.
 //
@@ -27,15 +26,15 @@ namespace vk::texstore
     bool Open();
 
     // The converted form of `source` (a BC texture as gpu::ReadTexture returns it),
-    // if the store has it: into `out`, with `vkFormat` the format it is in.
+    // if the store has it: into `out`, with `encoding` describing its API-independent texture encoding.
     // `hash` is the source's, for the Save that follows a miss.
     bool Load(const gpu::TextureData& source, uint32_t xenosFormat, gpu::TextureData& out,
-              int& vkFormat, uint64_t& hash);
+              gpu::TextureEncoding& encoding, uint64_t& hash);
 
     // Keeps `converted`, made from `source` (whose hash Load gave), for the next
     // session. Copies; the write happens on the store's thread.
     void Save(const gpu::TextureData& source, uint32_t xenosFormat, uint64_t hash,
-              const gpu::TextureData& converted, int vkFormat);
+              const gpu::TextureData& converted, gpu::TextureEncoding encoding);
 
     struct Stats { uint64_t hits, misses, saved, savedBytes, hashNs, readNs, records, fileBytes, dropped; };
     Stats Counts();

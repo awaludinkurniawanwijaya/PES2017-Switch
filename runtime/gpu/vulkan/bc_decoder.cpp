@@ -1,5 +1,4 @@
 #include "bc_decoder.h"
-#include <vulkan/vulkan.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -130,7 +129,7 @@ namespace vk::bc
     }
 
     bool Decompress(const gpu::TextureData& src, uint32_t xenosFormat,
-                    gpu::TextureData& dst, int& outVulkanFormat)
+                    gpu::TextureData& dst, gpu::TextureEncoding& outEncoding)
     {
         if (!IsBCFormat(xenosFormat)) return false;
 
@@ -140,15 +139,15 @@ namespace vk::bc
         case 18: case 51: // BC1
         case 19: case 52: // BC2
         case 20: case 53: // BC3
-            outVulkanFormat = VK_FORMAT_R8G8B8A8_UNORM;
+            outEncoding = gpu::TextureEncoding::Rgba8;
             bpp = 4;
             break;
         case 49:          // BC5
-            outVulkanFormat = VK_FORMAT_R8G8_UNORM;
+            outEncoding = gpu::TextureEncoding::Rg8;
             bpp = 2;
             break;
         case 59:          // BC4
-            outVulkanFormat = VK_FORMAT_R8_UNORM;
+            outEncoding = gpu::TextureEncoding::R8;
             bpp = 1;
             break;
         default:
@@ -991,13 +990,13 @@ namespace vk::bc
     }
 
     bool TranscodeBc1ToAstc(const gpu::TextureData& src, gpu::TextureData& dst,
-                            int& outVulkanFormat)
+                            gpu::TextureEncoding& outEncoding)
     {
-        return TranscodeToAstc(src, 18, dst, outVulkanFormat);
+        return TranscodeToAstc(src, 18, dst, outEncoding);
     }
 
     bool TranscodeToAstc(const gpu::TextureData& src, uint32_t xenosFormat, gpu::TextureData& dst,
-                         int& outVulkanFormat)
+                         gpu::TextureEncoding& outEncoding)
     {
         const bool bc1 = xenosFormat == 18 || xenosFormat == 51;
         const bool bc2 = xenosFormat == 19 || xenosFormat == 52;
@@ -1005,7 +1004,7 @@ namespace vk::bc
         if (!bc1 && !bc2 && !bc3) return false;
         const uint32_t inBytes = bc1 ? 8 : 16;
         if (src.bytesPerBlock != inBytes) return false;
-        outVulkanFormat = VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        outEncoding = gpu::TextureEncoding::Astc4x4;
 
         dst.ok = true;
         dst.error = nullptr;
