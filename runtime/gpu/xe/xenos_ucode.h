@@ -53,6 +53,8 @@ namespace xenos
     constexpr uint32_t kTempRegisterCount = 64;
     constexpr uint32_t kFloatConstantCount = 256;
     constexpr uint32_t kInterpolatorCount = 16;
+    constexpr uint32_t kVertexFetchSlotCount = 96;
+    constexpr uint32_t kTextureSlotCount = 32;
 
     struct ControlFlow
     {

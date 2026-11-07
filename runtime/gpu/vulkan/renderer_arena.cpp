@@ -2,6 +2,7 @@
 // copied out of guest memory and the register file into the frame arena.
 #include "renderer_state.h"
 #include "../memory_watch.h"
+#include "../xe/xenos_ucode.h"
 #include "../../guest.h"
 #include "../../kernel/physical.h"
 
@@ -204,7 +205,7 @@ namespace vk::renderer::detail
         // the shader's arithmetic is untouched and only what a draw reads crosses.
         // What has been copied for this draw, so two of its fetch slots naming one
         // buffer copy it once. It does not outlive the draw: see below.
-        constexpr uint32_t kFetchSlots = 32 * 3;
+        constexpr uint32_t kFetchSlots = xenos::kVertexFetchSlotCount;
         struct Made { uint32_t address, base, first, dwords; };
         Made made[kFetchSlots];          // every entry is written before it is read
         uint32_t madeCount = 0;

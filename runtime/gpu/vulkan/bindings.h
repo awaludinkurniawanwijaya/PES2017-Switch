@@ -4,6 +4,7 @@
 // numbers, and the renderer fills them -- so one layout serves every shader
 // and nothing is reflected at bind time.
 #include <cstdint>
+#include "../xe/xenos_ucode.h"
 
 namespace vk::bindings
 {
@@ -18,7 +19,7 @@ namespace vk::bindings
     constexpr uint32_t kPixelFloats = 4;      // 256 vec4 from SQ_PS_CONST's base
     constexpr uint32_t kConstantBlocks = 5;
     constexpr uint32_t kFloatConstants = 256;
-    constexpr uint32_t kFetchSlots = 96;
+    constexpr uint32_t kFetchSlots = xenos::kVertexFetchSlotCount;
     // Each block's size, which is the range its descriptor covers.
     constexpr uint32_t kBlockBytes[kConstantBlocks] = {
         kFloatConstants * 16, kFetchSlots * 16, 8 * 4, 32 * 4, kFloatConstants * 16,
@@ -27,7 +28,7 @@ namespace vk::bindings
     // Set 1: one combined image sampler per texture fetch constant. A shader
     // declares only the slots it samples.
     constexpr uint32_t kTextureSet = 1;
-    constexpr uint32_t kTextureSlots = 32;
+    constexpr uint32_t kTextureSlots = xenos::kTextureSlotCount;
 
     // Set 2: the frame arena as an array of dwords. A vertex fetch constant
     // holds a guest physical address; the renderer copies what the draw reads
