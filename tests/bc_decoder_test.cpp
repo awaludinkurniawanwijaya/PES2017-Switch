@@ -11,7 +11,6 @@
 #include "gpu/vulkan/bc_decoder.h"
 #include "gpu/texture.h"
 
-#include <vulkan/vulkan.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -319,9 +318,9 @@ namespace
                     for (uint8_t& byte : blocks) byte = rng.Byte();
 
                     gpu::TextureData decoded;
-                    int vulkanFormat = 0;
+                    gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
                     const bool ok = vk::bc::Decompress(SingleLevel(format, width, height, blocks),
-                                                       format, decoded, vulkanFormat);
+                                                       format, decoded, encoding);
                     const std::string what = "format " + std::to_string(format) + " " +
                                              std::to_string(width) + "x" +
                                              std::to_string(height) + " seed " +
@@ -336,12 +335,11 @@ namespace
                     const bool matches = MatchesReference(decoded, blocks, format, width, height, why);
                     Check(matches, what + ": " + why);
 
-                    const uint32_t expectedFormat =
-                        format == 49 ? VK_FORMAT_R8G8_UNORM :
-                        format == 59 ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
-                    Check(vulkanFormat == int(expectedFormat),
-                          what + " maps to Vulkan format " + std::to_string(expectedFormat) +
-                              ", got " + std::to_string(vulkanFormat));
+                    const gpu::TextureEncoding expectedEncoding =
+                        format == 49 ? gpu::TextureEncoding::Rg8 :
+                        format == 59 ? gpu::TextureEncoding::R8 : gpu::TextureEncoding::Rgba8;
+                    Check(encoding == expectedEncoding,
+                          what + " maps to the expected API-independent texture encoding");
                     Check(decoded.expanded, what + " says it is expanded");
                     Check(decoded.bytesPerBlock == BytesPerTexel(format),
                           what + " has " + std::to_string(BytesPerTexel(format)) +
@@ -361,8 +359,8 @@ namespace
         block[4] = block[5] = block[6] = block[7] = 0xFF; // every index is 3
 
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(vk::bc::Decompress(SingleLevel(18, 4, 4, block), 18, decoded, vulkanFormat),
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::Decompress(SingleLevel(18, 4, 4, block), 18, decoded, encoding),
               "BC1 three-colour block decodes");
         bool allClear = decoded.bytes.size() == 64;
         for (size_t i = 0; allClear && i < decoded.bytes.size(); i++)
@@ -384,8 +382,8 @@ namespace
         for (int i = 0; i < 8; i++) block[i] = 0xFF;
 
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(vk::bc::Decompress(SingleLevel(19, 4, 4, block), 19, decoded, vulkanFormat),
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::Decompress(SingleLevel(19, 4, 4, block), 19, decoded, encoding),
               "BC2 block decodes");
         bool opaque = decoded.bytes.size() == 64;
         for (size_t i = 3; opaque && i < decoded.bytes.size(); i += 4)
@@ -409,8 +407,8 @@ namespace
         block[12] = block[13] = block[14] = block[15] = 0;
 
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(vk::bc::Decompress(SingleLevel(20, 4, 4, block), 20, decoded, vulkanFormat),
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::Decompress(SingleLevel(20, 4, 4, block), 20, decoded, encoding),
               "BC3 eight-value alpha block decodes");
         const uint8_t expected = uint8_t((a0 + 6 * a1) / 7);
         bool right = decoded.bytes.size() == 64;
@@ -428,7 +426,7 @@ namespace
         other[12] = other[13] = other[14] = other[15] = 0;
 
         gpu::TextureData decodedSix;
-        Check(vk::bc::Decompress(SingleLevel(20, 4, 4, other), 20, decodedSix, vulkanFormat),
+        Check(vk::bc::Decompress(SingleLevel(20, 4, 4, other), 20, decodedSix, encoding),
               "BC3 six-value alpha block decodes");
         bool opaque = decodedSix.bytes.size() == 64;
         for (size_t i = 3; opaque && i < decodedSix.bytes.size(); i += 4)
@@ -456,8 +454,8 @@ namespace
         }
 
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(vk::bc::Decompress(SingleLevel(49, 4, 4, block), 49, decoded, vulkanFormat),
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::Decompress(SingleLevel(49, 4, 4, block), 49, decoded, encoding),
               "BC5 block decodes");
 
         const uint8_t expectedRed = uint8_t((4 * 20 + 240) / 5);
@@ -494,8 +492,8 @@ namespace
         source.bytes = blocks;
 
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(vk::bc::Decompress(source, 20, decoded, vulkanFormat), "two-level BC3 decodes");
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::Decompress(source, 20, decoded, encoding), "two-level BC3 decodes");
         Check(decoded.levels.size() == 2, "two-level BC3 keeps its levels");
         if (decoded.levels.size() != 2) return;
 
@@ -525,8 +523,8 @@ namespace
     {
         std::vector<uint8_t> blocks(16 * 2 * 2 - 1, 0x5A);
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        const bool ok = vk::bc::Decompress(SingleLevel(20, 8, 8, blocks), 20, decoded, vulkanFormat);
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        const bool ok = vk::bc::Decompress(SingleLevel(20, 8, 8, blocks), 20, decoded, encoding);
         Check(!ok, "a short compressed payload fails rather than decoding");
         Check(!decoded.ok, "a failed decode does not claim success");
         Check(decoded.error != nullptr, "a failed decode says why");
@@ -538,9 +536,9 @@ namespace
         for (uint32_t format : notBlockCompressed)
         {
             gpu::TextureData decoded;
-            int vulkanFormat = 0;
+            gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
             Check(!vk::bc::Decompress(SingleLevel(6, 4, 4, std::vector<uint8_t>(16, 0)), format,
-                                      decoded, vulkanFormat),
+                                      decoded, encoding),
                   "format " + std::to_string(format) + " is not decoded as a BC format");
             Check(!vk::bc::IsBCFormat(format),
                   "format " + std::to_string(format) + " is not reported as BC");
@@ -557,8 +555,8 @@ namespace
         gpu::TextureData source = SingleLevel(20, 4, 4, std::vector<uint8_t>(16, 0));
         source.bytesPerBlock = 0;
         gpu::TextureData decoded;
-        int vulkanFormat = 0;
-        Check(!vk::bc::Decompress(source, 20, decoded, vulkanFormat),
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(!vk::bc::Decompress(source, 20, decoded, encoding),
               "a zero compressed block size is refused");
     }
 }
@@ -582,17 +580,17 @@ void DecodingIntoTheSameObjectReusesTheBuffer()
     const std::vector<uint8_t> other = Blocks(8, 8);
 
     gpu::TextureData dst;
-    int vulkanFormat = 0;
-    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, first), format, dst, vulkanFormat),
+    gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, first), format, dst, encoding),
           "the first decode into an empty object works");
     Check(dst.bytes.size() == 8 * 8 * 4, "the first decode is the size of its image");
     const std::vector<uint8_t> wanted = dst.bytes;
 
     // Another texture through the same object, then the first one again: the
     // second decode reuses the buffer the first allocated.
-    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, other), format, dst, vulkanFormat),
+    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, other), format, dst, encoding),
           "a second decode into the same object works");
-    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, first), format, dst, vulkanFormat),
+    Check(vk::bc::Decompress(SingleLevel(format, 8, 8, first), format, dst, encoding),
           "a third decode into the same object works");
     Check(dst.bytes == wanted,
           "decoding into a reused buffer gives what a fresh one gave");
@@ -600,7 +598,7 @@ void DecodingIntoTheSameObjectReusesTheBuffer()
     // A smaller image into the same object: what the upload copies is exactly
     // this size, so nothing of the larger image may survive.
     const std::vector<uint8_t> small = Blocks(4, 4);
-    Check(vk::bc::Decompress(SingleLevel(format, 4, 4, small), format, dst, vulkanFormat),
+    Check(vk::bc::Decompress(SingleLevel(format, 4, 4, small), format, dst, encoding),
           "a smaller decode into the same object works");
     Check(dst.bytes.size() == 4 * 4 * 4,
           "a smaller decode leaves its own size, not the larger image's");
@@ -771,11 +769,11 @@ void DecodingIntoTheSameObjectReusesTheBuffer()
         src.bytes.assign(32, 0);
         std::memcpy(src.bytes.data(), block, 16); std::memcpy(src.bytes.data() + 16, block, 16);
         gpu::TextureData dst;
-        int format = 0;
-        Check(vk::bc::TranscodeToAstc(src, 20, dst, format) && dst.bytes.size() == 32 && dst.bytesPerBlock == 16,
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::TranscodeToAstc(src, 20, dst, encoding) && dst.bytes.size() == 32 && dst.bytesPerBlock == 16,
               "a BC3 texture keeps its block count");
-        Check(!vk::bc::TranscodeToAstc(src, 18, dst, format), "BC1 on 16-byte blocks is refused");
-        Check(!vk::bc::TranscodeToAstc(src, 49, dst, format), "BC5 is not transcoded");
+        Check(!vk::bc::TranscodeToAstc(src, 18, dst, encoding), "BC1 on 16-byte blocks is refused");
+        Check(!vk::bc::TranscodeToAstc(src, 49, dst, encoding), "BC5 is not transcoded");
     }
 
     void Bc1ToAstcKeepsTheLevelLayout()
@@ -789,15 +787,15 @@ void DecodingIntoTheSameObjectReusesTheBuffer()
         src.bytes.assign(40, 0);
         for (int b = 0; b < 5; b++) { src.bytes[b * 8] = 0xFF; src.bytes[b * 8 + 1] = 0xFF; src.bytes[b * 8 + 4] = uint8_t(b * 0x1B); }
         gpu::TextureData dst;
-        int format = 0;
-        Check(vk::bc::TranscodeBc1ToAstc(src, dst, format), "a small chain transcodes");
-        Check(format == VK_FORMAT_ASTC_4x4_UNORM_BLOCK, "the format is ASTC 4x4");
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
+        Check(vk::bc::TranscodeBc1ToAstc(src, dst, encoding), "a small chain transcodes");
+        Check(encoding == gpu::TextureEncoding::Astc4x4, "the format is ASTC 4x4");
         Check(dst.levels.size() == 2 && dst.bytesPerBlock == 16 && !dst.expanded, "block layout is kept");
         Check(dst.levels[0].offset == 0 && dst.levels[0].size == 64, "level 0 holds four 16-byte blocks");
         Check(dst.levels[1].offset == 64 && dst.levels[1].size == 16, "level 1 follows, 16-byte aligned");
         Check(dst.bytes.size() == 80, "the buffer holds exactly the blocks");
         src.bytes.resize(36);
-        Check(!vk::bc::TranscodeBc1ToAstc(src, dst, format) && !dst.ok, "short data fails");
+        Check(!vk::bc::TranscodeBc1ToAstc(src, dst, encoding) && !dst.ok, "short data fails");
     }
 
 int main()
