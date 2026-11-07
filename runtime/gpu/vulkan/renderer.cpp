@@ -10,7 +10,7 @@ bool vk::renderer::Initialise() { return false; }
 void vk::renderer::Shutdown() {}
 bool vk::renderer::Ready() { return false; }
 void vk::renderer::SetThermalStatus(int) {}
-void vk::renderer::Draw(const gpu::RegisterFile&, const DrawCall&) {}
+void vk::renderer::Draw(const gpu::RegisterFile&, const gpu::DrawCall&) {}
 void vk::renderer::Resolve(const gpu::RegisterFile&) {}
 void vk::renderer::Swap(uint32_t) {}
 void vk::renderer::BeginOcclusionQuery() {}

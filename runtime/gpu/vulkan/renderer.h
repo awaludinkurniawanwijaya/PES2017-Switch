@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include "../draw.h"
 
 namespace gpu { struct RegisterFile; }
 
@@ -24,39 +25,12 @@ namespace vk::renderer
     // thread; the dynamic scene scale (PES17_DYNAMIC_SCALE) reads it at the next frame.
     void SetThermalStatus(int status);
 
-    // The name a shader goes by here: FNV-1a over its microcode dwords, as the
-    // command stream loads them.
-    inline uint64_t ShaderHash(const uint32_t* code, size_t words)
-    {
-        uint64_t hash = 1469598103934665603ull;
-        for (size_t i = 0; i < words; i++) { hash ^= code[i]; hash *= 1099511628211ull; }
-        return hash;
-    }
-
     // The title made a shader object over this microcode while loading a
     // level (shader_preload.cpp): it is translated and compiled on a worker
     // thread now, so its first draw finds it ready. Any thread; returns at once.
     void PrepareShader(bool pixel, const uint32_t* code, size_t words);
 
-    // What the draw packet carries that the register file does not.
-    struct DrawCall
-    {
-        uint32_t primitive = 0;
-        uint32_t indexCount = 0;
-        bool indexed = false;
-        bool index32 = false;
-        uint32_t indexAddress = 0;         // guest virtual, already resolved
-
-        // A hash of each, so a shader is translated and compiled once.
-        const uint32_t* vertexCode = nullptr;
-        size_t vertexWords = 0;
-        uint64_t vertexHash = 0;
-        const uint32_t* pixelCode = nullptr;
-        size_t pixelWords = 0;
-        uint64_t pixelHash = 0;
-    };
-
-    void Draw(const gpu::RegisterFile& registers, const DrawCall& call);
+    void Draw(const gpu::RegisterFile& registers, const gpu::DrawCall& call);
 
     // A draw issued in copy mode: copy the colour or depth target where the
     // copy registers say it goes.

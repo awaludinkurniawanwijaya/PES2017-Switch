@@ -486,7 +486,7 @@ namespace vk::renderer::detail
 void vk::renderer::PrepareShader(bool pixel, const uint32_t* code, size_t words)
 {
     if (!code || !words) return;
-    const uint64_t hash = ShaderHash(code, words);
+    const uint64_t hash = gpu::ShaderHash(code, words);
     std::lock_guard lock(p.lock);
     // Before the renderer is up the job waits in the queue: the title loads
     // its first zones -- the menus, the common materials -- before then.

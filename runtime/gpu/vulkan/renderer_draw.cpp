@@ -97,7 +97,7 @@ namespace vk::renderer::detail
     // corners, run through its vertex shader on the CPU as the depth-only clear does.
     // Its scissor is left at the reset value (8192 square) and says nothing; the
     // pass that clear opens would otherwise cover the whole 2048-row surface.
-    bool ClearRectangleReach(const gpu::RegisterFile& r, const vk::renderer::DrawCall& call, uint32_t& reachX, uint32_t& reachY)
+    bool ClearRectangleReach(const gpu::RegisterFile& r, const gpu::DrawCall& call, uint32_t& reachX, uint32_t& reachY)
     {
         if (!call.vertexCode || call.indexed) return false;
         xe_memexport::Job job{};
@@ -124,7 +124,7 @@ namespace vk::renderer::detail
     // places the ball itself in the frames it makes: a spread of its vertices run through its
     // vertex shader on the CPU, divided by w and put through the viewport. The centre of what they
     // cover is the ball's; their reach, times the ball scale, its radius.
-    void NoteBall(const gpu::RegisterFile& r, const vk::renderer::DrawCall& call)
+    void NoteBall(const gpu::RegisterFile& r, const gpu::DrawCall& call)
     {
         static uint32_t told = 0;
         if (!call.vertexCode || !call.indexed || !call.indexAddress)
@@ -560,7 +560,7 @@ using namespace vk::renderer::detail;
 
 bool vk::renderer::DumpingDraws() { return g_dumpDraws; }
 
-void vk::renderer::Draw(const gpu::RegisterFile& r, const DrawCall& call)
+void vk::renderer::Draw(const gpu::RegisterFile& r, const gpu::DrawCall& call)
 {
     struct StageScope
     {

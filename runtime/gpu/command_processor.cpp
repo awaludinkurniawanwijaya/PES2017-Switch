@@ -5,6 +5,7 @@
 #include "internal.h"
 #include "../pacing_trace.h"
 #include "gpu.h"
+#include "draw.h"
 #include "registers.h"
 #include "../counter.h"
 #include "../diagnostics.h"
@@ -391,7 +392,7 @@ namespace
     {
         if (code.empty()) return;
         type &= 1;
-        const uint64_t hash = vk::renderer::ShaderHash(code.data(), code.size());
+        const uint64_t hash = gpu::ShaderHash(code.data(), code.size());
         g.shaderHash[type] = hash;
         if constexpr (!diag::kOn) { g.shader[type] = std::move(code); return; }
         if (g.shadersSeen.insert(hash).second && ShaderDumpDirectory())
@@ -466,7 +467,7 @@ namespace
                 vk::renderer::Resolve(g.registers);
             else
             {
-                vk::renderer::DrawCall call;
+                gpu::DrawCall call;
                 call.primitive = primitive;
                 call.indexCount = draw.IndexCount();
                 call.indexed = indexed;
@@ -813,7 +814,7 @@ namespace
             {
                 LOGI("shader load: %s %u dwords at %08X, %016llX",
                      (addressType & 3u) ? "pixel" : "vertex", sizeDwords, va,
-                     (unsigned long long)vk::renderer::ShaderHash(code.data(), code.size()));
+                     (unsigned long long)gpu::ShaderHash(code.data(), code.size()));
             }
             LoadShader(addressType & 3u, std::move(code));
             break;
