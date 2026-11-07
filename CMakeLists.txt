@@ -33,7 +33,11 @@ option(PES17_TRACE_INDIRECT "Report indirect calls with no recompiled target ins
 option(PES17_LOGGING "Emit the runtime's log" ON)
 option(PES17_PORTABLE "Link the C++ runtime statically, for a binary that runs on other machines" OFF)
 option(PES17_DIAGNOSTICS "Build the traces, dumps, statistics, reports and test harness (runtime/diagnostics.h)" ON)
-
+set(PES17_GPU_BACKEND "vulkan" CACHE STRING "GPU backend")
+set_property(CACHE PES17_GPU_BACKEND PROPERTY STRINGS vulkan)
+if(NOT PES17_GPU_BACKEND STREQUAL "vulkan")
+    message(FATAL_ERROR "Unsupported GPU backend: ${PES17_GPU_BACKEND}")
+endif()
 # ---- which executable ------------------------------------------------------
 # PES 2017 ships one executable, default.xex; build.sh recompiles it into ppc/.
 set(PES17_TITLE "sp")
@@ -86,7 +90,6 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_SOURCE_DIR}/runtime/gpu/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/apu/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/install/*.cpp"
-     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/*.cpp")
 
 # Xenia's shader interpreter, vendored with shims for the rex/ headers it
@@ -96,7 +99,11 @@ set_source_files_properties(
     "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/memexport.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/ucode.cpp"
     PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/shim")
-
+if(PES17_GPU_BACKEND STREQUAL "vulkan")
+    file(GLOB VULKAN_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/*.cpp")
+    list(APPEND RUNTIME_SOURCES ${VULKAN_SOURCES})
+endif()
 if(ANDROID)
     # The window, the touch pad, the AAudio sink, the driver loader and the
     # JNI surface the app talks to (docs/android.md).

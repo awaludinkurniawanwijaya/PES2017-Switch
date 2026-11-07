@@ -24,8 +24,7 @@
 #include "log.h"
 #include "watchpoint.h"
 #include "gpu/gpu.h"
-#include "gpu/vulkan/texture_cache.h"
-#include "gpu/vulkan/renderer.h"
+#include "gpu/backend.h"
 #include "kernel/kernel.h"
 
 #include <algorithm>
@@ -69,7 +68,7 @@ namespace
     // the draws before it.
     void Copy(uint32_t destination, uint32_t source, uint32_t size, bool inStream)
     {
-        if (inStream) vk::renderer::BeforeStreamWrite(kernel::ToPhysical(destination), size);
+        if (inStream) gpu::backend::BeforeStreamWrite(kernel::ToPhysical(destination), size);
         // The pool never asks for a move that overlaps; memmove says so for free.
         watchpoint::Suspend();
         gpu::watch::WillWrite(destination, size);
@@ -82,7 +81,7 @@ namespace
             g_moves[g_moveCount % kMoves] = { destination, source, size, gpu::FrameCount(),
                                               g_moveCount };
         }
-        vk::textures::MemoryWritten(kernel::ToPhysical(destination), size);
+        gpu::backend::MemoryWritten(kernel::ToPhysical(destination), size);
     }
 }
 

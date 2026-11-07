@@ -6,7 +6,7 @@
 // MW2's D3D9 is statically linked, so it is already recompiled and running: it
 // builds real PM4 command streams and publishes a ring write pointer. A thread
 // here consumes that stream as the console's command processor does, and the
-// draws in it are rendered with Vulkan (vulkan/renderer.h).
+// draws in it are handled by the selected GPU backend (gpu/backend.h).
 namespace gpu
 {
     void Initialise();
@@ -23,7 +23,7 @@ namespace gpu
     // Swap packets the command processor has executed (FrameCount counts the
     // CPU's VdSwap calls).
     uint64_t SwapsExecuted();
-    // Resolve write-back (vulkan/renderer_resolve.cpp) calls this; for a while
+    // Resolve write-back in the GPU backend calls this; for a while
     // afterwards the title's kicks wait for the ring to be consumed.
     void NoteWriteBack();
     // After D3D kicks the ring: during that window, wait until the command

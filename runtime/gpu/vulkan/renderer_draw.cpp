@@ -10,7 +10,6 @@
 #include "../../env.h"
 #include "../internal.h"
 #include "../xe/memexport.h"
-#include "framegen.h"
 #include <atomic>
 
 #include <algorithm>
@@ -28,6 +27,7 @@
 #endif
 
 #ifdef PES17_HAVE_VULKAN
+#include "framegen.h"
 
 namespace vk::renderer::detail
 {

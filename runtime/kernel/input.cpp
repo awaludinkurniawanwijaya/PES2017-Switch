@@ -15,7 +15,9 @@
 #include "../player.h"
 #include "../signin.h"
 #include "../stutters.h"
+#ifdef PES17_HAVE_VULKAN
 #include "../gpu/vulkan/renderer.h"
+#endif
 
 #ifdef PES17_ANDROID
 #include "../android/android.h"
@@ -532,7 +534,9 @@ PPC_FUNC(__imp__XamInputGetState)
             if (isDown && !wasDown)
             {
                 if (stutters::On()) stutters::Mark("pad Y");
+#ifdef PES17_HAVE_VULKAN
                 else vk::renderer::FlashSeen("pad Y");
+#endif
             }
             wasDown = isDown;
             b &= uint16_t(~BTN_Y);

@@ -1,16 +1,6 @@
+#ifdef PES17_HAVE_VULKAN
 #include "framegen.h"
 
-#ifndef PES17_HAVE_VULKAN
-bool vk::framegen::Wanted(uint32_t, double) { return false; }
-bool vk::framegen::WantsBall() { return false; }
-void vk::framegen::NoteBall(uint64_t, bool, float, float, float) {}
-vk::framegen::Result vk::framegen::Record(VkDevice, VkPhysicalDevice, VkCommandBuffer, VkImage, uint32_t, uint32_t,
-                                          int64_t, double, uint64_t) { return {}; }
-void vk::framegen::Reset() {}
-uint64_t vk::framegen::MadeFrames() { return 0; }
-VkImage vk::framegen::DebugField(uint32_t&, uint32_t&, uint32_t) { return VK_NULL_HANDLE; }
-void vk::framegen::Destroy(VkDevice) {}
-#else
 
 #include <algorithm>
 #include <cmath>

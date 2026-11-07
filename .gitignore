@@ -109,3 +109,7 @@ rad_installer.exe
 *.nsz
 *.xci
 *.elf
+
+# Temporary CMake configuration tests
+/build-cmake-test/
+/build-cmake-linux-test/

@@ -8,6 +8,7 @@
 #include "memory_watch.h"
 #include "internal.h"
 #include "gpu.h"
+#include "backend.h"
 #include "../crash.h"
 #include "../platform.h"
 #include "../diagnostics.h"
@@ -15,10 +16,6 @@
 #include "../image_move.h"
 #include "../log.h"
 #include "../kernel/kernel.h"
-#include "vulkan/pipeline.h"
-#include "vulkan/presenter.h"
-#include "vulkan/renderer.h"
-#include "vulkan/texture_cache.h"
 #ifdef PES17_ANDROID
 #include "../android/android.h"
 #endif
@@ -184,11 +181,11 @@ namespace
         crash::RegisterThread("gpu vblank");
         t_guestPcr = g.vblankPcr;
         // 60 Hz, or the display's own blank when the window can follow it
-        // (vk::GuestBlankPeriod): on the console the title's blank is the
-        // display's, and a timer beside the display drifts from it.
+        // On a console the title's blank is the display's; a timer beside
+        // the display drifts from it.
         constexpr auto kPeriod = std::chrono::nanoseconds(16'666'667);
         const auto period = [&] {
-            const uint64_t display = vk::GuestBlankPeriod();
+            const uint64_t display = gpu::backend::DisplayBlankPeriod();
             return display ? std::chrono::nanoseconds(display) : kPeriod;
         };
         auto next = std::chrono::steady_clock::now() + kPeriod;
@@ -285,10 +282,9 @@ void gpu::Initialise()
 {
     if (g.running.exchange(true)) return;
     g.start = std::chrono::steady_clock::now();
-    vk::Start();
     // Eagerly, not on the first draw: a renderer that comes up on the first
     // bind reports the whole opening burst as failures.
-    if (Rendering() && !vk::renderer::Initialise()) LOGW("gpu: no device came up to render on");
+    if (!gpu::backend::Initialise(Rendering())) LOGW("gpu: no device came up to render on");
     g.gpuPcr = kernel::CreateThreadBlock(0xF000);
     g.vblankPcr = kernel::CreateThreadBlock(0xF001);
     g.worker = std::thread(Worker);
@@ -301,11 +297,7 @@ void gpu::Shutdown()
     if (g.vblank.joinable()) g.vblank.join();
     if (g.worker.joinable()) g.worker.join();
     // The window thread first, because it shows an image the renderer owns.
-    vk::StopPresenting();
-    vk::renderer::Shutdown();
-    vk::textures::Shutdown();
-    vk::pipeline::Shutdown();
-    vk::Stop();
+    gpu::backend::Shutdown();
 }
 
 bool gpu::Consuming() { return g.running.load(std::memory_order_relaxed) && g.ring.mask; }
@@ -382,11 +374,8 @@ void gpu::Report()
 {
     if constexpr (!diag::kOn) return;
     imagepool::Report();
-    if (vk::Running())
-        LOGI("gpu: %llu frames reached the window", (unsigned long long)vk::PresentedFrames());
+    gpu::backend::Report();
     ReportCensus();
-    vk::renderer::Report();
-    vk::textures::Report();
     gpu::watch::Report();
     ReportD3DHooks();
     uint32_t read = 0, written = 0, writeBack = 0;

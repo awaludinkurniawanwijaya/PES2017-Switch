@@ -6,7 +6,6 @@
 #include <vector>
 #include "capture.h"
 #include "presenter.h"
-#include "framegen.h"
 #include "texture_cache.h"
 #include "../../log.h"
 #include "../../pacing_trace.h"
@@ -16,6 +15,7 @@
 #endif
 
 #ifdef PES17_HAVE_VULKAN
+#include "framegen.h"
 
 namespace vk::renderer::detail
 {

@@ -38,7 +38,7 @@ namespace gpu::detail
     // False under PES17_RENDER=0: the stream is executed and counted, nothing drawn.
     bool Rendering();
     // A write the title can see. `publish` first lands the resolves written back so far in
-    // its memory (vk::renderer::PublishWriteBacks); the arena's own progress reports do not,
+    // its memory (gpu::backend::PublishWriteBacks); the arena's own progress reports do not,
     // as on them the title only reuses its command memory.
     void WritePhysical(uint32_t physicalAddress, uint32_t value, bool publish = true);
     void ReportCommandProcessor();

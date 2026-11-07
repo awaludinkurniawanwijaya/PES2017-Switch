@@ -13,7 +13,7 @@
 #include "../image_move.h"
 #include "../log.h"
 #include "../kernel/kernel.h"
-#include "vulkan/renderer.h"
+#include "backend.h"
 
 #include <algorithm>
 #include <atomic>
@@ -142,7 +142,7 @@ namespace
         int64_t lastSwapCpu = 0, lastSwapWall = 0;
         // A WAIT_FOR_IDLE with no draw after it: the GPU has finished every draw
         // so far, so whatever the command processor writes or raises now tells
-        // the title they are done (vk::renderer::BeforeCompletion).
+        // the title they are done (gpu::backend::BeforeCompletion).
         bool idleSinceDraw = false;
         uint64_t batchWork = 0;
 
@@ -262,7 +262,7 @@ namespace
         *GuestPtr<be32>(kRegisterAperture + index * 4) = value;
         // Dump only: who sets vertex fetch slot 95 (vf31.2) and texture slot 0.
         if ((index == 0x48BE || index == 0x48BF || index == 0x4800 || index == 0x4801) &&
-            vk::renderer::DumpingDraws())
+            gpu::backend::DumpingDraws())
             LOGW("DUMP   reg %04X = %08X by %s at %08X", index, value,
                  g_currentOpcodeName.load() ? g_currentOpcodeName.load() : "type0",
                  g_currentPacketAddress.load());
@@ -371,12 +371,12 @@ namespace
         // The begin record is the one with bit 5 of its address set.
         if (address & 0x20)
         {
-            vk::renderer::BeginOcclusionQuery();
+            gpu::backend::BeginOcclusionQuery();
             WriteSampleCounts(address, 0);
             return;
         }
         uint64_t samples = 0;
-        if (vk::renderer::EndOcclusionQuery(address, samples)) WriteEndRecord(address, samples);
+        if (gpu::backend::EndOcclusionQuery(address, samples)) WriteEndRecord(address, samples);
     }
 
     // PES17_DUMP_SHADERS=<dir>: every distinct shader's microcode, big-endian as
@@ -464,7 +464,7 @@ namespace
         if (Rendering())
         {
             if (mode == gpu::EdramMode::Copy)
-                vk::renderer::Resolve(g.registers);
+                gpu::backend::Resolve(g.registers);
             else
             {
                 gpu::DrawCall call;
@@ -482,7 +482,7 @@ namespace
                 call.pixelHash = g.shaderHash[1];
                 g_lastVertexHash.store(call.vertexHash, std::memory_order_relaxed);
                 g_lastPixelHash.store(call.pixelHash, std::memory_order_relaxed);
-                vk::renderer::Draw(g.registers, call);
+                gpu::backend::Draw(g.registers, call);
             }
         }
         TraceDraw(draw, indexed, dmaBase, dmaSize);
@@ -663,7 +663,7 @@ namespace
             g.predicatedRun++;
         }
 
-        if (vk::renderer::DumpingDraws())
+        if (gpu::backend::DumpingDraws())
         {
             char words[100] = ""; int at = 0;
             for (uint32_t i = 0; i < count && i < 6; i++)
@@ -709,7 +709,7 @@ namespace
             // An end-of-pipe event: its write lands once the draws before it
             // have run -- which is how D3D's fence, the arena's progress
             // report, tells the title they are done.
-            vk::renderer::BeforeCompletion();
+            gpu::backend::BeforeCompletion();
             if (ArenaProgress(address, value)) break;
             WritePhysical(address, (initiator >> 31) ? uint32_t(PPC_QueryTimebase()) : value);
             break;
@@ -719,7 +719,7 @@ namespace
         {
             // { initiator, address, value }, end of pipe as EVENT_WRITE_SHD.
             if (count < 3) break;
-            vk::renderer::BeforeCompletion();
+            gpu::backend::BeforeCompletion();
             s.Next();
             const uint32_t address = s.Next();
             WritePhysical(address, s.Next());
@@ -742,7 +742,7 @@ namespace
             {
                 s.Next();
                 const uint32_t frontBuffer = s.Next();
-                if (Rendering()) vk::renderer::Swap(frontBuffer);
+                if (Rendering()) gpu::backend::Swap(frontBuffer);
             }
             g.swapsParsed++;
             gpu::detail::g_swapsExecuted.store(g.swapsParsed, std::memory_order_release);
@@ -829,9 +829,9 @@ namespace
         case PM4_INTERRUPT:
             // { cpu mask }: a command-processor interrupt, once per processor named.
             if (count < 1) break;
-            if (g.idleSinceDraw) vk::renderer::BeforeCompletion();
+            if (g.idleSinceDraw) gpu::backend::BeforeCompletion();
             // The handler is the title's code, and may read what the GPU wrote.
-            vk::renderer::PublishWriteBacks();
+            gpu::backend::PublishWriteBacks();
             RaiseCommandProcessorInterrupt(s.Next());
             break;
 
@@ -1124,7 +1124,7 @@ namespace
                                 const uint32_t initiator = s.Next();
                                 const uint32_t address   = s.Next();
                                 const uint32_t value     = s.Next();
-                                vk::renderer::BeforeCompletion();
+                                gpu::backend::BeforeCompletion();
                                 if (!ArenaProgress(address, value))
                                     WritePhysical(address, (initiator >> 31) ? uint32_t(PPC_QueryTimebase()) : value);
                                 LOGI("pm4: salvaged trailing EVENT_WRITE_SHD at %08X (addr %08X, val %08X)",
@@ -1174,7 +1174,7 @@ namespace
 
 void gpu::detail::DeliverOcclusionQueries()
 {
-    vk::renderer::CollectOcclusionQueries(WriteEndRecord);
+    gpu::backend::CollectOcclusionQueries(WriteEndRecord);
 }
 
 void gpu::detail::ExecuteRing(uint32_t base, uint32_t readIndex, uint32_t mask, uint32_t dwords)
@@ -1201,11 +1201,11 @@ void gpu::detail::WritePhysical(uint32_t physicalAddress, uint32_t value, bool p
     const uint32_t phys = physicalAddress & ~3u;
     const uint32_t va = kernel::FromPhysical(phys);
     if (!va) return;
-    if (publish) vk::renderer::PublishWriteBacks();
+    if (publish) gpu::backend::PublishWriteBacks();
     // The title reads this as soon as it lands. Without a wait for idle, the
     // command processor writes as it meets the packet, ahead of the draws
     // before it, and the title can conclude nothing about them from it.
-    if (g.idleSinceDraw) vk::renderer::BeforeCompletion();
+    if (g.idleSinceDraw) gpu::backend::BeforeCompletion();
     if constexpr (diag::kOn)
         if (const Watch& w = Watched(); va >= w.lo && va < w.hi)
             LOGK("watch: command processor writes %08X = %08X (physical %08X, was %08X)",
