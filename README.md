@@ -1,73 +1,192 @@
-# PES 2017 — Nintendo Switch native port
+# PES 2017 — Nintendo Switch Port
 
-An experimental **native Nintendo Switch port** of *Pro Evolution Soccer 2017* (Xbox 360), built around ahead-of-time PowerPC recompilation and the Nintendo Switch homebrew SDK (**libnx**).
+**Proyek eksperimen port native PES 2017 dari Xbox 360 ke Nintendo Switch.**
 
-This is **not an Xbox 360 emulator** and it is not an Android port. The long-term goal is to translate the game's PowerPC executable to C++, connect the required Xbox 360 runtime services to Switch-native implementations, and render the game through Vulkan/NVK.
+Repositori ini mengembangkan jalur recompilation PowerPC, runtime kompatibilitas Xbox 360, lapisan platform libnx, serta backend grafis Vulkan melalui NXVK. Target akhirnya adalah menjalankan PES 2017 sebagai aplikasi homebrew Nintendo Switch (NRO), bukan menjalankan emulator Xbox 360.
 
-> **Development status — 8 November 2026:** work in progress; **not yet a playable game build**. The repository currently contains a working libnx bootstrap NRO, Switch-target compile checks, and successful CI builds of pinned NXVK Vulkan smoke-test NROs. These are infrastructure tests, not PES 2017 gameplay. The NXVK smoke NROs have not been represented as physically tested on a Switch by CI.
+> [!WARNING]
+> **Status per 8 November 2026: belum playable.** Yang sudah terbukti saat ini adalah proses recompilation lokal, bootstrap libnx, pemeriksaan kompilasi beberapa subsistem Switch, serta build CI untuk eksperimen NXVK. Belum ada bukti bahwa keseluruhan game berhasil boot, masuk menu, atau menjalankan pertandingan di perangkat Switch.
 
-## Current progress
+---
 
-| Area | Current state |
+## 1. Identitas dan ruang lingkup proyek
+
+| Kategori | Data proyek |
 |---|---|
-| Target executable | PES 2017 Xbox 360 Europe, Title ID `0x4A3007D1`, XEX execution-info version `0x00000012` |
-| XEX validation | XEX2 metadata and target-version validation implemented; generated PPC output is bound to the exact local XEX with a private SHA-256 manifest |
-| PowerPC recompilation | Local recompilation completed; generated 1,413 `ppc_recomp.*.cpp` translation units |
-| Recompiler analysis | Latest local report: 44 undecodable words and 2 missed jump-table cases remain for investigation |
-| Kernel imports | 281 imports found: 212 implemented and 69 still stubbed |
-| Switch platform | Initial libnx platform adapter, input/HID path, audio adapter and SD-card installation path are under development |
-| Bootstrap NRO | Builds successfully in GitHub Actions; this is a controller/platform smoke app, not the game |
-| Vulkan/NVK | Pinned NXVK libraries and Vulkan smoke NROs build successfully in CI; full game rendering is not yet validated |
-| Full game NRO | Not yet built or confirmed to boot |
+| Nama | PES 2017 Nintendo Switch Port |
+| Game sumber | Pro Evolution Soccer 2017 |
+| Platform sumber | Xbox 360 |
+| Platform tujuan | Nintendo Switch / Horizon OS |
+| Format aplikasi tujuan | NRO (homebrew) |
+| Arsitektur tujuan | ARM64 / AArch64 |
+| SDK platform | devkitPro, devkitA64, libnx |
+| Recompilation | XenonRecomp (PowerPC ke C++) |
+| Grafis yang dituju | Vulkan melalui NXVK |
+| Status | Eksperimental, pengembangan aktif, belum playable |
 
-Generated PPC sources and the original game executable are private build inputs. They are intentionally **not committed or uploaded as public CI artifacts**.
+**Batas ruang lingkup:** pekerjaan ini bukan emulator Xbox 360. Kode PowerPC game dikonversi menjadi kode C++ host melalui XenonRecomp, lalu dijalankan bersama runtime yang menyediakan perilaku layanan dan perangkat keras Xbox 360 yang dibutuhkan game.
 
-## Target game copy
+## 2. Target game yang digunakan
 
-The current recompilation target is the user's own dump of:
+Semua validasi recompilation yang tercatat dalam pekerjaan ini menggunakan executable berikut:
 
-- **Game:** *Pro Evolution Soccer 2017*
-- **Platform / region:** Xbox 360, Europe
-- **Title ID:** `0x4A3007D1`
-- **XEX execution-info version:** `0x00000012`
-- **Executable:** `default.xex`
-
-The source reference for selecting the correct game copy is the [XenonRecomp PES 2017 guide](https://github.com/dzakyraf/pes2017-recomp#which-copy-of-the-game-you-need). European releases may differ in included language content; the executable must still match the exact target used to generate the PPC code.
-
-You must supply your own legally obtained game files. **No game executable, CPK archive, extracted game asset, or generated game-specific PPC source is distributed in this repository.**
-
-The build validates the XEX metadata and writes `ppc/XEX_TARGET` containing the target title ID, version and SHA-256. The CMake build checks this manifest against the local executable to prevent accidentally linking PPC output generated from a different XEX.
-
-## Repository layout
-
-| Path | Purpose |
+| Properti | Nilai |
 |---|---|
-| `runtime/` | Shared Xbox 360 recompilation runtime |
-| `runtime/switch/` | Nintendo Switch platform and audio adapters |
-| `switch/` | libnx bootstrap NRO, controller input and Switch build checks |
-| `cmake/switch-toolchain.cmake` | devkitPro/devkitA64 CMake toolchain |
-| `switch/smoke/` | NXVK and Vulkan smoke-test build scripts |
-| `tools/verify_xex.py` | Validates XEX2 metadata and selected target |
-| `third_party/XenonRecomp/` | Vendored XenonRecomp toolchain |
-| `.github/workflows/` | Automated tests, bootstrap NRO build and NXVK feasibility workflow |
+| Judul | PES 2017 |
+| Platform / region | Xbox 360 / Europe |
+| Executable | `default.xex` |
+| Title ID | `0x4A3007D1` |
+| XEX execution-info version | `0x00000012` |
+| Ukuran executable | `32,493,568 bytes` |
+| SHA-256 | `b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6` |
 
-## Build and test
+Versi Eropa memiliki varian yang perbedaannya dapat berupa isi bahasa. Untuk hasil recompilation yang konsisten, executable yang dipakai harus sama dengan target yang diverifikasi di atas; jangan mencampur PPC hasil generate dari executable berbeda.
 
-### 1. Requirements
+Referensi pemilihan salinan game: [panduan PES 2017 pada XenonRecomp](https://github.com/dzakyraf/pes2017-recomp#which-copy-of-the-game-you-need).
 
-For the Nintendo Switch target:
+**Game wajib berasal dari salinan milik pengguna sendiri.** Repositori ini tidak menyediakan `default.xex`, image disc, CPK, aset game, atau hasil PPC yang dihasilkan dari executable tersebut.
 
-- Linux build host (GitHub Actions uses Ubuntu).
-- [devkitPro](https://devkitpro.org/) with the devkitA64 toolchain and libnx.
-- CMake, Ninja, Python 3 and Git.
-- The pinned NXVK build/dependencies used by the project for the Vulkan path.
-- Your own PES 2017 Xbox 360 Europe game dump for the full recompilation.
+## 3. Ringkasan progres aktual
 
-The bootstrap NRO can be built without the game executable or generated PPC sources. The full `pes17` target cannot: it requires the private XEX and matching generated PPC output.
+Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan target atau perkiraan.
 
-### 2. Recompile the local game executable
+| Komponen | Hasil saat ini | Keterangan |
+|---|---|---|
+| Validasi XEX | Berhasil | Pemeriksaan struktur XEX2, Title ID, versi, ukuran, dan SHA-256 |
+| PPC recompilation | Selesai pada build lokal | 1.413 file `ppc_recomp.*.cpp` dihasilkan |
+| Total isi direktori PPC | 1.421 file | Termasuk file pendukung dan manifest |
+| Analisis instruksi | Masih ada pekerjaan | 44 word belum ter-decode pada laporan recompilation |
+| Analisis jump table | Masih ada pekerjaan | 2 dispatch terlewat pada laporan analisis |
+| Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
+| Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
+| NXVK | Build CI berhasil | Library dan NRO smoke test berhasil dibuat |
+| Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
+| PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
-Keep the extracted game files outside the public repository if preferred. In the project checkout, run the recompiler from the project root:
+### Arti hasil pengujian
+
+- **Build berhasil** berarti compiler dan linker berhasil menghasilkan target yang diuji.
+- **Syntax check berhasil** berarti file yang diperiksa dapat dikompilasi pada tahap pemeriksaan tersebut; belum membuktikan perilaku runtime.
+- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil.
+- **Playable** baru dapat dinyatakan setelah game benar-benar berjalan di Switch dan fungsi permainan penting telah diverifikasi.
+
+Keberhasilan CI tidak boleh dianggap sebagai bukti bahwa PES 2017 sudah berjalan di perangkat fisik.
+
+## 4. Arsitektur port
+
+Alur kerja yang sedang dibangun:
+
+```text
+PES 2017 Xbox 360 (default.xex)
+              |
+              v
+       XEX validation
+              |
+              v
+     XenonAnalyse / XenonRecomp
+              |
+              v
+       Generated PPC C++
+              |
+              v
+    PES 2017 compatibility runtime
+       |          |          |
+       v          v          v
+    Kernel      Graphics    Audio
+    services    / Vulkan    / XMA
+       |          |          |
+       +----------+----------+
+                  |
+                  v
+       Nintendo Switch platform
+        libnx / Horizon / HID
+                  |
+                  v
+            Switch NRO
+```
+
+### 4.1 Recompilation dan validasi executable
+
+- `tools/verify_xex.py` membaca metadata XEX2 dan memvalidasi target.
+- `build.sh` menjalankan XenonRecomp dan menghasilkan file C++ dari kode PowerPC.
+- `ppc/XEX_TARGET` mengikat hasil PPC ke Title ID, versi, dan SHA-256 executable sumber.
+- Pemeriksaan CMake membandingkan manifest dengan XEX lokal agar hasil PPC yang salah target tidak ikut dibangun.
+
+### 4.2 Runtime kompatibilitas Xbox 360
+
+Runtime menyediakan lingkungan yang diharapkan kode hasil recompilation, termasuk guest memory, kernel imports, thread, filesystem, GPU/APU, dan fungsi pendukung lainnya. Implementasi belum lengkap; jumlah import yang masih stub tercantum pada tabel progres.
+
+### 4.3 Platform Nintendo Switch
+
+Implementasi Switch yang ada mencakup:
+
+- Adapter platform berbasis libnx.
+- Inisialisasi filesystem SD melalui `fsdevMountSdmc()`.
+- Direktori kerja `sdmc:/switch/PES2017`.
+- Thread dan beberapa primitive sinkronisasi platform.
+- Input HID melalui `pad` libnx dengan pemetaan tombol ke layout Xbox.
+- Adapter audio awal melalui layanan `audout`.
+
+Keberadaan source code adapter tidak berarti semua fungsi sudah diuji pada beban game sesungguhnya.
+
+### 4.4 Grafis Vulkan / NXVK
+
+Eksperimen grafis menggunakan port NXVK yang dipatok pada revisi sumber tertentu. Build CI telah menghasilkan library NVK dan aplikasi smoke test untuk jalur Vulkan, termasuk uji offscreen/triangle dan VI swapchain.
+
+Integrasi grafis PES masih membutuhkan validasi lebih jauh pada resource, shader, command submission, sinkronisasi, format tekstur, render target, dan presentasi dari workload game.
+
+## 5. Struktur direktori penting
+
+| Direktori / file | Tanggung jawab |
+|---|---|
+| `build.sh` | Validasi executable dan alur recompilation lokal |
+| `tools/` | Validator XEX dan alat analisis/penyiapan PPC |
+| `config/` | Konfigurasi XenonRecomp dan analisis jump table |
+| `ppc/` | Output recompilation lokal; tidak disimpan sebagai artefak publik |
+| `pes/` | Input executable dan hasil konversi lokal; data game privat |
+| `runtime/` | Runtime kompatibilitas dan subsistem game |
+| `runtime/kernel/` | Kernel imports, guest memory, dan layanan sistem |
+| `runtime/gpu/` | GPU runtime, Vulkan, texture dan shader support |
+| `runtime/apu/` | Audio runtime dan XMA |
+| `runtime/switch/` | Implementasi platform dan audio khusus Switch |
+| `switch/source/` | Bootstrap dan input Switch |
+| `switch/smoke/` | Script aplikasi uji NXVK |
+| `cmake/switch-toolchain.cmake` | Konfigurasi cross-compiler devkitA64 |
+| `tests/` | Test mandiri yang tidak memerlukan file game |
+| `third_party/XenonRecomp/` | Toolchain XenonRecomp yang disertakan |
+| `.github/workflows/` | Otomasi test dan build Switch |
+
+## 6. Persyaratan build
+
+### Perangkat lunak
+
+Untuk target Nintendo Switch dibutuhkan:
+
+- Linux build environment.
+- devkitPro dan devkitA64.
+- libnx dan switch-tools.
+- CMake dan Ninja.
+- Python 3 dan Git.
+- Portlib NXVK beserta dependensi yang digunakan oleh workflow.
+- Salinan PES 2017 Xbox 360 Europe milik sendiri untuk full-game recompilation.
+
+Bootstrap dan test mandiri dapat dibangun tanpa executable game. Full runtime membutuhkan output PPC dan manifest XEX yang cocok.
+
+### 6.1 Menjalankan test mandiri
+
+Test mandiri tidak memerlukan XEX atau output PPC:
+
+```sh
+cmake -S tests -B build-tests -G Ninja
+cmake --build build-tests
+ctest --test-dir build-tests --output-on-failure
+```
+
+Test yang terdaftar mencakup durable write, penghitungan log berulang, block-compressed texture decoder, volume texture layout, dan test lain yang ditambahkan pada konfigurasi test.
+
+### 6.2 Recompile executable lokal
+
+Contoh perintah yang telah digunakan pada lingkungan Termux proyek:
 
 ```sh
 GAME="$HOME/storage/shared/PES2017-Extracted" \
@@ -79,60 +198,101 @@ CMAKE_CXX="$(command -v clang++)" \
 ./build.sh
 ```
 
-This validates the selected XEX and generates the PPC C++ output under `ppc/`. `RECOMPILE_ONLY=1` deliberately stops after PPC generation; **it does not build a Switch NRO**. Do not commit `pes/default.xex`, `pes/default.pe`, or generated `ppc/` output.
+`RECOMPILE_ONLY=1` menghentikan proses setelah PPC selesai dibuat dan diperiksa. Perintah ini **tidak** menghasilkan NRO Nintendo Switch.
 
-### 3. Build the libnx bootstrap
+### 6.3 Build bootstrap NRO
 
-With devkitPro configured:
+Dengan devkitPro yang telah disiapkan:
 
 ```sh
 cd switch
 make
 ```
 
-The output is `switch/pes2017-switch-bootstrap.nro`. It initializes libnx, exercises C++ thread/synchronization support and displays controller input. It is only a bootstrap test application.
+Target ini menghasilkan `pes2017-switch-bootstrap.nro`. Fungsinya menguji inisialisasi libnx, thread/synchronization probe, dan input controller. Ini bukan executable PES 2017.
 
-### 4. Full Switch runtime build
+### 6.4 Full runtime Switch
 
-The full CMake target is configured with `PES17_SWITCH=ON` and the Switch toolchain. It additionally needs the generated PPC output, the matching private XEX manifest, and the NXVK development package:
+Konfigurasi full runtime menggunakan toolchain `cmake/switch-toolchain.cmake`, opsi `PES17_SWITCH=ON`, PPC hasil recompilation, manifest XEX yang cocok, serta paket NXVK. Jalur build ini masih dalam tahap integrasi dan belum boleh dianggap sebagai build game yang telah tervalidasi.
 
-```sh
-cmake -S . -B build-switch -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
-  -DPES17_SWITCH=ON \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build-switch --target pes17
-```
+## 7. Otomasi GitHub Actions
 
-This describes the intended full-runtime build path; a successful bootstrap or NXVK smoke build does **not** imply that this target is already complete or that the resulting game runs.
+Workflow yang berada di repositori:
 
-## Automated checks
+| Workflow | Fungsi | Batas pembuktian |
+|---|---|---|
+| `main.yml` | Test otomatis di GitHub Actions | Menguji test suite, bukan menjalankan game |
+| `switch-nro.yml` | Build dan verifikasi bootstrap libnx NRO | Membuktikan bootstrap dapat dikompilasi dan dipaketkan |
+| `switch-nvk-spike.yml` | Build NXVK dan aplikasi Vulkan smoke test | Membuktikan jalur build dan smoke test yang dicakup workflow |
 
-GitHub Actions currently covers:
+Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang tersedia.
 
-- Repository tests, including XEX target/version validation.
-- Compilation and packaging of the libnx bootstrap NRO.
-- Pinned NXVK build and Vulkan smoke applications, including triangle/offscreen and VI swapchain paths.
+Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-A green workflow means the steps in that workflow passed on its CI runner. It does not prove physical-console compatibility, complete GPU feature coverage, successful game startup, or playable performance. Physical Switch testing and full-game integration remain separate milestones.
+## 8. Pekerjaan yang masih harus diselesaikan
 
-See [Actions](../../actions) for current workflow runs and artifacts.
+Urutan berikut mengelompokkan pekerjaan berdasarkan subsistem dan ketergantungannya.
 
-## Known work remaining
+### A. Recompiler dan kode game
+- Menelusuri 44 word yang belum ter-decode.
+- Menganalisis dua dispatch jump table yang terlewat.
+- Memastikan semua batas fungsi dan target branch hasil recompilation benar.
+- Menguji perilaku kode hasil recompilation pada runtime.
 
-1. Implement and validate the remaining 69 Xbox 360 kernel imports, prioritizing functions reached during startup.
-2. Investigate the remaining undecodable PPC words and missed jump-table dispatches.
-3. Complete dynamic library loading and symbol resolution needed by the game.
-4. Integrate the full recompilation target with the libnx platform and NXVK Vulkan backend.
-5. Validate GPU resource handling, shaders, render targets, synchronization and presentation against actual game workloads.
-6. Complete audio, controller mapping, SD-card game-file discovery/installation and save handling.
-7. Test boot, menus and gameplay on physical Nintendo Switch hardware, then profile and fix compatibility/performance issues.
+### B. Kernel dan system services
+- Mengganti 69 kernel import stub dengan implementasi yang sesuai.
+- Memprioritaskan import yang dipanggil saat startup.
+- Memvalidasi thread, event, synchronization, memory, file I/O, dan layanan lain yang digunakan game.
 
-## Credits and licensing
+### C. Loader dan data game
+- Menyelesaikan dynamic library loading dan symbol resolution.
+- Memastikan executable, update, dan file game ditemukan dari struktur SD yang disepakati.
+- Memvalidasi hash executable saat instalasi/pemuatan.
+- Memeriksa alur save dan data persisten.
 
-- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — Xbox 360 PowerPC analysis and recompilation toolchain.
-- [NXVK](https://github.com/PalindromicBreadLoaf/nxvk) — Vulkan driver work used for the Switch feasibility experiments.
-- [devkitPro / libnx](https://devkitpro.org/) — Nintendo Switch homebrew toolchain and platform APIs.
-- [Xenia](https://xenia.jp/) — reference material for Xbox 360 behavior and compatibility research.
+### D. Grafis
+- Menyelesaikan integrasi runtime Vulkan dengan NXVK.
+- Menguji shader, texture, render target, depth/stencil, format, synchronization, dan present.
+- Mengukur penggunaan memori serta performa GPU pada Switch fisik.
 
-PES 2017 and its assets are the property of their respective rights holders. This is an independent, unofficial research and porting project and is not affiliated with or endorsed by Konami. See [LICENSE](LICENSE) for this repository's license and retain the licenses/notices of all third-party components.
+### E. Audio dan input
+- Menghubungkan jalur audio game/XMA ke output audio Switch.
+- Memvalidasi sample rate, buffer, latency, dan stabilitas audio.
+- Menyelesaikan pemetaan controller dan perilaku input selama permainan.
+
+### F. Integrasi dan validasi perangkat
+- Menghasilkan full-game NRO dari PPC privat dan runtime.
+- Menguji startup, menu, pertandingan, audio, kontrol, dan penyimpanan di Switch.
+- Memperbaiki crash, hang, visual glitch, dan bottleneck performa.
+- Menyediakan hasil pengujian yang dapat direproduksi sebelum menyatakan status playable.
+
+## 9. Privasi file game dan aturan artefak
+
+File berikut merupakan input/output lokal privat dan tidak boleh masuk ke commit publik atau artefak CI publik:
+
+- `default.xex` dan `default.pe`.
+- Dump disc, CPK, dan aset game.
+- File hasil ekstraksi game.
+- Direktori PPC hasil XenonRecomp dan manifest yang terkait dengan executable pribadi.
+- Log atau dump yang tanpa sengaja berisi konten proprietary dari game.
+
+CI publik hanya boleh menguji source code, fixture sintetis, bootstrap, dan artefak smoke test yang aman dibagikan. Jangan mengunggah executable atau aset game ke GitHub Actions.
+
+## 10. Asal-usul komponen dan penghargaan
+
+Proyek ini menggunakan serta mengadaptasi ekosistem open-source berikut:
+
+- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — analisis dan recompilation PowerPC Xbox 360.
+- [NXVK](https://github.com/PalindromicBreadLoaf/nxvk) — basis eksperimen Vulkan/NVK di Nintendo Switch.
+- [devkitPro / libnx](https://devkitpro.org/) — toolchain dan API homebrew Nintendo Switch.
+- [Xenia](https://xenia.jp/) — referensi teknis perilaku Xbox 360.
+
+Kode upstream tetap tunduk pada lisensi dan pemberitahuan hak cipta masing-masing. Lihat file lisensi serta pemberitahuan pada direktori komponen terkait.
+
+## 11. Lisensi dan disclaimer
+
+Repositori ini merupakan proyek independen untuk riset kompatibilitas dan porting. Proyek ini tidak berafiliasi dengan, disponsori, atau didukung oleh Konami maupun Nintendo.
+
+PES 2017, merek, executable, dan aset game adalah milik pemegang hak masing-masing. Pengguna bertanggung jawab memastikan kepemilikan dan penggunaan salinan game sesuai hukum yang berlaku.
+
+Lisensi source code repositori mengikuti file [LICENSE](LICENSE), dengan tetap menghormati lisensi komponen pihak ketiga yang disertakan.
