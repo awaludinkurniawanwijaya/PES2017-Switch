@@ -29,7 +29,7 @@ $GXX -specs="$DKP/libnx/switch.specs" -march=armv8-a+crc+crypto -mtune=cortex-a5
   -L"$DKP/portlibs/switch/lib" -L"$DKP/libnx/lib" \
   -o "$OBJ/pes_loader_smoke.elf" -Wl,--gc-sections -Wl,-u,vk_icdGetInstanceProcAddr \
   "$OBJ/pes_loader_smoke.o" "$OBJ/loader.o" "$OBJ/nvk_compat.o" \
-  -Wl,--whole-archive "$DKP/portlibs/switch/lib/libnvk.a" -Wl,--no-whole-archive \
+  "$DKP/portlibs/switch/lib/libnvk.a" \
   -Wl,--start-group "$DKP/portlibs/switch/lib/libnvk_support.a" \
   -lz -lexpat -lnx -lc -lm -lstdc++ -pthread -Wl,--end-group
 
