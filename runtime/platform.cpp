@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <new>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -144,6 +145,24 @@ bool platform::StartThread(void (*body)(void*), void* argument, size_t stackByte
     if (!thread) { delete start; return false; }
     CloseHandle(thread);   // detached: nothing joins these
     return true;
+}
+
+platform::ThreadHandle platform::StartJoinableThread(void (*body)(void*), void* argument,
+                                                      size_t stackBytes, const char* name)
+{
+    auto* start = new (std::nothrow) ThreadStart{ body, argument, name };
+    if (!start) return nullptr;
+    const HANDLE thread = CreateThread(nullptr, stackBytes, &RunThread, start, 0, nullptr);
+    if (!thread) { delete start; return nullptr; }
+    return thread;
+}
+
+void platform::JoinThread(ThreadHandle handle)
+{
+    const HANDLE thread = static_cast<HANDLE>(handle);
+    if (!thread) return;
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
 }
 
 void* platform::OpenLibrary(const char* path)
@@ -458,6 +477,59 @@ bool platform::StartThread(void (*body)(void*), void* argument, size_t stackByte
         pthread_detach(fallback);
     }
     return true;
+}
+
+
+namespace
+{
+    struct JoinableThread { pthread_t thread{}; };
+}
+
+platform::ThreadHandle platform::StartJoinableThread(void (*body)(void*), void* argument,
+                                                      size_t stackBytes, const char* name)
+{
+    if (!body) return nullptr;
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0) return nullptr;
+    if (stackBytes)
+    {
+        const size_t page = size_t(sysconf(_SC_PAGESIZE));
+        size_t wanted = (stackBytes + page - 1) & ~(page - 1);
+#ifdef PTHREAD_STACK_MIN
+        if (wanted < size_t(PTHREAD_STACK_MIN)) wanted = size_t(PTHREAD_STACK_MIN);
+#endif
+        if (pthread_attr_setstacksize(&attributes, wanted) != 0)
+        {
+            pthread_attr_destroy(&attributes);
+            return nullptr;
+        }
+    }
+    auto* start = new (std::nothrow) ThreadStart{ body, argument, name };
+    auto* handle = new (std::nothrow) JoinableThread{};
+    if (!start || !handle)
+    {
+        delete start;
+        delete handle;
+        pthread_attr_destroy(&attributes);
+        return nullptr;
+    }
+    const int made = pthread_create(&handle->thread, &attributes, &RunThread, start);
+    pthread_attr_destroy(&attributes);
+    if (made != 0)
+    {
+        delete start;
+        delete handle;
+        return nullptr;
+    }
+    return handle;
+}
+
+void platform::JoinThread(ThreadHandle raw)
+{
+    auto* handle = static_cast<JoinableThread*>(raw);
+    if (!handle) return;
+    pthread_join(handle->thread, nullptr);
+    delete handle;
 }
 
 void* platform::OpenLibrary(const char* path) { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
