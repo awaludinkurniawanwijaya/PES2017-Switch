@@ -204,7 +204,8 @@ if(PES17_SWITCH)
         "${CMAKE_SOURCE_DIR}/switch/include"
         "$ENV{DEVKITPRO}/libnx/include"
         "$ENV{DEVKITPRO}/portlibs/switch/include")
-    target_compile_definitions(pes17 PRIVATE __SWITCH__=1 PES17_VULKAN_DYNAMIC=1)
+    target_compile_definitions(pes17 PRIVATE
+        __SWITCH__=1 PES17_VULKAN_DYNAMIC=1 _GNU_SOURCE=1 _DEFAULT_SOURCE=1)
     target_compile_options(pes17 PRIVATE
         -ffunction-sections -fdata-sections -pthread)
     target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
