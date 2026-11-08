@@ -29,8 +29,8 @@ PESDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     const char* level = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "ERR" :
                         (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ? "WARN" : "INFO";
     const char* message = data && data->pMessage ? data->pMessage : "(no message)";
-    if (g_log) { fprintf(g_log, "[NVK/%s] %s\\n", level, message); fflush(g_log); }
-    if (g_mesa_log) { fprintf(g_mesa_log, "[%s] %s\\n", level, message); fflush(g_mesa_log); }
+    if (g_log) { fprintf(g_log, "[NVK/%s] %s\n", level, message); fflush(g_log); }
+    if (g_mesa_log) { fprintf(g_mesa_log, "[%s] %s\n", level, message); fflush(g_mesa_log); }
     return VK_FALSE;
 }
 static void Log(const char* fmt, ...)
@@ -39,13 +39,13 @@ static void Log(const char* fmt, ...)
     va_start(ap, fmt);
     if (g_log) {
         vfprintf(g_log, fmt, ap);
-        fputc('\\n', g_log);
+        fputc('\n', g_log);
         fflush(g_log);
     }
     va_list screen;
     va_copy(screen, ap);
     vprintf(fmt, screen);
-    printf("\\n");
+    printf("\n");
     va_end(screen);
     va_end(ap);
     consoleUpdate(nullptr);
@@ -56,7 +56,7 @@ static void WaitForExit()
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
-    printf("\\nTekan + untuk keluar.\\n");
+    printf("\nTekan + untuk keluar.\n");
     while (appletMainLoop()) {
         padUpdate(&pad);
         if (padGetButtonsDown(&pad) & HidNpadButton_Plus) break;
@@ -69,17 +69,17 @@ static void WaitForExit()
 int main()
 {
     consoleInit(nullptr);
-    printf("PES NXVK loader diagnostic\\n");
-    printf("stage 1: entered main()\\n");
+    printf("PES NXVK loader diagnostic\n");
+    printf("stage 1: entered main()\n");
     consoleUpdate(nullptr);
 
     const Result mountResult = fsdevMountSdmc();
-    printf("stage 2: fsdevMountSdmc = 0x%08X\\n", unsigned(mountResult));
+    printf("stage 2: fsdevMountSdmc = 0x%08X\n", unsigned(mountResult));
     consoleUpdate(nullptr);
 
     g_log = fopen("sdmc:/pes_nxvk_loader_smoke.log", "w");
     if (!g_log) {
-        printf("stage 3: fopen FAILED (errno=%d)\\n", errno);
+        printf("stage 3: fopen FAILED (errno=%d)\n", errno);
         WaitForExit();
         consoleExit(nullptr);
         return 2;
