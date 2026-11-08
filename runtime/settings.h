@@ -1,7 +1,6 @@
 #pragma once
-// What the player set in the launcher (launcher/settings.cpp) or wrote by
-// hand, kept in the file .env as a line each of NAME=value. Any PES17_ switch
-// can be there (docs/switches.md).
+// Runtime switches are read from the legacy .env file. Nintendo Switch face-
+// button layout is read separately from config/PES.toml [input] as TOML booleans.
 #include <filesystem>
 #include <string>
 

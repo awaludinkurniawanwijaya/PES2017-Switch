@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 
 namespace
 {
@@ -25,7 +26,8 @@ namespace
     bool SettingEnabled(const char* name)
     {
         const char* value = std::getenv(name);
-        return value && value[0] == '1' && value[1] == '\0';
+        return value && (std::strcmp(value, "true") == 0 ||
+                         std::strcmp(value, "1") == 0);
     }
 
     int16_t ClampStick(s32 value)
