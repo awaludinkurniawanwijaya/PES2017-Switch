@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 
 namespace
 {
@@ -65,6 +66,28 @@ switch_input::State switch_input::Poll()
     if (raw & HidNpadButton_A) out.buttons |= kB;
     if (raw & HidNpadButton_Y) out.buttons |= kX;
     if (raw & HidNpadButton_X) out.buttons |= kY;
+
+    // Optional, independent runtime swaps. settings::Load() imports PES17_*
+    // entries from the game's .env file before the guest starts.
+    const char* swapAB = std::getenv("PES17_INPUT_SWAP_A_B");
+    if (swapAB && swapAB[0] == '1' && swapAB[1] == '\0')
+    {
+        const bool a = (out.buttons & kA) != 0;
+        const bool b = (out.buttons & kB) != 0;
+        out.buttons &= static_cast<uint16_t>(~(kA | kB));
+        if (a) out.buttons |= kB;
+        if (b) out.buttons |= kA;
+    }
+
+    const char* swapXY = std::getenv("PES17_INPUT_SWAP_X_Y");
+    if (swapXY && swapXY[0] == '1' && swapXY[1] == '\0')
+    {
+        const bool x = (out.buttons & kX) != 0;
+        const bool y = (out.buttons & kY) != 0;
+        out.buttons &= static_cast<uint16_t>(~(kX | kY));
+        if (x) out.buttons |= kY;
+        if (y) out.buttons |= kX;
+    }
     if (raw & HidNpadButton_Up) out.buttons |= kDpadUp;
     if (raw & HidNpadButton_Down) out.buttons |= kDpadDown;
     if (raw & HidNpadButton_Left) out.buttons |= kDpadLeft;
