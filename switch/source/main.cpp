@@ -7,6 +7,7 @@
 
 #include "input.h"
 #include "platform.h"
+#include "settings.h"
 
 namespace {
     std::mutex g_probeMutex;
@@ -53,6 +54,15 @@ int main(int argc, char* argv[]) {
     (void)argv;
 
     consoleInit(nullptr);
+
+    // Load the same independent controller switches as the full runtime so
+    // this diagnostic NRO can verify the physical button mapping on hardware.
+    const Result sdResult = fsdevMountSdmc();
+    const bool sdMounted = R_SUCCEEDED(sdResult);
+    std::string loadedSettings;
+    if (sdMounted)
+        loadedSettings = settings::Load("sdmc:/switch/PES2017/.env");
+
     switch_input::Initialize();
     const bool syncOk = RunSyncProbe();
 
@@ -78,6 +88,7 @@ int main(int argc, char* argv[]) {
         consoleUpdate(nullptr);
     }
 
+    if (sdMounted) fsdevUnmountDevice("sdmc");
     consoleExit(nullptr);
     return 0;
 }
