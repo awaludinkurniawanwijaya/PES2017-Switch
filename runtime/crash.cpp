@@ -12,6 +12,7 @@
 #include "platform.h"
 #include "gpu/internal.h"
 #include "gpu/gpu.h"
+#include "gpu/debug_watch.h"
 #include <ppc_config.h>
 #include <ppc_recomp_shared.h>
 
