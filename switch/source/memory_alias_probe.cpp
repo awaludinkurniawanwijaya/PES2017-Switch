@@ -1,5 +1,6 @@
 #include "memory_alias_probe.h"
 
+#include <switch.h>
 #include <switch/kernel/shmem.h>
 #include <switch/kernel/svc.h>
 

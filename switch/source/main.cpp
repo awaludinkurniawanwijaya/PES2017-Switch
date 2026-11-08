@@ -72,9 +72,9 @@ int main(int argc, char* argv[]) {
     std::printf("--------------------------------\n");
     std::printf("Native libnx bootstrap is running.\n");
     std::printf("C++ thread/synchronization probe: %s\n", syncOk ? "passed" : "FAILED");
-    std::printf("Guest RAM alias probe: %s\\n", memoryProbe.available ? "passed (3 mappings coherent)" : "not available");
-    std::printf("  shared-memory create: 0x%08X\\n", unsigned(memoryProbe.create));
-    std::printf("  map results: 0x%08X / 0x%08X / 0x%08X\\n",
+    std::printf("Guest RAM alias probe: %s\n", memoryProbe.available ? "passed (3 mappings coherent)" : "not available");
+    std::printf("  shared-memory create: 0x%08X\n", unsigned(memoryProbe.create));
+    std::printf("  map results: 0x%08X / 0x%08X / 0x%08X\n",
                 unsigned(memoryProbe.map[0]), unsigned(memoryProbe.map[1]), unsigned(memoryProbe.map[2]));
     std::printf("Joy-Con / Pro Controller input test\n");
     std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
