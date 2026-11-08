@@ -22,11 +22,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Android brings its own window, input and audio (runtime/android/), so SDL is
-# off there whatever the cache says -- and a default the Gradle build does not
-# have to repeat.
-if(ANDROID)
-    set(PES17_USE_SDL OFF CACHE BOOL "Use SDL3 (not on Android)" FORCE)
+# Android and Switch provide native window/input/audio backends, so SDL is
+# disabled for either target regardless of a stale cache value.
+option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and NXVK" OFF)
+if(ANDROID AND PES17_SWITCH)
+    message(FATAL_ERROR "PES17_SWITCH cannot be combined with Android")
+endif()
+if(ANDROID OR PES17_SWITCH)
+    set(PES17_USE_SDL OFF CACHE BOOL "Use SDL3 (not on native platforms)" FORCE)
 endif()
 option(PES17_USE_SDL "Use SDL3 for gamepad input (and later window/audio)" ON)
 option(PES17_TRACE_INDIRECT "Report indirect calls with no recompiled target instead of jumping to null" ON)
@@ -91,6 +94,16 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_SOURCE_DIR}/runtime/apu/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/install/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/*.cpp")
+
+if(PES17_SWITCH)
+    # Replace the desktop POSIX platform implementation with libnx and add
+    # the Switch audio and HID adapters. The bootstrap main is a separate app.
+    list(REMOVE_ITEM RUNTIME_SOURCES "${CMAKE_SOURCE_DIR}/runtime/platform.cpp")
+    list(APPEND RUNTIME_SOURCES
+        "${CMAKE_SOURCE_DIR}/runtime/switch/platform.cpp"
+        "${CMAKE_SOURCE_DIR}/runtime/switch/audio.cpp"
+        "${CMAKE_SOURCE_DIR}/switch/source/input.cpp")
+endif()
 
 # Xenia's shader interpreter, vendored with shims for the rex/ headers it
 # includes; runs memory-export vertex shaders on the CPU (runtime/gpu/xe).
@@ -185,6 +198,21 @@ else()
     target_compile_definitions(pes17 PRIVATE PES17_DIAGNOSTICS=0)
 endif()
 target_include_directories(pes17 PRIVATE "${CMAKE_SOURCE_DIR}/runtime")
+if(PES17_SWITCH)
+    target_include_directories(pes17 PRIVATE
+        "${CMAKE_SOURCE_DIR}/switch/source"
+        "${CMAKE_SOURCE_DIR}/switch/include"
+        "$ENV{DEVKITPRO}/libnx/include"
+        "$ENV{DEVKITPRO}/portlibs/switch/include")
+    target_compile_definitions(pes17 PRIVATE __SWITCH__=1 PES17_VULKAN_DYNAMIC=1)
+    target_compile_options(pes17 PRIVATE
+        -ffunction-sections -fdata-sections -pthread)
+    target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(NXVK REQUIRED IMPORTED_TARGET nxvk)
+    target_link_directories(pes17 PRIVATE "$ENV{DEVKITPRO}/libnx/lib")
+    target_link_libraries(pes17 PRIVATE nx PkgConfig::NXVK)
+endif()
 # The runtime checks the disc's executable against this hash before installing.
 if(NOT PES17_XEX_SHA256_SP)
     if(EXISTS "${CMAKE_SOURCE_DIR}/pes/default.xex")
@@ -218,6 +246,20 @@ if(WIN32)
     endif()
 elseif(ANDROID)
     include(cmake/android.cmake)
+elseif(PES17_SWITCH)
+    # A Switch NRO is packaged from the linked ELF; it is not a normal desktop
+    # executable and must not export a host-style -rdynamic symbol table.
+    set(PES17_SWITCH_NACP "${CMAKE_BINARY_DIR}/pes17.nacp")
+    set(PES17_SWITCH_NRO "${CMAKE_BINARY_DIR}/pes17.nro")
+    add_custom_command(TARGET pes17 POST_BUILD
+        COMMAND "$ENV{DEVKITPRO}/tools/bin/nacptool"
+            --create "PES 2017" "PES2017-Switch" "0.1.0" "${PES17_SWITCH_NACP}"
+        COMMAND "$ENV{DEVKITPRO}/tools/bin/elf2nro"
+            "$<TARGET_FILE:pes17>" "${PES17_SWITCH_NRO}"
+            --icon="$ENV{DEVKITPRO}/libnx/default_icon.jpg"
+            --nacp="${PES17_SWITCH_NACP}"
+        BYPRODUCTS "${PES17_SWITCH_NACP}" "${PES17_SWITCH_NRO}"
+        COMMENT "Packaging PES 2017 Nintendo Switch NRO")
 else()
     # -rdynamic so backtrace_symbols can resolve the sub_XXXXXXXX guest functions.
     set_target_properties(pes17 PROPERTIES ENABLE_EXPORTS ON)
@@ -259,11 +301,15 @@ elseif(ANDROID)
     # this here keeps the Vulkan block below as it is.
     set(Vulkan_FOUND TRUE)
     set(Vulkan_LIBRARY "loaded at run time")
+elseif(PES17_SWITCH)
+    # Vulkan entry points are resolved from the statically linked NXVK ICD.
+    set(Vulkan_FOUND TRUE)
+    set(Vulkan_LIBRARY "NXVK static ICD")
 else()
     find_package(Vulkan)
 endif()
 if(Vulkan_FOUND)
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT PES17_SWITCH)
         target_link_libraries(pes17 PRIVATE Vulkan::Vulkan)
     endif()
     target_compile_definitions(pes17 PRIVATE PES17_HAVE_VULKAN=1)
@@ -272,12 +318,12 @@ else()
     message(STATUS "Vulkan not found -- building without a window")
 endif()
 
-if(NOT WIN32 AND NOT ANDROID)
+if(NOT WIN32 AND NOT ANDROID AND NOT PES17_SWITCH)
     target_link_libraries(pes17 PRIVATE pthread)
 endif()
 
 # The two tools below are for working on the renderer, on Linux.
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT PES17_SWITCH)
 # ---- offline shader translation -------------------------------------------
 # The translator has to live in the runtime, because the title hands the GPU
 # microcode while it runs. Building it as a tool too gives a fast loop against
