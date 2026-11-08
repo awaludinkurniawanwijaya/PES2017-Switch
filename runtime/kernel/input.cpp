@@ -43,6 +43,10 @@
 #endif
 #include "trace.h"
 
+#ifdef __SWITCH__
+#include "../../switch/source/input.h"
+#endif
+
 namespace
 {
     // XINPUT_GAMEPAD, big-endian in guest memory.
@@ -366,6 +370,58 @@ PPC_FUNC(__imp__XamInputGetState)
     uint32_t sAddr = ctx.r5.u32;
     auto* out = GuestPtr<XInputState>(sAddr);
     if (!out) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
+
+#ifdef __SWITCH__
+    // Switch exposes one primary XInput-compatible user through libnx HID.
+    // Additional guest users remain disconnected until multi-controller routing
+    // is implemented; never report phantom pads for them.
+    if (user != 0)
+    {
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    const switch_input::State pad = switch_input::Poll();
+    if (!pad.connected)
+    {
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    int16_t axes[4] = { pad.left_x, pad.left_y, pad.right_x, pad.right_y };
+    uint8_t triggers[2] = { pad.left_trigger, pad.right_trigger };
+    player::SawPad(pad.buttons, triggers[1]);
+    player::Press press = player::Press::None;
+    if (player::Steer(axes, press))
+        switch (press)
+        {
+        case player::Press::A:    pad.buttons |= 0x1000; break;
+        case player::Press::Up:   pad.buttons |= 0x0001; break;
+        case player::Press::Left: pad.buttons |= 0x0004; break;
+        case player::Press::Fire: triggers[1] = 255; break;
+        case player::Press::None: break;
+        }
+    Latch& latch = g_latch[0];
+    if (latch.buttons != pad.buttons ||
+        std::memcmp(latch.triggers, triggers, sizeof triggers) != 0 ||
+        std::memcmp(latch.axes, axes, sizeof axes) != 0)
+    {
+        ++latch.packet;
+        latch.buttons = pad.buttons;
+        std::memcpy(latch.triggers, triggers, sizeof triggers);
+        std::memcpy(latch.axes, axes, sizeof axes);
+    }
+    out->packet = latch.packet;
+    out->gamepad.buttons = pad.buttons;
+    out->gamepad.leftTrigger = triggers[0];
+    out->gamepad.rightTrigger = triggers[1];
+    out->gamepad.thumbLX = uint16_t(axes[0]);
+    out->gamepad.thumbLY = uint16_t(axes[1]);
+    out->gamepad.thumbRX = uint16_t(axes[2]);
+    out->gamepad.thumbRY = uint16_t(axes[3]);
+    ctx.r3.u64 = X_ERROR_SUCCESS;
+    return;
+#endif
 
 #ifdef PES17_ANDROID
     // A virtual pad from a file, for testing (tools/pad.sh): files/pad holds a
