@@ -11,6 +11,8 @@ on:
       - "runtime/gpu/vulkan/loader.h"
       - "runtime/gpu/vulkan/vulkan_functions.inc"
       - "runtime/gpu/vulkan/presenter.cpp"
+      - "switch/smoke/pes_loader_smoke.cpp"
+      - "switch/smoke/build-pes-loader-smoke.sh"
       - "CMakeLists.txt"
       - "cmake/switch-toolchain.cmake"
 
@@ -122,10 +124,11 @@ jobs:
               run_stage "Generate upstream NXVK smoke-test shader headers" bash switch/smoke/shaders/gen-shaders.sh
               run_stage "Build upstream nvk_tri smoke NRO" make CONTAINER= nro APP=nvk_tri
               run_stage "Build upstream nvk_vi_swapchain smoke NRO" make CONTAINER= nro APP=nvk_vi_swapchain
+              run_stage "Build PES-owned Vulkan loader + VI swapchain smoke NRO" bash /project/switch/smoke/build-pes-loader-smoke.sh
 
               run_stage "Verify both smoke NRO output files" \
-                bash -lc "test -s /work/switch/smoke/out/nvk_tri.nro && test -s /work/switch/smoke/out/nvk_vi_swapchain.nro"
-              ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro
+                bash -lc "test -s /work/switch/smoke/out/nvk_tri.nro && test -s /work/switch/smoke/out/nvk_vi_swapchain.nro && test -s /project/artifacts/nxvk/pes_loader_smoke.nro"
+              ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/pes_loader_smoke.nro
               cp switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/
               echo "completed=true" > /project/artifacts/nxvk/container-exit.txt
             '
@@ -140,7 +143,8 @@ jobs:
             echo ""
             echo "- NXVK build/container step: **${BUILD_OUTCOME:-NOT RUN}**"
             echo "- PES 2017 runtime link: **NOT RUN** — game-specific PPC output and verified XEX hash are not inputs to this feasibility job."
-            echo "- Playable PES 2017 NRO: **NOT RUN** — outputs here are upstream NXVK smoke applications, not the game."
+            echo "- PES-owned loader/VI WSI smoke NRO: **built by this job** if the custom link step passes; not the full presenter or playable game."
+            echo "- Playable PES 2017 NRO: **NOT RUN** — game-specific PPC output and runtime assets are not linked."
             echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Hasil proses pengujian: ${BUILD_OUTCOME:-NOT RUN}"
@@ -162,6 +166,7 @@ jobs:
           path: |
             artifacts/nxvk/nvk_tri.nro
             artifacts/nxvk/nvk_vi_swapchain.nro
+            artifacts/nxvk/pes_loader_smoke.nro
             artifacts/nxvk/libnvk.a
             artifacts/nxvk/libnvk_support.a
             artifacts/nxvk/nxvk.pc
