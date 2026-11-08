@@ -133,6 +133,10 @@ int main()
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
         VkResult pr=vkQueuePresentKHR(queue,&pi);
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
+        // Serialize this diagnostic loop so the single binary semaphore is not
+        // re-signalled until the present wait has definitely consumed it.
+        VkResult idle = vkDeviceWaitIdle(device);
+        if (idle != VK_SUCCESS) { Log("FAIL device idle frame=%u result=%d",frame,int(idle)); result=9; break; }
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
     }
     if (!result) Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
