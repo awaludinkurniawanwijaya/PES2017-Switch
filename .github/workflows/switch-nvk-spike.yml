@@ -7,6 +7,10 @@ on:
       - work/switch-libnx-platform
     paths:
       - ".github/workflows/switch-nvk-spike.yml"
+      - "runtime/gpu/vulkan/loader.cpp"
+      - "runtime/gpu/vulkan/loader.h"
+      - "runtime/gpu/vulkan/vulkan_functions.inc"
+      - "runtime/gpu/vulkan/presenter.cpp"
 
 permissions:
   contents: read
