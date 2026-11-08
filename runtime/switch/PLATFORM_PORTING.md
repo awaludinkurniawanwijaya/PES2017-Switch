@@ -86,7 +86,7 @@ The project's Vulkan presenter now has a Switch VI path:
 ### Remaining integration gates
 
 - Complete the pinned NXVK archive build and the loader/presenter compile gate; the toolchain image has built, and the NVK archive/smoke-NRO step is still running.
-- The libnx bootstrap workflow syntax-checks the Switch crash/hang-monitor path and stutter watcher, then links a diagnostic probe that exercises the platform joinable-thread API together with `std::mutex`, `std::condition_variable`, and `std::shared_mutex`. The bootstrap NRO build succeeds; actual scheduling/synchronization behavior still needs a console run.
+- The libnx bootstrap workflow syntax-checks the Switch crash/hang-monitor path and stutter watcher, then links a diagnostic probe that exercises the platform joinable-thread API together with `std::mutex`, `std::condition_variable`, `std::shared_mutex`, and `std::call_once`. The bootstrap NRO build succeeds; actual scheduling/synchronization behavior still needs a console run.
 - Verify the exported ICD ABI and device dispatch at runtime; syntax compilation alone does not prove that all calls work.
 - Run the NXVK triangle and VI swapchain diagnostic NROs on physical Switch hardware and inspect their SD-card logs.
 - Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, platform/audio/input sources, and static NXVK archives. The bootstrap NRO does not include this runtime.
