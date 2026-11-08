@@ -68,3 +68,19 @@ The CMake runtime requires generated files in `ppc/` and a verified `default.xex
 A successful bootstrap NRO is only a toolchain milestone. The next meaningful gates are: (a) full runtime translation units compile for devkitA64, (b) the full runtime links with a real Switch backend and audio sink, (c) the app loads verified user-supplied game data, (d) the title reaches its first rendered menu, and (e) controller/audio/gameplay pass on hardware.
 
 Do not describe the project as playable until those hardware gates pass.
+
+## NVK / Vulkan feasibility spike (2026-11-08)
+
+The pinned NXVK revision `c3abea1efde44027b7e3e20b48eb55beeecd5ab4` is being built in GitHub Actions into diagnostic NROs: an offscreen NAK triangle and a VI swapchain clear/present test. A successful CI build proves compilation and linking only; neither NRO is evidence of GPU execution on physical hardware.
+
+The runtime Vulkan loader has a Switch-specific static-ICD entry path. On Horizon it resolves `vk_icdGetInstanceProcAddr` from the linked NXVK archive rather than attempting `dlopen("libvulkan.so")`. The pinned-NXVK workflow also syntax-checks this loader translation unit against the exact Vulkan headers used by the driver.
+
+### Remaining integration gates
+
+- Complete the loader ABI check and ensure required instance/device functions are returned by the pinned ICD; successful linking is not proof of runtime dispatch.
+- Implement a Switch VI presentation path in `runtime/gpu/vulkan/presenter.cpp`. The current presenter compiles headless unless SDL or Android presentation is selected; the separate NXVK VI smoke test does not connect the project's frame queue to the Switch window.
+- Check device-extension and feature requirements in `pipeline.cpp` against NXVK capabilities; add explicit capability gates rather than assuming desktop Vulkan support.
+- Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, and static NXVK archives. The bootstrap NRO does not include this runtime.
+- Validate shader translation, memory heaps, image formats, synchronization, swapchain recreation, and sustained frame pacing on a physical Switch.
+
+The CI workflow is a feasibility probe and is deliberately separate from the bootstrap workflow. NXVK is experimental and non-conformant; this port must not be described as playable until the full runtime reaches a game menu and passes hardware tests.
