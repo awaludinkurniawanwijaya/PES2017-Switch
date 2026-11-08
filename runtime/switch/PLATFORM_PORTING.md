@@ -20,11 +20,11 @@ The latest recorded NRO workflow for this branch completed successfully. This va
 
 ## Runtime blockers confirmed by source inspection
 
-### 1. Thread lifecycle is not ready for the full runtime
+### 1. Thread lifecycle: GPU workers now use managed handles
 
-The current platform API exposes only detached `StartThread`. That is enough for the guest-thread launcher and audio worker, but it is not a replacement for every `std::thread` use.
+The platform contract now has `StartJoinableThread` and `JoinThread`, implemented for Win32, POSIX and libnx. The GPU ring consumer and vblank worker use these handles and are joined before the renderer shuts down. Startup failure is handled by stopping and joining the worker that did start before the backend is shut down.
 
-In particular, `runtime/gpu/gpu.cpp` owns two joinable threads (ring consumer and vblank worker) and joins both in `gpu::Shutdown()`. Replacing those with detached threads would make shutdown unsafe. The platform contract needs a managed/joinable thread abstraction, or the GPU subsystem needs a carefully designed Switch-specific lifecycle. The current Switch adapter also retains libnx thread controls for process lifetime; that is a temporary safety measure, not an acceptable final reaper strategy.
+The original detached `StartThread` remains for guest threads and other existing call sites. On Switch, those detached controls are still retained for process lifetime because that legacy API has no completion/reap callback. Converting all detached guest threads to managed ownership remains necessary before calling thread lifecycle complete. The new GPU path has not yet been linked into a full Switch runtime.
 
 ### 2. GPU backend is still Vulkan-only
 
