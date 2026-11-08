@@ -39,9 +39,11 @@ The top-level CMake configuration currently rejects every backend except `vulkan
 
 A stub backend that merely returns success would conceal the missing renderer and is not an acceptable milestone.
 
-### 3. Audio has no Switch output device
+### 3. Switch audio output now has an audout sink; hardware validation remains
 
-`runtime/apu/audio.cpp` currently sends output to Android AAudio or SDL. Other builds discard mixed frames. Switch needs an Audren-backed sink, including correct 5.1-to-device channel mapping, buffering/queue limits, sample format conversion and lifecycle handling. The guest mixer cadence must continue even when output is disabled or unavailable.
+Added `runtime/switch/audio.cpp/.h` using libnx `audout`, and routed the Switch branch of `runtime/apu/audio.cpp` through it. The sink requests 48 kHz stereo signed 16-bit PCM, converts the guest's planar big-endian 5.1 float frame to interleaved stereo (front + centre + surround; LFE omitted), and uses an eight-buffer 0x1000-aligned pool. Queue inspection uses `audoutContainsAudioOutBuffer` for compatibility rather than relying on the newer queue-count API.
+
+This is an initial audout output path, not an Audren renderer graph. It has a compile gate in the NRO workflow, but has not been tested on Switch hardware. Buffer starvation, actual channel order/mix levels, device selection, suspend/resume and orderly audio service shutdown still need hardware validation and lifecycle integration.
 
 ### 4. The runtime entry point is desktop-shaped
 
