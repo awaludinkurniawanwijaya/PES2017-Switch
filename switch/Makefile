@@ -11,7 +11,7 @@ TARGET := pes2017-switch-bootstrap
 BUILD := build
 SOURCES := source
 DATA :=
-INCLUDES := include
+INCLUDES := include ../runtime
 
 APP_TITLE := PES 2017 Switch Bootstrap
 APP_AUTHOR := PES2017-Switch contributors
