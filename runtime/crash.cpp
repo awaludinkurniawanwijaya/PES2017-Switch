@@ -16,6 +16,8 @@
 
 #if defined(__SWITCH__)
 #include <atomic>
+#include <cstdint>
+#include <cstdlib>
 #include <chrono>
 #include <string>
 #include <thread>
