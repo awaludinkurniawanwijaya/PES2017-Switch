@@ -29,10 +29,11 @@ Before XenonAnalyse and XenonRecomp run, `tools/verify_xex.py` checks:
 
 The build copies the selected `GAME/default.xex` into the private
 `pes/default.xex` input when it differs, then regenerates the flat PE image
-when the XEX changes. CMake independently repeats the metadata check whenever
-`pes/default.xex` is present. It derives the install-time SHA-256 from those
-same bytes, so the installed executable must match the one used for
-recompilation.
+when the XEX changes. The build writes `ppc/XEX_TARGET` with the title ID, version, and SHA-256
+used to generate that PPC output. CMake requires that manifest and compares it
+to the current `pes/default.xex` before linking; it also repeats the XEX
+metadata check. The install-time SHA-256 is derived from those same bytes, so
+the installed executable must match the one used for recompilation.
 
 To intentionally validate another execution-info version for development,
 override `XEX_VERSION` in the shell and
