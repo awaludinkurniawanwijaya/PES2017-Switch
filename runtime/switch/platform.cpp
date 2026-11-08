@@ -9,6 +9,9 @@
 #include <cstring>
 #include <new>
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
 // process services. Keep those operations explicit rather than importing the
 // desktop implementation's Linux headers into the Switch target.
@@ -48,6 +51,24 @@ namespace
 void platform::Initialise()
 {
     g_mainThreadId = CurrentThreadId();
+
+    // The runtime's player install layout lives on SD. Mount it before
+    // settings, install discovery, or any game files are opened.
+    const Result mounted = fsdevMountSdmc();
+    if (R_FAILED(mounted))
+    {
+        constexpr char message[] = "[PES17] failed to mount SD card filesystem\\n";
+        svcOutputDebugString(message, sizeof(message) - 1);
+        return;
+    }
+    mkdir("sdmc:/switch", 0777);
+    mkdir("sdmc:/switch/PES2017", 0777);
+    if (chdir("sdmc:/switch/PES2017") != 0)
+    {
+        constexpr char message[] = "[PES17] failed to enter sdmc:/switch/PES2017\\n";
+        svcOutputDebugString(message, sizeof(message) - 1);
+    }
+
     switch_input::Initialize();
 }
 
