@@ -52,6 +52,12 @@ static void WaitForExit()
 
 int main()
 {
+    // NVK deliberately requires this opt-in before instance creation and
+    // physical-device enumeration. Setting it later (before vkCreateDevice)
+    // is too late: NVK can report zero physical devices.
+    setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1);
+    setenv("MESA_SHADER_CACHE_SHOW_STATS", "1", 1);
+
     consoleInit(nullptr);
     printf("PES NXVK loader diagnostic\\n");
     printf("stage 1: entered main()\\n");
@@ -112,7 +118,8 @@ int main()
 
     uint32_t physicalCount = 0;
     CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr));
-    if (!physicalCount) { Log("FAIL no physical devices"); result = 4; break; }
+    Log("physical device count=%u", physicalCount);
+    if (!physicalCount) { Log("FAIL no physical devices (check NVK opt-in and Mesa diagnostics)"); result = 4; break; }
     std::vector<VkPhysicalDevice> physicals(physicalCount);
     CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, physicals.data()));
     VkPhysicalDevice physical = physicals[0];
@@ -140,7 +147,6 @@ int main()
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci;
     dci.enabledExtensionCount = 1; dci.ppEnabledExtensionNames = deviceExts;
-    setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1);
     Log("stage 7: vkCreateDevice");
     CHECK_VK(vkCreateDevice(physical, &dci, nullptr, &device));
     vk::loader::LoadDevice(device);
