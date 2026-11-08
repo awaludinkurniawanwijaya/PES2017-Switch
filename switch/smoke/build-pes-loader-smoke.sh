@@ -25,10 +25,10 @@ $GCC $COMMON -D__SWITCH__ -D_GNU_SOURCE -D_DEFAULT_SOURCE -I"$DKP/libnx/include"
   -c "$NXVK/switch/smoke/nvk_compat.c" -o "$OBJ/nvk_compat.o"
 
 echo "==> Link static NXVK driver and PES loader"
+# NRO startup applies these AArch64 read-only-section relocations before execution.
 $GXX -specs="$DKP/libnx/switch.specs" -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft \
   -L"$DKP/portlibs/switch/lib" -L"$DKP/libnx/lib" \
   -o "$OBJ/pes_loader_smoke.elf" -Wl,--gc-sections -Wl,-u,vk_icdGetInstanceProcAddr \
-  # NXVK static objects contain AArch64 read-only-section relocations; NRO startup applies relocations before execution. \\
   -Wl,-z,notext \\
   "$OBJ/pes_loader_smoke.o" "$OBJ/loader.o" "$OBJ/nvk_compat.o" \
   "$DKP/portlibs/switch/lib/libnvk.a" \
