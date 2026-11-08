@@ -100,12 +100,15 @@ static void ResolveDiagnosticLogPaths(int argc, char** argv)
                     char* slash = std::strrchr(path, '/');
                     if (slash) {
                         *slash = '\0';
-                        if (path[0] && std::snprintf(g_log_path, sizeof(g_log_path),
-                                "%s/pes_nxvk_loader_smoke.log", path) > 0 &&
-                            std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
-                                "%s/nvk_internal.log", path) > 0 &&
-                            std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
-                                "%s/nvk_mesa.log", path) > 0) {
+                        const int logLen = std::snprintf(g_log_path, sizeof(g_log_path),
+                            "%s/pes_nxvk_loader_smoke.log", path);
+                        const int internalLen = std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
+                            "%s/nvk_internal.log", path);
+                        const int mesaLen = std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
+                            "%s/nvk_mesa.log", path);
+                        if (path[0] && logLen > 0 && logLen < (int)sizeof(g_log_path) &&
+                            internalLen > 0 && internalLen < (int)sizeof(g_internal_log_path) &&
+                            mesaLen > 0 && mesaLen < (int)sizeof(g_mesa_log_path)) {
                             std::snprintf(g_nro_path, sizeof(g_nro_path), "%s", candidate);
                             g_log_path_from_nro = true;
                         }
