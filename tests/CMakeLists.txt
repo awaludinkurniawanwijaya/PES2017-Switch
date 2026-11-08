@@ -121,6 +121,7 @@ if(WIN32)
     target_link_options(bc-test PRIVATE -static)
     target_link_options(volume-test PRIVATE -static)
     target_link_options(version-test PRIVATE -static)
+    target_link_options(settings-test PRIVATE -static)
 endif()
 
 # ---- the dynamic scene scale -------------------------------------------------
@@ -148,3 +149,13 @@ add_executable(switch-input-mapping-test
 target_include_directories(switch-input-mapping-test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/..")
 add_test(NAME switch-input-mapping COMMAND switch-input-mapping-test)
+
+# ---- runtime .env settings --------------------------------------------------
+# The Switch HID adapter reads these process settings after pes17::Run loads
+# the install folder's .env. Verify the actual parser, including independent
+# options and precedence for settings already supplied by the process.
+add_executable(settings-test
+    "${CMAKE_CURRENT_SOURCE_DIR}/settings_test.cpp"
+    "${PES17_RUNTIME}/settings.cpp")
+target_include_directories(settings-test PRIVATE "${PES17_RUNTIME}")
+add_test(NAME settings COMMAND settings-test)
