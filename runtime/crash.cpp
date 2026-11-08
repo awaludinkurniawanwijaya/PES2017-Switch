@@ -2,19 +2,14 @@
 // are ordinary global symbols named sub_XXXXXXXX, so a host backtrace doubles
 // as the guest call stack.
 #include "crash.h"
-#include "profiler.h"
-#include "kernel/kernel.h"
-#include "guest_memory.h"
-#include "watchpoint.h"
-#include "gpu/memory_watch.h"
 #include "log.h"
-#include "diagnostics.h"
 #include "platform.h"
 #include "gpu/internal.h"
 #include "gpu/gpu.h"
 #include "gpu/debug_watch.h"
 
 #if defined(__SWITCH__)
+namespace kernel { void ReportWaits(); }
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -129,6 +124,12 @@ extern "C" void PES17ReportBadIndirectCall(unsigned int guestAddress, const void
 }
 
 #else
+#include "profiler.h"
+#include "kernel/kernel.h"
+#include "guest_memory.h"
+#include "watchpoint.h"
+#include "gpu/memory_watch.h"
+#include "diagnostics.h"
 #include <ppc_config.h>
 #include <ppc_recomp_shared.h>
 #include <csignal>
