@@ -58,7 +58,7 @@ jobs:
             -w /work \
             pes17-nxvk \
             bash -lc '
-              set -euo pipefail
+              set -euxo pipefail
               make CONTAINER= driver
               # Stage the same static portlib package the final runtime will link:
               # libnvk.a, the support archive, and pkg-config metadata.
