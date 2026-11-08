@@ -50,3 +50,47 @@ the complete game runtime links or boots. Acceptance still requires:
   and sustained thermal/performance tests.
 
 Keep the development pull request in draft until those gates pass.
+
+## Android/Termux PPC generation
+
+For an Android-only development setup, Termux can be used for the host-side
+XenonRecomp stage. This does **not** build the Switch NRO: the final cross-build
+still needs devkitPro/devkitA64, libnx, and the pinned NXVK portlib.
+
+Install the host tools in Termux:
+
+```bash
+pkg update
+pkg install -y git cmake ninja clang make python
+termux-setup-storage
+```
+
+Place the legally obtained, extracted game directory somewhere in shared
+storage. It must contain the matching Xbox 360 Europe `default.xex`. Then run
+from the repository root (adjust the path to the actual folder):
+
+```bash
+cd ~/PES2017-Switch
+CMAKE_CC=clang CMAKE_CXX=clang++ \
+GAME="$HOME/storage/shared/GAME" \
+PROFILE=balanced RECOMPILE_ONLY=1 JOBS=2 \
+bash ./build.sh
+```
+
+The first stage compiles XenonRecomp and generates `ppc/` plus kernel stubs.
+Keep the generated directory private and local; it contains title-specific
+recompiled game code. Do not commit or upload `default.xex`, `ppc/`, CPK
+archives, or ISO images to the public repository. Preserve the generated
+`ppc/` directory and the exact matching XEX used to generate it.
+
+Termux package versions, available RAM, and Android process limits vary. If
+the build is killed for memory pressure, retry with `JOBS=1`; keep adequate
+free storage. If the native XenonRecomp dependencies fail to compile under
+Android/Termux, use a Linux ARM64 host or GitHub-hosted runner with private,
+authorized handling of the game inputs. Never put proprietary game files in
+public workflow artifacts.
+
+After PPC generation, the final Switch build requires a separate environment
+with the devkitPro/NXVK toolchain. Copy the private `ppc/` output and the
+matching `pes/default.xex` to that environment, then run
+`bash build-switch.sh`. The script validates these inputs before compiling.
