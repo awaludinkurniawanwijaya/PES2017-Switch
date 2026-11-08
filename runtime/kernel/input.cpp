@@ -381,7 +381,7 @@ PPC_FUNC(__imp__XamInputGetState)
         ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
         return;
     }
-    const switch_input::State pad = switch_input::Poll();
+    switch_input::State pad = switch_input::Poll();
     if (!pad.connected)
     {
         *out = XInputState{};
