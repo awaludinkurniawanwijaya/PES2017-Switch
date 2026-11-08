@@ -1,8 +1,11 @@
 #include "memory_alias_probe.h"
 
+extern "C"
+{
 #include <switch/result.h>
 #include <switch/kernel/svc.h>
 #include <switch/kernel/shmem.h>
+}
 
 #include <cstdint>
 
