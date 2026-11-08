@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <cstdarg>
+#include <cstdlib>
 #include <vector>
 
 extern "C" {
@@ -20,7 +22,7 @@ static void Log(const char* fmt, ...)
     va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
     fputc('\n', g_log); fflush(g_log);
 }
-#define CHECK_VK(expr) do { VkResult r_ = (expr); if (r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; goto cleanup; } } while (0)
+#define CHECK_VK(expr) do { VkResult r_ = (expr); if (r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; } } while (0)
 
 int main()
 {
@@ -39,7 +41,7 @@ int main()
     VkSemaphore acquired = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
-
+    do {
     const char* instanceExts[] = { VK_KHR_SURFACE_EXTENSION_NAME, "VK_NN_vi_surface" };
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "PES 2017 loader smoke";
@@ -133,9 +135,9 @@ int main()
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; goto cleanup; }
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
     }
-    Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
+    if (!result) Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
+    } while (false);
 
-cleanup:
     if (device) {
         vkDeviceWaitIdle(device);
         if (acquired) vkDestroySemaphore(device,acquired,nullptr);
