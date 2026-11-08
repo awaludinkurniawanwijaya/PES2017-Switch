@@ -4,6 +4,7 @@ ROOT=/project
 NXVK=/work
 DKP=/opt/devkitpro
 GXX=$DKP/devkitA64/bin/aarch64-none-elf-g++
+GCC=$DKP/devkitA64/bin/aarch64-none-elf-gcc
 STRIP=$DKP/devkitA64/bin/aarch64-none-elf-strip
 OUT=$ROOT/artifacts/nxvk
 OBJ=$OUT/pes-loader-smoke-obj
@@ -19,11 +20,15 @@ $GXX $COMMON $DEFS $INCLUDES -c "$ROOT/runtime/gpu/vulkan/loader.cpp" -o "$OBJ/l
 echo "==> Compile PES-owned loader/VI swapchain smoke app"
 $GXX $COMMON $DEFS $INCLUDES -c "$ROOT/switch/smoke/pes_loader_smoke.cpp" -o "$OBJ/pes_loader_smoke.o"
 
+echo "==> Compile NXVK newlib compatibility shims"
+$GCC $COMMON -D__SWITCH__ -D_GNU_SOURCE -D_DEFAULT_SOURCE -I"$DKP/libnx/include" \
+  -c "$NXVK/switch/smoke/nvk_compat.c" -o "$OBJ/nvk_compat.o"
+
 echo "==> Link static NXVK driver and PES loader"
 $GXX -specs="$DKP/libnx/switch.specs" -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft \
   -L"$DKP/portlibs/switch/lib" -L"$DKP/libnx/lib" \
   -o "$OBJ/pes_loader_smoke.elf" -Wl,--gc-sections -Wl,-u,vk_icdGetInstanceProcAddr \
-  "$OBJ/pes_loader_smoke.o" "$OBJ/loader.o" \
+  "$OBJ/pes_loader_smoke.o" "$OBJ/loader.o" "$OBJ/nvk_compat.o" \
   -Wl,--whole-archive "$DKP/portlibs/switch/lib/libnvk.a" -Wl,--no-whole-archive \
   -Wl,--start-group "$DKP/portlibs/switch/lib/libnvk_support.a" \
   -lz -lexpat -lnx -lc -lm -lstdc++ -pthread -Wl,--end-group
