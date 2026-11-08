@@ -86,7 +86,7 @@ The project's Vulkan presenter now has a Switch VI path:
 ### Remaining integration gates
 
 - Complete the pinned NXVK archive build and the loader/presenter compile gate; the toolchain image has built, and the NVK archive/smoke-NRO step is still running.
-- The libnx bootstrap workflow now syntax-checks the Switch crash/hang-monitor path and successfully builds the diagnostic bootstrap NRO; this does not link the full PES runtime.
+- The libnx bootstrap workflow now syntax-checks both the Switch crash/hang-monitor path and the stutter watcher, and successfully builds the diagnostic bootstrap NRO; this does not link the full PES runtime.
 - Verify the exported ICD ABI and device dispatch at runtime; syntax compilation alone does not prove that all calls work.
 - Run the NXVK triangle and VI swapchain diagnostic NROs on physical Switch hardware and inspect their SD-card logs.
 - Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, platform/audio/input sources, and static NXVK archives. The bootstrap NRO does not include this runtime.
