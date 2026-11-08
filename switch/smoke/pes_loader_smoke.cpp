@@ -121,11 +121,14 @@ static void ResolveDiagnosticLogPaths(int argc, char** argv)
     if (!g_log_path_from_nro) {
         std::snprintf(g_log_path, sizeof(g_log_path),
                       "sdmc:/switch/pes_nxvk_loader_smoke.log");
-        std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
-                      "sdmc:/switch/nvk_internal.log");
-        std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
-                      "sdmc:/switch/nvk_mesa.log");
     }
+
+    // Only the PES test-run log follows the launched NRO.
+    // Preserve the established locations of internal NVK/Mesa diagnostics.
+    std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
+                  "sdmc:/switch/nvk_internal.log");
+    std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
+                  "sdmc:/switch/nvk_mesa.log");
 }
 
 #define CHECK_VK(expr) if (VkResult r_ = (expr); r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; }
