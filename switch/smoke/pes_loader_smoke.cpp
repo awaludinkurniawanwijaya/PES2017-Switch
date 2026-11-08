@@ -1,5 +1,6 @@
-// PES-owned Vulkan loader + VI swapchain smoke test.
-// Exercises runtime/gpu/vulkan/loader.cpp rather than calling the ICD entry point directly.
+// Diagnostic version of the PES-owned NXVK loader + VI swapchain smoke test.
+// It leaves stage markers on the Switch screen and SD root so early startup
+// failures can be distinguished from Vulkan-loader failures.
 #define VK_USE_PLATFORM_VI_NN 1
 #include "gpu/vulkan/loader.h"
 #include <switch.h>
@@ -18,20 +19,68 @@ u32 __nx_heap_size = 0;
 static FILE* g_log = nullptr;
 static void Log(const char* fmt, ...)
 {
-    if (!g_log) return;
-    va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
-    fputc('\n', g_log); fflush(g_log);
+    va_list ap;
+    va_start(ap, fmt);
+    if (g_log) {
+        vfprintf(g_log, fmt, ap);
+        fputc('\\n', g_log);
+        fflush(g_log);
+    }
+    va_list screen;
+    va_copy(screen, ap);
+    vprintf(fmt, screen);
+    printf("\\n");
+    va_end(screen);
+    va_end(ap);
+    consoleUpdate(nullptr);
 }
+
+static void WaitForExit()
+{
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    printf("\\nTekan + untuk keluar.\\n");
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        if (padGetButtonsDown(&pad) & HidNpadButton_Plus) break;
+        consoleUpdate(nullptr);
+    }
+}
+
 #define CHECK_VK(expr) if (VkResult r_ = (expr); r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; }
 
 int main()
 {
-    fsdevMountSdmc();
+    consoleInit(nullptr);
+    printf("PES NXVK loader diagnostic\\n");
+    printf("stage 1: entered main()\\n");
+    consoleUpdate(nullptr);
+
+    const Result mountResult = fsdevMountSdmc();
+    printf("stage 2: fsdevMountSdmc = 0x%08X\\n", unsigned(mountResult));
+    consoleUpdate(nullptr);
+
     g_log = fopen("sdmc:/pes_nxvk_loader_smoke.log", "w");
-    if (!g_log) return 2;
+    if (!g_log) {
+        printf("stage 3: fopen FAILED (errno=%d)\\n", errno);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 2;
+    }
     Log("=== PES-owned NXVK loader smoke ===");
+    Log("sd mount result=0x%08X", unsigned(mountResult));
+    Log("stage 3: log file opened");
+
     std::string error;
-    if (!vk::loader::Open(error)) { Log("loader Open failed: %s", error.c_str()); return 3; }
+    Log("stage 4: calling vk::loader::Open");
+    if (!vk::loader::Open(error)) {
+        Log("loader Open failed: %s", error.c_str());
+        fclose(g_log); g_log = nullptr;
+        WaitForExit();
+        consoleExit(nullptr);
+        return 3;
+    }
     Log("loader=%s missing=%u", vk::loader::Description(), vk::loader::Missing());
 
     VkInstance instance = VK_NULL_HANDLE;
@@ -50,12 +99,14 @@ int main()
     ici.pApplicationInfo = &app;
     ici.enabledExtensionCount = 2;
     ici.ppEnabledExtensionNames = instanceExts;
+    Log("stage 5: vkCreateInstance");
     CHECK_VK(vkCreateInstance(&ici, nullptr, &instance));
     vk::loader::LoadInstance(instance);
     Log("vkCreateInstance OK");
 
     VkViSurfaceCreateInfoNN sci{VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN};
     sci.window = nwindowGetDefault();
+    Log("stage 6: vkCreateViSurfaceNN");
     CHECK_VK(vkCreateViSurfaceNN(instance, &sci, nullptr, &surface));
     Log("vkCreateViSurfaceNN OK");
 
@@ -90,6 +141,7 @@ int main()
     dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci;
     dci.enabledExtensionCount = 1; dci.ppEnabledExtensionNames = deviceExts;
     setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1);
+    Log("stage 7: vkCreateDevice");
     CHECK_VK(vkCreateDevice(physical, &dci, nullptr, &device));
     vk::loader::LoadDevice(device);
     vkGetDeviceQueue(device, qFamily, 0, &queue);
@@ -118,6 +170,7 @@ int main()
     swci.imageUsage=(caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swci.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE; swci.preTransform=caps.currentTransform;
     swci.compositeAlpha=alpha; swci.presentMode=VK_PRESENT_MODE_FIFO_KHR; swci.clipped=VK_TRUE;
+    Log("stage 8: vkCreateSwapchainKHR");
     CHECK_VK(vkCreateSwapchainKHR(device,&swci,nullptr,&swapchain));
     uint32_t actualImages=0;
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,nullptr));
@@ -133,8 +186,6 @@ int main()
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
         VkResult pr=vkQueuePresentKHR(queue,&pi);
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
-        // Serialize this diagnostic loop so the single binary semaphore is not
-        // re-signalled until the present wait has definitely consumed it.
         VkResult idle = vkDeviceWaitIdle(device);
         if (idle != VK_SUCCESS) { Log("FAIL device idle frame=%u result=%d",frame,int(idle)); result=9; break; }
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
@@ -152,6 +203,8 @@ int main()
     if (surface && instance) vkDestroySurfaceKHR(instance,surface,nullptr);
     if (instance) vkDestroyInstance(instance,nullptr);
     Log("exit=%d",result);
-    fclose(g_log); g_log=nullptr;
+    if (g_log) { fclose(g_log); g_log=nullptr; }
+    WaitForExit();
+    consoleExit(nullptr);
     return result;
 }
