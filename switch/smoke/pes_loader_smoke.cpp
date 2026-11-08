@@ -124,23 +124,50 @@ int main()
     CHECK_VK(vkCreateViSurfaceNN(instance, &sci, nullptr, &surface));
     Log("vkCreateViSurfaceNN OK");
 
+    // Keep each first physical-device call bracketed by a flushed SD log
+    // marker. If the driver faults inside enumeration, the last marker tells
+    // us exactly which dispatch call was entered.
+    Log("stage 7a: checking instance dispatch pointers");
+    if (!vkEnumeratePhysicalDevices || !vkGetPhysicalDeviceProperties ||
+        !vkGetPhysicalDeviceQueueFamilyProperties || !vkGetPhysicalDeviceSurfaceSupportKHR) {
+        Log("FAIL missing physical-device dispatch: enumerate=%p properties=%p queues=%p surface_support=%p",
+            reinterpret_cast<void*>(vkEnumeratePhysicalDevices),
+            reinterpret_cast<void*>(vkGetPhysicalDeviceProperties),
+            reinterpret_cast<void*>(vkGetPhysicalDeviceQueueFamilyProperties),
+            reinterpret_cast<void*>(vkGetPhysicalDeviceSurfaceSupportKHR));
+        result = 10;
+        break;
+    }
+
     uint32_t physicalCount = 0;
-    CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr));
-    Log("physical device count=%u", physicalCount);
+    Log("stage 7b: entering vkEnumeratePhysicalDevices(count)");
+    VkResult enumResult = vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr);
+    Log("stage 7c: vkEnumeratePhysicalDevices(count) returned %d count=%u",
+        int(enumResult), physicalCount);
+    CHECK_VK(enumResult);
     if (!physicalCount) { Log("FAIL no physical devices (check NVK opt-in and Mesa diagnostics)"); result = 4; break; }
     std::vector<VkPhysicalDevice> physicals(physicalCount);
-    CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, physicals.data()));
+    Log("stage 7d: entering vkEnumeratePhysicalDevices(list)");
+    enumResult = vkEnumeratePhysicalDevices(instance, &physicalCount, physicals.data());
+    Log("stage 7e: vkEnumeratePhysicalDevices(list) returned %d count=%u",
+        int(enumResult), physicalCount);
+    CHECK_VK(enumResult);
     VkPhysicalDevice physical = physicals[0];
     VkPhysicalDeviceProperties props{};
+    Log("stage 7f: entering vkGetPhysicalDeviceProperties");
     vkGetPhysicalDeviceProperties(physical, &props);
-    Log("device=%s api=%u.%u.%u", props.deviceName,
+    Log("stage 7g: device=%s api=%u.%u.%u", props.deviceName,
         VK_VERSION_MAJOR(props.apiVersion), VK_VERSION_MINOR(props.apiVersion),
         VK_VERSION_PATCH(props.apiVersion));
 
     uint32_t qCount = 0;
+    Log("stage 7h: entering vkGetPhysicalDeviceQueueFamilyProperties(count)");
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &qCount, nullptr);
+    Log("stage 7i: queue family count=%u", qCount);
     std::vector<VkQueueFamilyProperties> qprops(qCount);
+    Log("stage 7j: entering vkGetPhysicalDeviceQueueFamilyProperties(list)");
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &qCount, qprops.data());
+    Log("stage 7k: queue family properties returned");
     uint32_t qFamily = UINT32_MAX;
     for (uint32_t i=0; i<qCount; ++i) {
         VkBool32 present = VK_FALSE;
