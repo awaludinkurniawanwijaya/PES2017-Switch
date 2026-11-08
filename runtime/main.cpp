@@ -219,7 +219,14 @@ int pes17::Run(int argc, char** argv)
     // Its folder is made first: a run started with a new folder named lost its
     // whole log to the terminal.
 #ifndef PES17_ANDROID
-    if (const char* logPath = env::Text("PES17_LOG_FILE"))
+    const char* logPath = env::Text("PES17_LOG_FILE");
+#ifdef __SWITCH__
+    // Homebrew Menu does not provide a terminal for stderr. Keep a persistent
+    // runtime log on SD by default so startup, loader and GPU failures can be
+    // diagnosed without requiring nxlink; .env may still override this path.
+    if (!logPath) logPath = "sdmc:/switch/PES2017/pes2017-switch.log";
+#endif
+    if (logPath)
     {
         std::error_code ignored;
         if (const auto folder = std::filesystem::path(logPath).parent_path(); !folder.empty())
