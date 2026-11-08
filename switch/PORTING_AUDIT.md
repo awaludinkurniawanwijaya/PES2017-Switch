@@ -37,11 +37,13 @@ This is not an Audren renderer graph and is not hardware-validated. Actual outpu
 
 ### 5. Graphics (largest runtime blocker)
 
-The current renderer is under `runtime/gpu/vulkan/` and expects Vulkan entry points, instance/device creation, swapchain/surface integration, and Vulkan shader/pipeline behavior. The libnx bootstrap does not provide a Vulkan surface or a compatible Vulkan loader. Switch homebrew commonly uses deko3d; that is a different API, not a drop-in Vulkan library.
+The current renderer is under `runtime/gpu/vulkan/` and already translates runtime Xenos microcode to SPIR-V. The libnx bootstrap does not provide a Vulkan surface or Vulkan implementation, so the renderer is not linked or usable yet.
 
-The existing `gpu::backend` interface is already a useful seam, but the shader path is a deeper blocker than the API calls: `shader_translator.cpp` translates runtime Xenos microcode to SPIR-V, while deko3d accepts DKSH containing native Maxwell SM53 code. UAM is a host-side GLSL-to-DKSH compiler; it does not consume SPIR-V and is not a runtime compiler. Consequently, a deko3d port first needs a viable Xenos-to-SM53 compiler strategy, then device/memory, EDRAM/texture, pipeline, resolve, synchronization and presentation work.
+A promising alternative to a deko3d rewrite has been identified: [NXVK](https://github.com/PalindromicBreadLoaf/nxvk) ports Mesa NVK to Switch GM20B and includes the NAK Maxwell shader compiler. If its Vulkan implementation can be linked and presented through its libnx WSI, the existing Xenos-to-SPIR-V translator may remain intact. This is now the preferred feasibility spike, not a verified integration. It must first pass a reproducible GitHub Actions build, Vulkan smoke NRO, surface/present test, memory/size measurements, and a source/license audit. This project is GPL-3.0-only; NXVK says its new files are GPL-2.0-or-later and Mesa retains upstream licenses, so check the exact combination and notices before vendoring or distributing anything.
 
-The detailed feasibility analysis and dependency order are in [`docs/gpu-deko3d-port-plan.md`](../docs/gpu-deko3d-port-plan.md). Simply defining `PES17_HAVE_VULKAN`, linking Vulkan sources, or forwarding SPIR-V to UAM will not solve this.
+The deko3d alternative remains a fallback. deko3d accepts DKSH with native Maxwell SM53 code, not SPIR-V; UAM is a host-side GLSL-to-DKSH compiler and cannot consume the current SPIR-V output. A deko3d route therefore still needs an Xenos-to-SM53 compiler or another viable runtime compiler strategy.
+
+The detailed feasibility analysis and dependency order are in [`docs/gpu-deko3d-port-plan.md`](../docs/gpu-deko3d-port-plan.md). Simply defining `PES17_HAVE_VULKAN`, linking Vulkan sources without a Switch Vulkan implementation, or forwarding SPIR-V to UAM will not solve this.
 
 ### 6. Game data and generated code
 
@@ -53,7 +55,7 @@ The guest PPC C++ files and title metadata are generated from the user's own leg
 2. **Input seam:** extract the guest-facing controller state into a platform-neutral interface; add libnx HID polling and button/axis mapping; test the XInput kernel calls.
 3. **Filesystem and startup:** define an SD-card game-data layout, mount the filesystem through libnx, load the legally supplied image/assets, and enter `pes17::Run` from a Switch applet entry point.
 4. **Audio:** add audren output and a no-audio diagnostic build mode.
-5. **Renderer:** select and implement the deko3d renderer path (or a verified Vulkan path), then validate shaders, textures, render targets, synchronization, and presentation.
+5. **Renderer:** first prove the NXVK/Mesa NVK Vulkan path (including license, loader, WSI, memory and hardware smoke tests). If it fails, evaluate the deko3d path and its Xenos-to-SM53 compiler requirement. Then validate shaders, textures, render targets, synchronization, and presentation.
 6. **End-to-end bring-up:** build with real generated PPC sources and user-supplied game data; test boot, menus, match loading, controller play, audio, suspend/resume, and memory stability on hardware.
 
 ## Acceptance criteria
