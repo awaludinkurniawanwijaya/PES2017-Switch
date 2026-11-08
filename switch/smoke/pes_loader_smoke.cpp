@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <vector>
+#include <cctype>
 
 extern "C" {
 u32 __nx_applet_type = AppletType_Application;
@@ -64,9 +65,68 @@ static void WaitForExit()
     }
 }
 
+static char g_log_path[1024];
+static char g_internal_log_path[1024];
+static char g_mesa_log_path[1024];
+static char g_nro_path[1024];
+static bool g_log_path_from_nro = false;
+
+// Homebrew loaders pass the launched NRO's absolute path as argv[0].
+// Use it only when it looks like an SD-card NRO path and the file exists;
+// never assume the current working directory is the NRO's directory.
+static void ResolveDiagnosticLogPaths(int argc, char** argv)
+{
+    const char* candidate = (argc > 0 && argv && argv[0]) ? argv[0] : nullptr;
+    char path[1024] = {};
+    if (candidate && *candidate) {
+        size_t n = std::strlen(candidate);
+        if (n >= 2 && candidate[0] == '"' && candidate[n - 1] == '"') {
+            ++candidate;
+            n -= 2;
+        }
+        if (n < sizeof(path)) {
+            std::memcpy(path, candidate, n);
+            path[n] = '\0';
+            const bool sdPath = std::strncmp(path, "sdmc:/", 6) == 0;
+            const char* ext = std::strrchr(path, '.');
+            bool nroExtension = ext && (std::tolower((unsigned char)ext[1]) == 'n') &&
+                                (std::tolower((unsigned char)ext[2]) == 'r') &&
+                                (std::tolower((unsigned char)ext[3]) == 'o') && ext[4] == '\0';
+            if (sdPath && nroExtension) {
+                FILE* nro = std::fopen(path, "rb");
+                if (nro) {
+                    std::fclose(nro);
+                    char* slash = std::strrchr(path, '/');
+                    if (slash) {
+                        *slash = '\0';
+                        if (path[0] && std::snprintf(g_log_path, sizeof(g_log_path),
+                                "%s/pes_nxvk_loader_smoke.log", path) > 0 &&
+                            std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
+                                "%s/nvk_internal.log", path) > 0 &&
+                            std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
+                                "%s/nvk_mesa.log", path) > 0) {
+                            std::snprintf(g_nro_path, sizeof(g_nro_path), "%s", candidate);
+                            g_log_path_from_nro = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!g_log_path_from_nro) {
+        std::snprintf(g_log_path, sizeof(g_log_path),
+                      "sdmc:/switch/pes_nxvk_loader_smoke.log");
+        std::snprintf(g_internal_log_path, sizeof(g_internal_log_path),
+                      "sdmc:/switch/nvk_internal.log");
+        std::snprintf(g_mesa_log_path, sizeof(g_mesa_log_path),
+                      "sdmc:/switch/nvk_mesa.log");
+    }
+}
+
 #define CHECK_VK(expr) if (VkResult r_ = (expr); r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; }
 
-int main()
+int main(int argc, char** argv)
 {
     consoleInit(nullptr);
     printf("PES NXVK loader diagnostic\n");
@@ -77,7 +137,13 @@ int main()
     printf("stage 2: fsdevMountSdmc = 0x%08X\n", unsigned(mountResult));
     consoleUpdate(nullptr);
 
-    g_log = fopen("sdmc:/switch/pes_nxvk_loader_smoke.log", "w");
+    ResolveDiagnosticLogPaths(argc, argv);
+    printf("stage 2a: NRO path %s (%s)\\n",
+           g_log_path_from_nro ? g_nro_path : "unavailable; using fallback sdmc:/switch",
+           g_log_path_from_nro ? "detected" : "fallback");
+    consoleUpdate(nullptr);
+
+    g_log = fopen(g_log_path, "w");
     if (!g_log) {
         printf("stage 3: fopen FAILED (errno=%d)\n", errno);
         WaitForExit();
@@ -85,17 +151,20 @@ int main()
         return 2;
     }
     Log("=== PES-owned NXVK loader smoke ===");
+    Log("diagnostic log directory source=%s", g_log_path_from_nro ? "argv[0] NRO path" : "fallback");
+    if (g_log_path_from_nro) Log("running NRO=%s", g_nro_path);
+    Log("diagnostic log=%s", g_log_path);
     Log("sd mount result=0x%08X", unsigned(mountResult));
     Log("stage 3: log file opened");
     // Route Mesa/NVK stderr diagnostics to a separate SD-card log.
-    if (freopen("sdmc:/switch/nvk_internal.log", "w", stderr)) {
+    if (freopen(g_internal_log_path, "w", stderr)) {
         setvbuf(stderr, nullptr, _IONBF, 0);
         Log("stage 3a: NVK internal stderr capture opened");
     } else {
         Log("WARN could not redirect stderr to nvk_internal.log errno=%d", errno);
     }
-    g_mesa_log = fopen("sdmc:/switch/nvk_mesa.log", "w");
-    if (!g_mesa_log) Log("WARN could not open sdmc:/switch/nvk_mesa.log errno=%d", errno);
+    g_mesa_log = fopen(g_mesa_log_path, "w");
+    if (!g_mesa_log) Log("WARN could not open %s errno=%d", g_mesa_log_path, errno);
 
     // Apply NVK's opt-in after libnx console/SD initialization, but before
     // vkCreateInstance and physical-device enumeration. This avoids touching
