@@ -17,6 +17,22 @@ u32 __nx_heap_size = 0;
 }
 
 static FILE* g_log = nullptr;
+static FILE* g_mesa_log = nullptr;
+extern "C" PFN_vkVoidFunction VKAPI_CALL
+vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL
+PESDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+                 VkDebugUtilsMessageTypeFlagsEXT, 
+                 const VkDebugUtilsMessengerCallbackDataEXT* data, void*)
+{
+    const char* level = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "ERR" :
+                        (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ? "WARN" : "INFO";
+    const char* message = data && data->pMessage ? data->pMessage : "(no message)";
+    if (g_log) { fprintf(g_log, "[NVK/%s] %s\\n", level, message); fflush(g_log); }
+    if (g_mesa_log) { fprintf(g_mesa_log, "[%s] %s\\n", level, message); fflush(g_mesa_log); }
+    return VK_FALSE;
+}
 static void Log(const char* fmt, ...)
 {
     va_list ap;
@@ -71,6 +87,8 @@ int main()
     Log("=== PES-owned NXVK loader smoke ===");
     Log("sd mount result=0x%08X", unsigned(mountResult));
     Log("stage 3: log file opened");
+    g_mesa_log = fopen("sdmc:/nvk_mesa.log", "w");
+    if (!g_mesa_log) Log("WARN could not open sdmc:/nvk_mesa.log errno=%d", errno);
 
     // Apply NVK's opt-in after libnx console/SD initialization, but before
     // vkCreateInstance and physical-device enumeration. This avoids touching
@@ -105,13 +123,23 @@ int main()
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
     do {
-    const char* instanceExts[] = { VK_KHR_SURFACE_EXTENSION_NAME, "VK_NN_vi_surface" };
+    const char* instanceExts[] = { VK_KHR_SURFACE_EXTENSION_NAME, "VK_NN_vi_surface", VK_EXT_DEBUG_UTILS_EXTENSION_NAME };
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "PES 2017 loader smoke";
-    app.apiVersion = VK_API_VERSION_1_0;
+    app.apiVersion = VK_API_VERSION_1_3;
+    VkDebugUtilsMessengerCreateInfoEXT debugInfo{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    debugInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debugInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debugInfo.pfnUserCallback = PESDebugCallback;
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    ici.pNext = &debugInfo;
     ici.pApplicationInfo = &app;
-    ici.enabledExtensionCount = 2;
+    ici.enabledExtensionCount = 3;
     ici.ppEnabledExtensionNames = instanceExts;
     Log("stage 6: vkCreateInstance");
     CHECK_VK(vkCreateInstance(&ici, nullptr, &instance));
@@ -139,9 +167,14 @@ int main()
         break;
     }
 
+    auto enumDirect = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+        vk_icdGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
+    Log("stage 7a2: enumerate ptr loader=%p direct-ICD=%p",
+        reinterpret_cast<void*>(vkEnumeratePhysicalDevices), reinterpret_cast<void*>(enumDirect));
+    if (!enumDirect) { Log("FAIL direct ICD lookup returned null"); result = 11; break; }
     uint32_t physicalCount = 0;
-    Log("stage 7b: entering vkEnumeratePhysicalDevices(count)");
-    VkResult enumResult = vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr);
+    Log("stage 7b: entering vkEnumeratePhysicalDevices(count) via direct ICD pointer");
+    VkResult enumResult = enumDirect(instance, &physicalCount, nullptr);
     Log("stage 7c: vkEnumeratePhysicalDevices(count) returned %d count=%u",
         int(enumResult), physicalCount);
     CHECK_VK(enumResult);
@@ -245,6 +278,7 @@ int main()
     if (instance) vkDestroyInstance(instance,nullptr);
     Log("exit=%d",result);
     if (g_log) { fclose(g_log); g_log=nullptr; }
+    if (g_mesa_log) { fclose(g_mesa_log); g_mesa_log=nullptr; }
     WaitForExit();
     consoleExit(nullptr);
     return result;
