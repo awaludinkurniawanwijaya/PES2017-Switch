@@ -44,6 +44,6 @@ A 60 Hz target corresponds to 16.67 ms per frame; 30 Hz corresponds to 33.33 ms.
 ## Current blockers
 
 - The game runtime and generated PPC code are not yet linked into the bootstrap NRO.
-- NXVK archive and smoke-NRO build is still in progress; its WSI and ICD adapter are not yet validated in this project.
+- CI successfully builds the pinned NXVK archives and upstream `nvk_tri` / `nvk_vi_swapchain` smoke NROs, and compiles the PES loader/presenter adapters. The PES-owned WSI integration and ICD runtime path are not yet validated on Switch hardware.
 - No retail Switch performance data exists yet.
 - Audio sink, input bridge, SD game-data loading, shader cache persistence and full renderer integration still need end-to-end validation.
