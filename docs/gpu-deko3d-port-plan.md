@@ -40,6 +40,12 @@ References:
 
 **Preferred decision gate:** first build a tiny Vulkan triangle/compute smoke NRO using the exact NXVK revision in a dedicated GitHub Actions job. Then link the existing renderer with a minimal surface/present test. Only if both pass should the project choose NVK as the Switch graphics backend. If this path fails, return to the deko3d shader-feasibility work below.
 
+### Concrete loader mismatch found in source inspection
+
+The upstream NXVK Switch build produces `libnvk.a` plus support archives. Its smoke harness resolves functions from `vk_icdGetInstanceProcAddr` directly. In contrast, this runtime's `runtime/gpu/vulkan/loader.cpp` expects a normal `vkGetInstanceProcAddr` entry and later resolves `vkGetDeviceProcAddr` through it. The separate `jhuz0/nvk-switch` packaging project documents that a loaderless ICD needs explicit glue for `vkGetInstanceProcAddr`, `vkGetDeviceProcAddr`, and loader-only instance-layer enumeration.
+
+Therefore, simply adding `libnvk.a` to the NRO link line is insufficient. The Switch integration spike must either adopt a tested loaderless wrapper (with its source and license audited) or add a small local adapter that forwards the runtime's expected entry points to NXVK's ICD entry point. It must also ensure the correct static support archives and link order are present. This is a bounded, testable integration task and should be completed before touching renderer resource code.
+
 ## Existing backend boundary
 
 `runtime/gpu/backend.h` already defines a useful backend-neutral command interface:
