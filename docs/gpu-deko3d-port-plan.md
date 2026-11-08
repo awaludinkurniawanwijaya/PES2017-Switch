@@ -127,3 +127,14 @@ Do not start by creating a large empty deko3d `backend.cpp`. First run the prefe
 ## Acceptance rule
 
 A deko3d backend is not complete when it can clear a screen or draw a test triangle. It must pass the same guest-facing draw, resolve, query, memory ordering and shader behavior expected by `gpu::backend`, then render PES 2017 on hardware.
+
+## NXVK smoke build: exact integration contract (2026-11-08)
+
+The pinned NXVK revision used by the feasibility workflow is `c3abea1efde44027b7e3e20b48eb55beeecd5ab4`. Inspection of its own build scripts and smoke sources narrows the integration work:
+
+- The exported entry point is `vk_icdGetInstanceProcAddr(VkInstance, const char*)`, not a standard dynamic-loader export. The app must retain it with `-Wl,-u,vk_icdGetInstanceProcAddr` and resolve both instance and device functions through it. A Switch-specific loader entry path can adapt this function to the renderer's existing function-pointer table; do not try `dlopen("libvulkan.so")` on Switch.
+- The reference linker uses `-Wl,--whole-archive ... libnvk.a -Wl,--no-whole-archive`, then groups the support archives to resolve circular/static dependencies. Its archive set includes Mesa util/SIMD, BLAKE3, C11, NAK/Rust helpers, NVIDIA headers, NIL, NIR/compiler, MME, Nouveau winsys, Vulkan util, SPIR-V/VTN and XML config, plus devkitPro zlib/expat and libnx. Reuse the pinned upstream link recipe as the initial source of truth; do not guess a shortened library list.
+- The upstream `nvk_tri` test is an offscreen render/readback test. The separate `nvk_vi_swapchain` test enables `VK_KHR_surface`, `VK_NN_vi_surface`, and `VK_KHR_swapchain`, creates a surface from `nwindowGetDefault()`, and presents up to 300 frames. The second test is the relevant gate for PES presentation, but it only proves the NXVK WSI path, not the PES renderer's surface ownership or frame lifecycle.
+- The app must compile with `-D__SWITCH__ -DVK_USE_PLATFORM_VI_NN`, Mesa's vendored Vulkan headers, devkitPro libnx headers, `-ffunction-sections -fdata-sections`, and link with libnx's Switch specs. NXVK's compatibility shim also supplies newlib gaps such as `getrandom`, `posix_memalign`, `sysconf`, identity helpers and regex functions; its source/license must remain part of any combined distribution audit.
+
+**Next gate after the smoke artifacts exist:** add a separate Switch-only loader adapter and a minimal app owned by this repository that obtains the ICD entry point, creates an instance/device, creates the VI surface from the app's `NWindow`, clears/presents several frames, and records driver/API/extension diagnostics. Only then should the existing Vulkan renderer be added to that link. Keep this adapter isolated from Android and desktop loader paths.
