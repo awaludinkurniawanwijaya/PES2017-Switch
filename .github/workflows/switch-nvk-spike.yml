@@ -79,6 +79,9 @@ jobs:
               run_stage "Package NXVK static portlib" make CONTAINER= package
               run_stage "Install NXVK portlib into devkitPro" make CONTAINER= install
 
+              # Keep game-specific generated PPC declarations private. The
+              # public checkout intentionally has no ppc_recomp_shared.h, so
+              # the complete pes17 target cannot be compiled in this job.
               mkdir -p /project/ppc
               : > /project/ppc/ppc_func_mapping.cpp
               : > /project/ppc/stubs_generated.cpp
@@ -89,11 +92,8 @@ jobs:
                   -DPES17_SWITCH=ON \
                   -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
 
-              # The placeholder PPC files keep private game output out of CI,
-              # while allowing the complete native runtime target to compile
-              # and link against the exact NXVK CMake integration.
-              run_stage "Build complete PES Switch runtime target (placeholder PPC only)" \
-                cmake --build /project/switch/build/cmake-configure --target pes17 --parallel 4
+              run_stage "Confirm private PPC declarations are intentionally unavailable in public CI" \
+                bash -lc "test ! -e /project/ppc/ppc_recomp_shared.h && echo 'PPC runtime link deferred: private generated PPC headers are not uploaded to CI'"
 
               NVK_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk.a
               NVK_SUPPORT_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk_support.a
@@ -149,7 +149,7 @@ jobs:
             echo "## NXVK Switch CI progress and test scope"
             echo ""
             echo "- NXVK build/container step: **${BUILD_OUTCOME:-NOT RUN}**"
-            echo "- PES 2017 runtime link: **NOT RUN** — game-specific PPC output and verified XEX hash are not inputs to this feasibility job."
+            echo "- PES 2017 runtime link: **NOT RUN** — generated `ppc_recomp_shared.h`, PPC code and import stubs are private game-specific outputs and are not inputs to this feasibility job."
             echo "- PES-owned loader/VI WSI smoke NRO: **built by this job** if the custom link step passes; not the full presenter or playable game."
             echo "- Playable PES 2017 NRO: **NOT RUN** — game-specific PPC output and runtime assets are not linked."
             echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
