@@ -39,11 +39,9 @@ This is not an Audren renderer graph and is not hardware-validated. Actual outpu
 
 The current renderer is under `runtime/gpu/vulkan/` and expects Vulkan entry points, instance/device creation, swapchain/surface integration, and Vulkan shader/pipeline behavior. The libnx bootstrap does not provide a Vulkan surface or a compatible Vulkan loader. Switch homebrew commonly uses deko3d; that is a different API, not a drop-in Vulkan library.
 
-A playable port therefore needs a deliberate renderer strategy:
-- implement a deko3d backend for the existing Xenos command processor and shader translation path; or
-- prove and document a compatible Vulkan implementation/runtime for the target environment before retaining the Vulkan backend.
+The existing `gpu::backend` interface is already a useful seam, but the shader path is a deeper blocker than the API calls: `shader_translator.cpp` translates runtime Xenos microcode to SPIR-V, while deko3d accepts DKSH containing native Maxwell SM53 code. UAM is a host-side GLSL-to-DKSH compiler; it does not consume SPIR-V and is not a runtime compiler. Consequently, a deko3d port first needs a viable Xenos-to-SM53 compiler strategy, then device/memory, EDRAM/texture, pipeline, resolve, synchronization and presentation work.
 
-Simply defining `PES17_HAVE_VULKAN` or linking the existing Vulkan sources will not solve this.
+The detailed feasibility analysis and dependency order are in [`docs/gpu-deko3d-port-plan.md`](../docs/gpu-deko3d-port-plan.md). Simply defining `PES17_HAVE_VULKAN`, linking Vulkan sources, or forwarding SPIR-V to UAM will not solve this.
 
 ### 6. Game data and generated code
 
