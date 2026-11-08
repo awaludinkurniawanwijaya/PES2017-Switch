@@ -58,7 +58,7 @@ export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
 
 .PHONY: all clean $(BUILD)
-all: check-runtime-input check-runtime-install check-runtime-audio check-runtime-crash check-runtime-stutters $(BUILD)
+all: check-runtime-input check-runtime-install check-runtime-audio check-runtime-crash check-runtime-stutters check-runtime-guest-memory $(BUILD)
 
 # Compile the SD-card install/discovery path with the Switch compiler. This
 # source has no generated PPC dependency and catches Switch filesystem API
@@ -80,6 +80,15 @@ check-runtime-stutters:
 .PHONY: check-runtime-crash
 check-runtime-crash:
 	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/crash.cpp
+
+# Compile the guest memory manager with a tiny generated-config stand-in.
+# This catches Switch libc/SVC portability problems without exposing the private
+# title-specific PPC configuration or generated guest output.
+.PHONY: check-runtime-guest-memory
+check-runtime-guest-memory:
+	@mkdir -p $(BUILD)/probe
+	@printf '#pragma once\\n#define PPC_IMAGE_BASE 0x82000000u\\n#define PPC_IMAGE_SIZE 0x00100000u\\n#define PPC_CODE_SIZE 0x00100000u\\n' > $(BUILD)/probe/ppc_config.h
+	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(BUILD)/probe -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/guest_memory.cpp
 
 .PHONY: check-runtime-input
 check-runtime-input:
