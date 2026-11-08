@@ -11,15 +11,15 @@ This note records the source-level blockers found while preparing the native Swi
 - The install start contract now treats `argc == 0` or `argc == 1` as a Homebrew Menu player launch on Switch; explicit arguments remain development launches. Host tests and a Switch compiler static-assert gate cover the distinction.
 - The full runtime selects `sdmc:/switch/PES2017/pes2017-switch.log` by default when no `PES17_LOG_FILE` is supplied, so hardware startup and GPU errors have a persistent SD destination. This source path still awaits a full game-runtime build and physical validation.
 - The existing runtime is a separate CMake target. Its desktop entry point is `runtime/main.cpp`; Android starts `pes17::Run` from JNI.
-- The Switch bootstrap does not currently compile or link `runtime/`, `ppc/`, or any generated guest code.
+- The Switch bootstrap compiles selected runtime units as syntax/link probes, but does not link the complete `runtime/`, generated `ppc/`, or any guest code.
 
 ## Integration blockers
 
 ### 1. Runtime build and entry point
 
-The top-level `CMakeLists.txt` currently selects Android, Windows, or the desktop/POSIX executable. It unconditionally expects generated `ppc/ppc_recomp.*.cpp`, `ppc/ppc_func_mapping.cpp`, `ppc/stubs_generated.cpp`, and a legally supplied `pes/default.xex` (normally extracted by the project's build pipeline). The current NRO Makefile has none of these inputs.
+The top-level CMake now has a `PES17_SWITCH` target and the devkitA64 toolchain file. It still requires generated `ppc/ppc_recomp.*.cpp`, `ppc/ppc_func_mapping.cpp`, `ppc/stubs_generated.cpp`, and the legally supplied matching `pes/default.xex`; these private inputs are intentionally absent from public CI.
 
-`runtime/main.cpp` also assumes a process-style launch with filesystem paths and arguments, includes POSIX `unistd.h`, uses `_exit`, `std::filesystem`, detached `std::thread` workers, and the desktop `main()` entry point. A Switch entry adapter and a build-system target are required before linking the runtime.
+`runtime/main.cpp` is shared by desktop and Switch builds. Its Homebrew Menu startup contract now accepts the zero-argument launch form, and its Switch path writes a default log to SD. The complete target has not yet been compiled or linked with the private PPC output, so remaining libc/thread/entrypoint assumptions must be found by that full build.
 
 ### 2. Guest memory model (critical blocker)
 
@@ -31,13 +31,11 @@ The Switch port must solve all three requirements before the guest PPC runtime c
 
 ### 3. Host platform services
 
-`runtime/platform.h` defines the host services used by the runtime: thread identity/naming/priority/affinity, stack-sized worker threads, backtraces, and dynamic library loading.
-
-`runtime/platform.cpp` currently has Windows and POSIX implementations. The POSIX branch includes Linux/Android-specific headers and calls such as `sys/system_properties.h`, `gettid()`, `sched_setaffinity()`, `pthread_*`, `dlopen()`, and `dlsym()`. This is not a Switch implementation. Add a separately compiled `runtime/switch/platform.cpp` (or equivalent) implementing only services supported by libnx/libc, and guard unsupported operations explicitly.
+`runtime/platform.h` defines the host services used by the runtime. A separate `runtime/switch/platform.cpp` now implements thread creation/join, thread identity, basic priority changes, SDMC mounting, and the install working directory. Thread names, affinity policy, backtraces, and dynamic-library loading are intentionally limited or unavailable on Switch. The full runtime link and long-running worker behavior still need validation on hardware.
 
 ### 4. Controller input
 
-`runtime/kernel/input.cpp` currently selects either `PES17_ANDROID` or `PES17_USE_SDL`. The guest-facing XInput state is already represented in Xbox-compatible button/axis fields, so a Switch adapter can translate libnx `PadState` into those fields. The adapter must handle Joy-Con pair/single styles, analog stick ranges, triggers, disconnects, and controller-player mapping. The current bootstrap's + button polling is not connected to the guest XInput path.
+`switch/source/input.cpp` translates libnx `PadState` into the guest XInput state, and `runtime/kernel/input.cpp` has a Switch branch for `XamInputGetState`/`XamInputSetState`. Face-button swaps are separate settings. This is still a partial controller implementation: triggers are digital, vibration is not implemented, and Joy-Con single/pair styles, disconnects, and player mapping require hardware validation. The user has deferred button-code testing until the game is playable.
 
 ### 5. Audio
 
