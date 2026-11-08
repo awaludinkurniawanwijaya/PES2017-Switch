@@ -101,6 +101,10 @@ echo "$PROFILE" > ppc/PROFILE
 echo "==> 8. declarations + kernel import stubs"
 python3 tools/genshared.py
 python3 tools/gen_kernel_stubs.py | head -1
+# Bind the generated PPC code to the exact executable bytes used above.
+XEX_SHA256=$(sha256sum pes/default.xex | awk '{print $1}')
+printf 'title_id=%s\\nversion=%s\\nsha256=%s\\n' "$TITLE_ID" "$XEX_VERSION" "$XEX_SHA256" > ppc/XEX_TARGET
+echo "    PPC target: title $TITLE_ID, XEX $XEX_VERSION, SHA-256 $XEX_SHA256"
 
 [ -n "${RECOMPILE_ONLY:-}" ] && [ "$RECOMPILE_ONLY" != 0 ] && { echo "done: ppc/ has $(ls ppc | wc -l) files"; exit 0; }
 
