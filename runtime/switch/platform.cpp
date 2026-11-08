@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "../platform.h"
 
 #include <switch.h>
 
@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <new>
 
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
 // process services. Keep those operations explicit rather than importing the
@@ -90,7 +91,8 @@ void platform::SetThreadAffinity(ThreadAffinityRole role)
 void platform::PrintBacktrace(const char* why)
 {
     const char* message = why ? why : "unspecified";
-    svcOutputDebugString("[PES17] backtrace unavailable on Switch: ", 46);
+    constexpr char prefix[] = "[PES17] backtrace unavailable on Switch: ";
+    svcOutputDebugString(prefix, sizeof(prefix) - 1);
     svcOutputDebugString(message, std::strlen(message));
     svcOutputDebugString("\n", 1);
 }
