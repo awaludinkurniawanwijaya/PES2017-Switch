@@ -63,7 +63,7 @@ namespace
         // the two threads that can raise one here take turns.
         std::mutex guestCall;
 
-        std::thread worker, vblank;
+        platform::ThreadHandle worker = nullptr, vblank = nullptr;
         std::atomic<bool> running{ false };
         std::atomic<uint64_t> frames{ 0 };       // VdSwap calls
         diag::Stat vblanks;
@@ -98,6 +98,9 @@ namespace
         ctx.fpscr.loadFromHost();
         fn(ctx, guest::Base());
     }
+
+    void WorkerEntry(void*) { Worker(); }
+    void VBlankEntry(void*) { VBlankWorker(); }
 
     std::atomic<bool> g_inBatch{ false };
     std::atomic<uint32_t> g_batchAvailable{ 0 };
@@ -287,15 +290,36 @@ void gpu::Initialise()
     if (!gpu::backend::Initialise(Rendering())) LOGW("gpu: no device came up to render on");
     g.gpuPcr = kernel::CreateThreadBlock(0xF000);
     g.vblankPcr = kernel::CreateThreadBlock(0xF001);
-    g.worker = std::thread(Worker);
-    g.vblank = std::thread(VBlankWorker);
+    constexpr size_t kGpuThreadStack = 8u * 1024u * 1024u;
+    g.worker = platform::StartJoinableThread(WorkerEntry, nullptr, kGpuThreadStack,
+                                              "gpu ring consumer");
+    if (!g.worker)
+    {
+        LOGE("gpu: could not start ring consumer");
+        g.running.store(false);
+        gpu::backend::Shutdown();
+        return;
+    }
+    g.vblank = platform::StartJoinableThread(VBlankEntry, nullptr, kGpuThreadStack,
+                                              "gpu vblank");
+    if (!g.vblank)
+    {
+        LOGE("gpu: could not start vblank worker");
+        g.running.store(false);
+        platform::JoinThread(g.worker);
+        g.worker = nullptr;
+        gpu::backend::Shutdown();
+        return;
+    }
 }
 
 void gpu::Shutdown()
 {
     if (!g.running.exchange(false)) return;
-    if (g.vblank.joinable()) g.vblank.join();
-    if (g.worker.joinable()) g.worker.join();
+    platform::JoinThread(g.vblank);
+    platform::JoinThread(g.worker);
+    g.vblank = nullptr;
+    g.worker = nullptr;
     // The window thread first, because it shows an image the renderer owns.
     gpu::backend::Shutdown();
 }
