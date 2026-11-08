@@ -57,7 +57,7 @@ jobs:
           from pathlib import Path
           p = Path("nxvk/src/nouveau/vulkan/nvkmd/nvgpu/nvkmd_nvgpu_pdev.c")
           s = p.read_text()
-          s = s.replace('#include "nvkmd_nvgpu.h"', '#include "nvkmd_nvgpu.h"\\n#include <stdio.h>', 1)
+          s = s.replace('#include "nvkmd_nvgpu.h"', '#include "nvkmd_nvgpu.h"' + chr(10) + '#include <stdio.h>', 1)
           pairs = [
               ("   Result rc = nvInitialize();", """   fprintf(stderr, "[NVK-TRACE] before nvInitialize\\n"); fflush(stderr);
              Result rc = nvInitialize();
