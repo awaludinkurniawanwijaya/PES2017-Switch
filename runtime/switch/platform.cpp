@@ -59,16 +59,19 @@ void platform::Initialise()
     {
         constexpr char message[] = "[PES17] failed to mount SD card filesystem\\n";
         svcOutputDebugString(message, sizeof(message) - 1);
-        return;
     }
-    mkdir("sdmc:/switch", 0777);
-    mkdir("sdmc:/switch/PES2017", 0777);
-    if (chdir("sdmc:/switch/PES2017") != 0)
+    else
     {
-        constexpr char message[] = "[PES17] failed to enter sdmc:/switch/PES2017\\n";
-        svcOutputDebugString(message, sizeof(message) - 1);
+        mkdir("sdmc:/switch", 0777);
+        mkdir("sdmc:/switch/PES2017", 0777);
+        if (chdir("sdmc:/switch/PES2017") != 0)
+        {
+            constexpr char message[] = "[PES17] failed to enter sdmc:/switch/PES2017\\n";
+            svcOutputDebugString(message, sizeof(message) - 1);
+        }
     }
 
+    // Input remains usable even when the SD card is absent or cannot mount.
     switch_input::Initialize();
 }
 
