@@ -189,7 +189,7 @@ void platform::JoinThread(ThreadHandle handle)
 {
     auto* control = static_cast<ThreadControl*>(handle);
     if (!control) return;
-    threadWaitForExit(&control->thread, UINT64_MAX);
+    threadWaitForExit(&control->thread);
     threadClose(&control->thread);
     delete control;
 }
