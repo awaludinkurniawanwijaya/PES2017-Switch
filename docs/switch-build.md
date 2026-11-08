@@ -30,13 +30,50 @@ PPC and runtime, and packages `build-switch/pes17.nro`. Set `JOBS`,
 The script fails early when required local inputs or toolchain files are
 missing. It does not download, extract, or distribute proprietary game data.
 
-## Android/Termux role
+## Android/Termux role and workspace separation
 
-An Android-only workflow can run the existing recompiler stage if its native
-build dependencies are available, then transfer the generated `ppc/` output
-and local XEX hash/build inputs to a separate devkitPro build environment.
-Termux by itself is not a substitute for the devkitPro/libnx/NXVK cross
-toolchain, and it cannot validate GPU presentation or performance on Switch.
+Termux can be used for the host-side XenonRecomp stage when its native build
+dependencies are available. It does not provide the devkitPro/devkitA64,
+libnx, or NXVK cross-toolchain, and it cannot validate GPU presentation or
+performance on a physical Switch.
+
+Keep these workspaces distinct:
+
+- The original Termux workspace is a local working copy. It may contain
+  generated PPC code, extracted game files, build logs, and other local-only
+  data. Its directory name or age does not establish whether its contents are
+  disposable.
+- A Git checkout used to exchange changes with GitHub is a separate workspace.
+  Verify its remote and branch before using Git commands.
+- The GitHub development branch is the source of truth for the latest port
+  changes. Do not overwrite it with an older Termux tree or merge old files
+  wholesale.
+
+Before cleaning an old local workspace, inventory its contents and preserve
+any unique generated PPC output, the matching `default.xex` hash/identity,
+configuration, logs needed for diagnosis, and legally obtained game data.
+Never upload ISO, XEX, CPK, or generated title-specific PPC files to this
+public repository or its public CI artifacts. Delete only files that have
+been verified as redundant and backed up or reproducible.
+
+If using Termux for PPC generation, run `build.sh` only from a checkout that
+actually contains that script and the matching source tree. Do not assume a
+folder named `PES2017-Switch` is a Git repository or contains `build.sh`.
+Set `GAME` to the extracted local game directory and use
+`RECOMPILE_ONLY=1` to stop after PPC generation. Preserve the exact XEX
+that produced those files.
+
+Termux package versions, available RAM, and Android process limits vary. If
+the build is killed for memory pressure, retry with `JOBS=1`; keep adequate
+free storage. If native XenonRecomp dependencies fail to compile under
+Android/Termux, use a compatible Linux ARM64 host with private, authorized
+handling of game inputs. Never put proprietary game files in public workflow
+artifacts.
+
+After PPC generation, the final Switch build requires a separate environment
+with the devkitPro/NXVK toolchain. Transfer the private `ppc/` output and
+matching `pes/default.xex` to that environment, then run
+`bash build-switch.sh`. The script validates these inputs before compiling.
 
 ## Current acceptance status
 
@@ -50,47 +87,3 @@ the complete game runtime links or boots. Acceptance still requires:
   and sustained thermal/performance tests.
 
 Keep the development pull request in draft until those gates pass.
-
-## Android/Termux PPC generation
-
-For an Android-only development setup, Termux can be used for the host-side
-XenonRecomp stage. This does **not** build the Switch NRO: the final cross-build
-still needs devkitPro/devkitA64, libnx, and the pinned NXVK portlib.
-
-Install the host tools in Termux:
-
-```bash
-pkg update
-pkg install -y git cmake ninja clang make python
-termux-setup-storage
-```
-
-Place the legally obtained, extracted game directory somewhere in shared
-storage. It must contain the matching Xbox 360 Europe `default.xex`. Then run
-from the repository root (adjust the path to the actual folder):
-
-```bash
-cd ~/PES2017-Switch
-CMAKE_CC=clang CMAKE_CXX=clang++ \
-GAME="$HOME/storage/shared/GAME" \
-PROFILE=balanced RECOMPILE_ONLY=1 JOBS=2 \
-bash ./build.sh
-```
-
-The first stage compiles XenonRecomp and generates `ppc/` plus kernel stubs.
-Keep the generated directory private and local; it contains title-specific
-recompiled game code. Do not commit or upload `default.xex`, `ppc/`, CPK
-archives, or ISO images to the public repository. Preserve the generated
-`ppc/` directory and the exact matching XEX used to generate it.
-
-Termux package versions, available RAM, and Android process limits vary. If
-the build is killed for memory pressure, retry with `JOBS=1`; keep adequate
-free storage. If the native XenonRecomp dependencies fail to compile under
-Android/Termux, use a Linux ARM64 host or GitHub-hosted runner with private,
-authorized handling of the game inputs. Never put proprietary game files in
-public workflow artifacts.
-
-After PPC generation, the final Switch build requires a separate environment
-with the devkitPro/NXVK toolchain. Copy the private `ppc/` output and the
-matching `pes/default.xex` to that environment, then run
-`bash build-switch.sh`. The script validates these inputs before compiling.
