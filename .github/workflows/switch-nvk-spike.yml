@@ -67,6 +67,9 @@ jobs:
             bash -lc '
               set -euo pipefail
               make CONTAINER= driver
+              # Stage the same static portlib package the final runtime will link:
+              # libnvk.a, the support archive, and pkg-config metadata.
+              make CONTAINER= package
               # Compile the project's loader against the exact pinned NXVK headers.
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
@@ -106,6 +109,11 @@ jobs:
             nxvk/switch/smoke/out/nvk_tri.nro
             nxvk/switch/smoke/out/nvk_vi_swapchain.nro
             nxvk/switch/build/cross/src/nouveau/vulkan/libnvk.a
+            nxvk/switch/build/pkg/lib/libnvk.a
+            nxvk/switch/build/pkg/lib/libnvk_support.a
+            nxvk/switch/build/pkg/lib/pkgconfig/nxvk.pc
+            nxvk/include/vulkan/
+            nxvk/include/vk_video/
             nxvk/licenses/
           if-no-files-found: error
           retention-days: 14
