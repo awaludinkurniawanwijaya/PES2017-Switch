@@ -1,139 +1,138 @@
-# PES 2017 Android (Xbox 360 → ARM64 recompilation)
+# PES 2017 — Nintendo Switch native port
 
-An ahead-of-time recompilation of *Pro Evolution Soccer 2017* (Xbox 360) to native ARM64 code for Android.
-The game's PowerPC code is translated to C++ with [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
-and built with the Android NDK. A host runtime stands in for the console's kernel, GPU (Vulkan) and audio,
-and a Kotlin app installs the game files, configures the run and starts the native library.
+An experimental **native Nintendo Switch port** of *Pro Evolution Soccer 2017* (Xbox 360), built around ahead-of-time PowerPC recompilation and the Nintendo Switch homebrew SDK (**libnx**).
 
-Status: work in progress. The game boots, renders and plays a match on a Galaxy S20 FE (Snapdragon 865 /
-Adreno 650); performance is limited by heat before it is limited by code. [docs/PORTING.md](docs/PORTING.md)
-says exactly what works and what is left.
+This is **not an Xbox 360 emulator** and it is not an Android port. The long-term goal is to translate the game's PowerPC executable to C++, connect the required Xbox 360 runtime services to Switch-native implementations, and render the game through Vulkan/NVK.
 
-You need your own copy of the game. Nothing from it is in this repository.
+> **Development status — 8 November 2026:** work in progress; **not yet a playable game build**. The repository currently contains a working libnx bootstrap NRO, Switch-target compile checks, and successful CI builds of pinned NXVK Vulkan smoke-test NROs. These are infrastructure tests, not PES 2017 gameplay. The NXVK smoke NROs have not been represented as physically tested on a Switch by CI.
 
-## Quickstart
+## Current progress
 
-1. **Check your phone:** arm64 Android 8.0 or newer with Vulkan, and about 9 GB of free storage (the game files
-   are about 6.5 GB). A recent Snapdragon phone is the tested target.
-2. **Get the game files:** see [Which copy of the game you need](#which-copy-of-the-game-you-need) below, and
-   copy them to the phone.
-3. **Install the app:** install the APK over USB or by opening it on the phone (build it from `android/` with
-   `./gradlew :app:assembleRelease`, see [Build](#build)), and allow installs from your file manager if asked.
-4. **Install the game:** open the app, tap **INSTALL FROM DISC IMAGE**, choose **Browse the phone's storage** (or **Choose with the Files app**),
-   pick the ISO or folder, and tap **Install**. If it stops, start again: it carries on from what was copied.
-5. **Pick a preset:** open **Settings**; the app suggests High, Medium or Low for your phone. Lower the render
-   quality or turn off multisampling if the match stutters.
-6. **Play:** tap **KICK OFF** in the launcher. Use the on-screen buttons (move or hide them with **Edit controls**) or
-   connect a gamepad.
-7. **Back up your saves:** **Settings > Back up saves** makes a zip you can keep in Downloads or Drive.
+| Area | Current state |
+|---|---|
+| Target executable | PES 2017 Xbox 360 Europe, Title ID `0x4A3007D1`, XEX execution-info version `0x00000012` |
+| XEX validation | XEX2 metadata and target-version validation implemented; generated PPC output is bound to the exact local XEX with a private SHA-256 manifest |
+| PowerPC recompilation | Local recompilation completed; generated 1,413 `ppc_recomp.*.cpp` translation units |
+| Recompiler analysis | Latest local report: 44 undecodable words and 2 missed jump-table cases remain for investigation |
+| Kernel imports | 281 imports found: 212 implemented and 69 still stubbed |
+| Switch platform | Initial libnx platform adapter, input/HID path, audio adapter and SD-card installation path are under development |
+| Bootstrap NRO | Builds successfully in GitHub Actions; this is a controller/platform smoke app, not the game |
+| Vulkan/NVK | Pinned NXVK libraries and Vulkan smoke NROs build successfully in CI; full game rendering is not yet validated |
+| Full game NRO | Not yet built or confirmed to boot |
 
-If something goes wrong, open **Log** in the launcher for a short summary, or share the bug report.
+Generated PPC sources and the original game executable are private build inputs. They are intentionally **not committed or uploaded as public CI artifacts**.
 
-## Which copy of the game you need
+## Target game copy
 
-The recompiled code is made from one exact executable, so the copy has to match it.
+The current recompilation target is the user's own dump of:
 
-- **Game and version:** *Pro Evolution Soccer 2017* for **Xbox 360, Europe** (the `default.xex` of about 32 MB
-  that this repository was built from). Other regions, other versions, the PC or PS4 releases, and other
-  games will not work. The app checks `default.xex` by its SHA-256 and warns you when it is a different one.
-- **Your own dump:** rip your own disc. Nothing from the game is distributed here.
-- **Same copy for the build and the phone:** the APK is recompiled from a specific `default.xex`, so if you
-  build it yourself, use the same disc dump you install on the phone.
+- **Game:** *Pro Evolution Soccer 2017*
+- **Platform / region:** Xbox 360, Europe
+- **Title ID:** `0x4A3007D1`
+- **XEX execution-info version:** `0x00000012`
+- **Executable:** `default.xex`
 
-Either form works:
+The source reference for selecting the correct game copy is the [XenonRecomp PES 2017 guide](https://github.com/dzakyraf/pes2017-recomp#which-copy-of-the-game-you-need). European releases may differ in included language content; the executable must still match the exact target used to generate the PPC code.
 
-| Form | What it must contain | Notes |
-|---|---|---|
-| **Disc image** (`.iso`) | an Xbox 360 disc image of the game, at least 500 MB | the installer reads it directly and copies only what the game needs |
-| **Extracted folder** | `default.xex`, every `.cpk` archive (`dt00_x36.cpk`, `dt10_x36.cpk`, the `dt20_*` language packs, ...) and the `nxeart` file, together in one folder | pick the folder that holds `default.xex` itself, not its parent |
+You must supply your own legally obtained game files. **No game executable, CPK archive, extracted game asset, or generated game-specific PPC source is distributed in this repository.**
 
-Only `default.xex`, the `.cpk` files and `nxeart` are copied. Other disc content (such as `$SystemUpdate`
-and the `su2008d...` folder) is ignored, so it does not matter whether it is there. The full set is about
-6.5 GB, so keep about 9 GB free while installing. Extract the whole disc, not a selection of
-the `.cpk` files.
+The build validates the XEX metadata and writes `ppc/XEX_TARGET` containing the target title ID, version and SHA-256. The CMake build checks this manifest against the local executable to prevent accidentally linking PPC output generated from a different XEX.
 
-## Build
+## Repository layout
 
-```bash
-GAME=../GAME ./build.sh            # recompile PPC -> C++ and build libpes17.so (arm64-v8a)
-tools/deploy.sh                    # runtime-only rebuild, package, install and launch on the connected phone
+| Path | Purpose |
+|---|---|
+| `runtime/` | Shared Xbox 360 recompilation runtime |
+| `runtime/switch/` | Nintendo Switch platform and audio adapters |
+| `switch/` | libnx bootstrap NRO, controller input and Switch build checks |
+| `cmake/switch-toolchain.cmake` | devkitPro/devkitA64 CMake toolchain |
+| `switch/smoke/` | NXVK and Vulkan smoke-test build scripts |
+| `tools/verify_xex.py` | Validates XEX2 metadata and selected target |
+| `third_party/XenonRecomp/` | Vendored XenonRecomp toolchain |
+| `.github/workflows/` | Automated tests, bootstrap NRO build and NXVK feasibility workflow |
+
+## Build and test
+
+### 1. Requirements
+
+For the Nintendo Switch target:
+
+- Linux build host (GitHub Actions uses Ubuntu).
+- [devkitPro](https://devkitpro.org/) with the devkitA64 toolchain and libnx.
+- CMake, Ninja, Python 3 and Git.
+- The pinned NXVK build/dependencies used by the project for the Vulkan path.
+- Your own PES 2017 Xbox 360 Europe game dump for the full recompilation.
+
+The bootstrap NRO can be built without the game executable or generated PPC sources. The full `pes17` target cannot: it requires the private XEX and matching generated PPC output.
+
+### 2. Recompile the local game executable
+
+Keep the extracted game files outside the public repository if preferred. In the project checkout, run the recompiler from the project root:
+
+```sh
+GAME="$HOME/storage/shared/PES2017-Extracted" \
+XEX_VERSION=0x00000012 \
+RECOMPILE_ONLY=1 \
+JOBS=4 \
+CMAKE_CC="$(command -v clang)" \
+CMAKE_CXX="$(command -v clang++)" \
+./build.sh
 ```
 
-`GAME` is the folder holding the disc's `default.xex`. The first full build takes about 30 minutes;
-`RECOMPILE_ONLY=1` stops after the C++ is generated, and `PROFILE=safe|balanced|aggressive` trades generated
-code size against how much of the guest register file stays in locals
-([docs/RECOMP_RESEARCH.md](docs/RECOMP_RESEARCH.md)). The APK is built from `android/` with Gradle.
-Game files go to `Android/data/com.pes2017.recomp/files/game/` (about 6.5 GB; plan on 9 GB free).
+This validates the selected XEX and generates the PPC C++ output under `ppc/`. `RECOMPILE_ONLY=1` deliberately stops after PPC generation; **it does not build a Switch NRO**. Do not commit `pes/default.xex`, `pes/default.pe`, or generated `ppc/` output.
 
-## Features
+### 3. Build the libnx bootstrap
 
-- **Install from the app:** pick your disc folder or ISO; an interrupted copy carries on where it stopped.
-- **Picture settings:** display resolution, internal render multiplier (1x to 3x), match render quality, FSR
-  sharpening upscale, multisampling for clean pitch lines, and a larger match ball that is easier to follow on a
-  small screen.
-- **Widescreen:** fills the whole phone screen instead of showing black bars.
-- **Performance presets:** High, Medium and Low, chosen from what your phone looks like. Medium and Low lower
-  the picture quality when the phone gets hot or the GPU falls behind, to keep the frame rate steadier.
-- **FPS limit:** matches your screen's refresh rate by default.
-- **Touch controls:** on-screen buttons you can move and resize, and hide when you play on a pad.
-- **Gamepad:** physical controllers work, including a second one for player 2.
-- **Custom GPU driver:** import a Turnip driver (`.zip`) on Adreno phones for better speed or compatibility.
-- **Save backup and restore:** Master League, Become a Legend, edit data and settings in one zip, with an
-  automatic copy to roll back to.
-- **Updates and support:** in-app update check, a log viewer with a short error summary, bug-report sharing,
-  and one-tap clearing of the shader cache and logs.
-- **Smoother and lighter:** the shader cache is saved without freezing the game, and an optional texture
-  compression mode cuts texture memory by about four times on phones without native support.
+With devkitPro configured:
 
-## What you need to build it
+```sh
+cd switch
+make
+```
 
-| Requirement | Used for |
-|---|---|
-| macOS or Linux host, `cmake`, `ninja`, `clang`, `python3` 3.10+, `git` | recompiler build, generators, `build.sh` |
-| Android NDK 28.x (`28.2.13676358`), Android SDK platform 35, JDK 17 | native library and Gradle app (`minSdk` 26, arm64-v8a only) |
-| An Android phone with Vulkan 1.0+, `adb` | running and profiling; developed on a rooted Galaxy S20 FE |
-| Your own PES 2017 (Xbox 360, Europe) disc files, `default.xex` | the input to the recompiler |
-| Network on first build | CMake fetches SDL3 and Dear ImGui |
+The output is `switch/pes2017-switch-bootstrap.nro`. It initializes libnx, exercises C++ thread/synchronization support and displays controller input. It is only a bootstrap test application.
 
-## Documentation
+### 4. Full Switch runtime build
 
-| | |
-|---|---|
-| [docs/PORTING.md](docs/PORTING.md) | status, what is fixed, what blocks next |
-| [docs/performance.md](docs/performance.md) | in-match measurements on the phone |
-| [docs/RECOMP_RESEARCH.md](docs/RECOMP_RESEARCH.md) | recompiler findings and pipeline options |
-| [docs/runtime.md](docs/runtime.md), [rendering](docs/rendering.md), [shaders](docs/shaders.md), [textures](docs/textures.md), [audio](docs/audio.md), [d3d9-seam](docs/d3d9-seam.md) | how the runtime stands in for the console |
-| [docs/switches.md](docs/switches.md) | `PES17_*` runtime switches |
-| [docs/pillars/](docs/pillars/README.md) | the mobile performance roadmap |
-| [.claude/docs/](.claude/docs/) | Claude session handovers and research notes: device setup, tools, open issues |
+The full CMake target is configured with `PES17_SWITCH=ON` and the Switch toolchain. It additionally needs the generated PPC output, the matching private XEX manifest, and the NXVK development package:
 
-## Credits
+```sh
+cmake -S . -B build-switch -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
+  -DPES17_SWITCH=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-switch --target pes17
+```
 
-This port stands on other people's work.
+This describes the intended full-runtime build path; a successful bootstrap or NXVK smoke build does **not** imply that this target is already complete or that the resulting game runs.
 
-- **[XenonRecomp](https://github.com/hedge-dev/XenonRecomp)** by hedge-dev: the PowerPC → C++ recompiler and
-  XenonAnalyse, vendored in `third_party/XenonRecomp` with local fixes (see `UPSTREAM.md` there). It bundles
-  [fmt](https://github.com/fmtlib/fmt), [libmspack](https://github.com/kyz/libmspack),
-  [simde](https://github.com/simd-everywhere/simde), [tiny-AES-c](https://github.com/kokke/tiny-AES-c),
-  [toml++](https://github.com/marzer/tomlplusplus) and [xxHash](https://github.com/Cyan4973/xxHash).
-- **[mw2-recompiled](https://github.com/PaulCombal/mw2-recompiled)** by PaulCombal and contributors (and
-  GuruMachanica and contributors), GPL-3.0: the scaffold this port was built on. Its Xbox 360 runtime (kernel,
-  XAM, GPU command processor, Xenos shader translator, Vulkan renderer, launcher) was adapted for PES 2017.
-- **[Xenia](https://xenia.jp)** and its contributors: the reference for Xbox 360 kernel behaviour, the Xenos
-  GPU, texture formats and the XMA decoder; `third_party/ffmpeg-xenia` is Xenia's FFmpeg subset for XMA.
-- **ReXGlue SDK**: sibling recompilation runtime we compared against
-  ([.claude/docs/REXGLUE-EVALUATION.md](.claude/docs/REXGLUE-EVALUATION.md)); the FSR 1 SPIR-V in `runtime/gpu/vulkan/ffx/`
-  comes from its SDK.
-- **AMD FidelityFX Super Resolution 1** (EASU/RCAS, MIT): the optional upscaler.
-- **[libadrenotools](https://github.com/bylaws/libadrenotools)** by bylaws: loading custom Adreno Vulkan drivers.
-- **[SDL3](https://libsdl.org)**, **[Dear ImGui](https://github.com/ocornut/imgui)**,
-  **[FFmpeg](https://ffmpeg.org)**, **[RenderDoc](https://renderdoc.org)** (`renderdoc_app.h`, GPU capture).
-- **Barlow Condensed** (Jeremy Tribby, SIL OFL 1.1; `third_party/fonts`): launcher typeface.
-- **Android NDK / SDK / Gradle** and the **Khronos Vulkan** headers and SPIR-V tooling.
-- **Konami**: *Pro Evolution Soccer 2017* is their game and property. This project contains none of it and
-  is not affiliated with or endorsed by Konami. The app's icon (drawn by `tools/make_artwork.py`), menu
-  backdrop and wordmark are original artwork; the game's name is used only to say what it runs.
+## Automated checks
 
-## Licence
+GitHub Actions currently covers:
 
-GPL-3.0-only, see [LICENSE](LICENSE).
+- Repository tests, including XEX target/version validation.
+- Compilation and packaging of the libnx bootstrap NRO.
+- Pinned NXVK build and Vulkan smoke applications, including triangle/offscreen and VI swapchain paths.
+
+A green workflow means the steps in that workflow passed on its CI runner. It does not prove physical-console compatibility, complete GPU feature coverage, successful game startup, or playable performance. Physical Switch testing and full-game integration remain separate milestones.
+
+See [Actions](../../actions) for current workflow runs and artifacts.
+
+## Known work remaining
+
+1. Implement and validate the remaining 69 Xbox 360 kernel imports, prioritizing functions reached during startup.
+2. Investigate the remaining undecodable PPC words and missed jump-table dispatches.
+3. Complete dynamic library loading and symbol resolution needed by the game.
+4. Integrate the full recompilation target with the libnx platform and NXVK Vulkan backend.
+5. Validate GPU resource handling, shaders, render targets, synchronization and presentation against actual game workloads.
+6. Complete audio, controller mapping, SD-card game-file discovery/installation and save handling.
+7. Test boot, menus and gameplay on physical Nintendo Switch hardware, then profile and fix compatibility/performance issues.
+
+## Credits and licensing
+
+- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — Xbox 360 PowerPC analysis and recompilation toolchain.
+- [NXVK](https://github.com/PalindromicBreadLoaf/nxvk) — Vulkan driver work used for the Switch feasibility experiments.
+- [devkitPro / libnx](https://devkitpro.org/) — Nintendo Switch homebrew toolchain and platform APIs.
+- [Xenia](https://xenia.jp/) — reference material for Xbox 360 behavior and compatibility research.
+
+PES 2017 and its assets are the property of their respective rights holders. This is an independent, unofficial research and porting project and is not affiliated with or endorsed by Konami. See [LICENSE](LICENSE) for this repository's license and retain the licenses/notices of all third-party components.
