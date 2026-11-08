@@ -210,6 +210,12 @@ int pes17::Run(int argc, char** argv)
 {
     platform::Initialise();
 
+    // The Switch face-button options live beside the recompiled title config.
+    // Load them before the first XInput poll; the two pairs remain independent.
+#ifdef __SWITCH__
+    settings::LoadInputConfig(install::Folder(argc, argv) / "config/PES.toml");
+#endif
+
     // Before any switch is read, the log's among them.
     const std::string kept = settings::Load(install::Folder(argc, argv) / ".env");
 
