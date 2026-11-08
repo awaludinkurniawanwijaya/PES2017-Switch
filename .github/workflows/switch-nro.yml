@@ -12,6 +12,7 @@ on:
       - "runtime/switch/**"
       - "runtime/platform.*"
       - "runtime/kernel/input.cpp"
+      - "runtime/install/install.cpp"
       - "CMakeLists.txt"
       - "tests/**"
       - ".github/workflows/switch-nro.yml"
