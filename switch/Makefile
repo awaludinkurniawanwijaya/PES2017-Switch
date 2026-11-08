@@ -58,7 +58,13 @@ export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
 
 .PHONY: all clean $(BUILD)
-all: $(BUILD)
+all: check-runtime-input $(BUILD)
+
+# Compile the actual guest XInput bridge with the Switch compiler as a
+# syntax-only gate. The bootstrap NRO does not yet link the full game runtime.
+.PHONY: check-runtime-input
+check-runtime-input:
+	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(TOPDIR)/../runtime -I$(TOPDIR)/../ppc -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/kernel/input.cpp
 
 $(BUILD):
 	@mkdir -p $@
