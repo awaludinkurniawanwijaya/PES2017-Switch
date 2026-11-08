@@ -31,6 +31,11 @@ namespace
     }
 }
 
+bool switch_input::MainLoop()
+{
+    return appletMainLoop();
+}
+
 bool switch_input::Initialize()
 {
     if (g_initialized) return true;
