@@ -8,6 +8,8 @@
 #include <string>
 #include <cstdarg>
 #include <cstdlib>
+#include <cstdarg>
+#include <cstdlib>
 #include <vector>
 
 extern "C" {
@@ -22,7 +24,7 @@ static void Log(const char* fmt, ...)
     va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
     fputc('\n', g_log); fflush(g_log);
 }
-#define CHECK_VK(expr) do { VkResult r_ = (expr); if (r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; } } while (0)
+#define CHECK_VK(expr) if (VkResult r_ = (expr); r_ != VK_SUCCESS) { Log("FAIL %s -> %d", #expr, int(r_)); result = 1; break; }
 
 int main()
 {
@@ -61,7 +63,7 @@ int main()
 
     uint32_t physicalCount = 0;
     CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr));
-    if (!physicalCount) { Log("FAIL no physical devices"); result = 4; goto cleanup; }
+    if (!physicalCount) { Log("FAIL no physical devices"); result = 4; break; }
     std::vector<VkPhysicalDevice> physicals(physicalCount);
     CHECK_VK(vkEnumeratePhysicalDevices(instance, &physicalCount, physicals.data()));
     VkPhysicalDevice physical = physicals[0];
