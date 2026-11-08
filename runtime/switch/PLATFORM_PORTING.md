@@ -86,7 +86,7 @@ The project's Vulkan presenter now has a Switch VI path:
 
 ### Remaining integration gates
 
-- A prior run completed all 1,230 NVK archive compilation/link steps but stopped at an incorrect target-prefixed `nm` path before the project compile checks. The latest rerun uses generic binutils `nm` and BuildKit layer caching, then proceeds to the loader/presenter checks and smoke NROs.
+- A prior run completed all 1,230 NVK archive compilation/link steps but stopped at an incorrect target-prefixed `nm` path before the project compile checks. The latest rerun uses generic binutils `nm`, stages and installs the NXVK portlib, configures the native Switch CMake target, then proceeds to the loader/presenter checks and smoke NROs.
 - The libnx bootstrap workflow syntax-checks the Switch crash/hang-monitor path and stutter watcher, then links a diagnostic probe with `-pthread` that exercises the platform joinable-thread API together with `std::mutex`, `std::condition_variable`, `std::shared_mutex`, and `std::call_once`. The bootstrap NRO build succeeds; actual scheduling/synchronization behavior still needs a console run.
 - Verify the exported ICD ABI and device dispatch at runtime; syntax compilation alone does not prove that all calls work.
 - Run the NXVK triangle and VI swapchain diagnostic NROs on physical Switch hardware and inspect their SD-card logs.
