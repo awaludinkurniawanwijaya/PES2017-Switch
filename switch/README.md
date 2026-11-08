@@ -143,16 +143,17 @@ PPC output.
    or display presentation.
 3. **Link a PES-specific presenter test.** Exercise the project's static ICD
    loader, VI surface, swapchain, and frame-present path together in an NRO.
-4. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
+4. **Implement the Switch guest-memory model.** Prove a 512 MiB shared physical bank can be mapped at the cached, physical, and aperture windows inside the 4 GiB guest reservation. The current bootstrap probe only tests a 4 KiB shared-memory primitive, not the full bank.
+5. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
    install, and generated PPC sources with the correct libnx/NXVK dependencies.
    The current bootstrap target is not this executable.
-5. **Generate title-specific PPC output.** This requires the user's legally
+6. **Generate title-specific PPC output.** This requires the user's legally
    obtained PES 2017 executable and matching build metadata. Those files and
    generated output must remain outside the public repository.
-6. **Complete game-data import and verification.** The Switch build must accept
+7. **Complete game-data import and verification.** The Switch build must accept
    local game data, verify the executable hash, and locate required CPK files
    without embedding or distributing copyrighted assets.
-7. **Run full hardware validation.** Verify boot, menus, controller behavior,
+8. **Run full hardware validation.** Verify boot, menus, controller behavior,
    audio, match rendering, save paths, suspend/resume, memory pressure, and a
    sustained full-match session on a physical Switch.
 
