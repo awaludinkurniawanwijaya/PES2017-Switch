@@ -58,7 +58,7 @@ export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
 
 .PHONY: all clean $(BUILD)
-all: check-runtime-input check-runtime-install check-runtime-audio $(BUILD)
+all: check-runtime-input check-runtime-install check-runtime-audio check-runtime-crash $(BUILD)
 
 # Compile the SD-card install/discovery path with the Switch compiler. This
 # source has no generated PPC dependency and catches Switch filesystem API
@@ -73,6 +73,10 @@ check-runtime-audio:
 
 # Compile the actual guest XInput bridge with the Switch compiler as a
 # syntax-only gate. The bootstrap NRO does not yet link the full game runtime.
+.PHONY: check-runtime-crash
+check-runtime-crash:
+	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/crash.cpp
+
 .PHONY: check-runtime-input
 check-runtime-input:
 	@if test -f "$(TOPDIR)/../ppc/ppc_recomp_shared.h"; then \
