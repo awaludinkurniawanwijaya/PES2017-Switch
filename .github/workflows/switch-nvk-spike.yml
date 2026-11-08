@@ -192,6 +192,72 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s)
           print("Physical-device enumeration tracepoints installed")
+          # Trace WSI initialization below nvk_init_wsi.
+          p = Path("nxvk/src/nouveau/vulkan/nvk_wsi.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "nvk_wsi.h"', '#include "nvk_wsi.h"' + chr(10) + '#include <stdio.h>', 1)
+          old = """   result = wsi_device_init(&pdev->wsi_device,
+                            nvk_physical_device_to_handle(pdev),
+                            nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
+                            nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd),
+                            &nvk_physical_device_instance(pdev)->drirc.options,
+                            &wsi_options);"""
+          new = """   int display_fd = nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd);
+           fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: display_fd=%d before wsi_device_init\\n", display_fd); fflush(stderr);
+           result = wsi_device_init(&pdev->wsi_device,
+                                    nvk_physical_device_to_handle(pdev),
+                                    nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
+                                    display_fd,
+                                    &nvk_physical_device_instance(pdev)->drirc.options,
+                                    &wsi_options);
+           fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: after wsi_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""
+          if old not in s: raise SystemExit("Missing nvk_wsi wsi_device_init anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   WSI_DEBUG = parse_debug_string(os_get_option(\"MESA_VK_WSI_DEBUG\"), debug_control);",
+               """   fprintf(stderr, "[WSI-TRACE] wsi_device_init: entered pdevice=%p display_fd=%d\\n", (void *)pdevice, display_fd); fflush(stderr);
+             WSI_DEBUG = parse_debug_string(os_get_option("MESA_VK_WSI_DEBUG"), debug_control);"""),
+              ("   GetPhysicalDeviceProperties2(pdevice, &pdp2);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceProperties2 cb=%p\\n", (void *)GetPhysicalDeviceProperties2); fflush(stderr);
+             GetPhysicalDeviceProperties2(pdevice, &pdp2);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceProperties2\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceMemoryProperties(pdevice, &wsi->memory_props);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceMemoryProperties cb=%p\\n", (void *)GetPhysicalDeviceMemoryProperties); fflush(stderr);
+             GetPhysicalDeviceMemoryProperties(pdevice, &wsi->memory_props);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceMemoryProperties\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceQueueFamilyProperties(pdevice, &wsi->queue_family_count, NULL);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceQueueFamilyProperties(count) cb=%p\\n", (void *)GetPhysicalDeviceQueueFamilyProperties); fflush(stderr);
+             GetPhysicalDeviceQueueFamilyProperties(pdevice, &wsi->queue_family_count, NULL);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceQueueFamilyProperties(count) count=%u\\n", wsi->queue_family_count); fflush(stderr);"""),
+              ("   GetPhysicalDeviceProperties(pdevice, &properties);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceProperties cb=%p\\n", (void *)GetPhysicalDeviceProperties); fflush(stderr);
+             GetPhysicalDeviceProperties(pdevice, &properties);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceProperties\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceExternalSemaphoreProperties(pdevice, &esi, &esp);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceExternalSemaphoreProperties handle=0x%x cb=%p\\n", (unsigned)handle_type, (void *)GetPhysicalDeviceExternalSemaphoreProperties); fflush(stderr);
+             GetPhysicalDeviceExternalSemaphoreProperties(pdevice, &esi, &esp);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceExternalSemaphoreProperties handle=0x%x\\n", (unsigned)handle_type); fflush(stderr);"""),
+              ("   result = wsi_switch_init_wsi(wsi, alloc, pdevice);",
+               """   fprintf(stderr, "[WSI-TRACE] before wsi_switch_init_wsi\\n"); fflush(stderr);
+             result = wsi_switch_init_wsi(wsi, alloc, pdevice);
+             fprintf(stderr, "[WSI-TRACE] after wsi_switch_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   result = wsi_headless_init_wsi(wsi, alloc, pdevice);",
+               """   fprintf(stderr, "[WSI-TRACE] before wsi_headless_init_wsi\\n"); fflush(stderr);
+             result = wsi_headless_init_wsi(wsi, alloc, pdevice);
+             fprintf(stderr, "[WSI-TRACE] after wsi_headless_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);""")
+          ]
+          for old, new in pairs:
+              if old not in s: raise SystemExit("Missing WSI trace anchor: " + old[:90])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI initialization tracepoints installed")
           PY
 
       - name: Build pinned NXVK toolchain image
