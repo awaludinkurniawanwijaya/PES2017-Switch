@@ -45,8 +45,17 @@ jobs:
           sed -n '1,80p' nxvk/switch/README.md
           find nxvk/licenses -maxdepth 2 -type f -print | sort
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build pinned NXVK toolchain image
-        run: docker build --pull -t pes17-nxvk nxvk/switch/docker
+        uses: docker/build-push-action@v6
+        with:
+          context: nxvk/switch/docker
+          tags: pes17-nxvk:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build NVK archives and smoke NROs
         run: |
@@ -61,7 +70,7 @@ jobs:
               # Compile the project's loader against the exact pinned NXVK headers.
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
-              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm -g --defined-only \
+              nm -g --defined-only \
                 switch/build/cross/src/nouveau/vulkan/libnvk.a | \
                 grep -q 'vk_icdGetInstanceProcAddr'
               /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
@@ -70,7 +79,7 @@ jobs:
                 -I/opt/devkitpro/libnx/include -include cstdint \
                 -c "/project/runtime/gpu/vulkan/loader.cpp" \
                 -o switch/build/loader-switch.o
-              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm -u switch/build/loader-switch.o | \
+              nm -u switch/build/loader-switch.o | \
                 grep -q 'vk_icdGetInstanceProcAddr'
               /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
                 -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
