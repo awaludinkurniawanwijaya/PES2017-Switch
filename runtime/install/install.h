@@ -20,6 +20,18 @@
 
 namespace install
 {
+    // libnx may enter an NRO with argc == 0 when Homebrew Menu supplies
+    // no arguments; desktop player launches conventionally arrive as argc == 1.
+    // A Switch launch with an explicit development argument remains a dev run.
+    constexpr bool IsPlayerStartArgumentCount(int argc)
+    {
+#ifdef __SWITCH__
+        return argc <= 1;
+#else
+        return argc == 1;
+#endif
+    }
+
     struct Launch
     {
         std::vector<uint8_t> image;         // the title's memory image

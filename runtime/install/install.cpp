@@ -473,7 +473,7 @@ namespace install
 
 bool install::PlayerStart(int argc, char**)
 {
-    return argc == 1;
+    return IsPlayerStartArgumentCount(argc);
 }
 
 fs::path install::Folder(int argc, char** argv)

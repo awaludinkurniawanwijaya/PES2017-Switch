@@ -159,3 +159,8 @@ add_executable(settings-test
     "${PES17_RUNTIME}/settings.cpp")
 target_include_directories(settings-test PRIVATE "${PES17_RUNTIME}")
 add_test(NAME settings COMMAND settings-test)
+
+# The install start contract differs on Switch because libnx may pass argc=0.
+add_executable(install-start-contract-test "${CMAKE_CURRENT_SOURCE_DIR}/install_start_contract_test.cpp")
+target_include_directories(install-start-contract-test PRIVATE "${PES17_SOURCE}/runtime")
+add_test(NAME install-start-contract COMMAND install-start-contract-test)
