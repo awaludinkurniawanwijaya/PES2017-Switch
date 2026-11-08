@@ -136,7 +136,7 @@ namespace
             bool everUploaded = false;
         } overlay;
 
-        std::thread worker;
+        platform::ThreadHandle worker = nullptr;
         std::atomic<bool> running{ false };
         std::atomic<bool> ready{ false };
         std::atomic<uint64_t> presented{ 0 };
@@ -164,7 +164,7 @@ namespace
         // thread of its own, which is what the guest's blank follows.
         bool presentWait = false;
         PFN_vkWaitForPresentKHR waitForPresent = nullptr;
-        std::thread waiter;
+        platform::ThreadHandle waiter = nullptr;
         std::mutex waitLock;
         std::condition_variable waitWake;
         std::deque<uint64_t> waiting;        // present ids not yet seen on screen
@@ -605,6 +605,7 @@ namespace
     }
 
     void Waiter();
+    void WaiterEntry(void*) { Waiter(); }
 
     // The guest's blank follows the display when the display runs at the
     // console's 60 Hz and the device can say when a present reaches it. A
@@ -644,7 +645,14 @@ namespace
         else
             LOGI("vulkan: the display runs at %.3f Hz, not 60; the guest's blank keeps its own"
                  " clock", hz);
-        g.waiter = std::thread(Waiter);
+        g.waiter = platform::StartJoinableThread(WaiterEntry, nullptr, 1024 * 1024,
+                                                  "vulkan present wait");
+        if (!g.waiter)
+        {
+            g.presentWait = false;
+            g.nominalNs = 0;
+            LOGW("vulkan: could not start present-wait worker; using the guest's 60 Hz clock");
+        }
     }
 
     // How much longer the guest's blank may be than the display's while
@@ -1458,6 +1466,8 @@ namespace
         LOGI("vulkan: presenter stopped after %llu frames, %llu swapchains",
              (unsigned long long)g.presented.load(), (unsigned long long)g.swapchainsMade);
     }
+
+    void WorkerEntry(void*) { Worker(); }
 }
 
 bool vk::Start()
@@ -1469,7 +1479,15 @@ bool vk::Start()
     if (!window) return false;
 
     g.running = true;
-    g.worker = std::thread(Worker);
+    g.worker = platform::StartJoinableThread(WorkerEntry, nullptr, 2 * 1024 * 1024,
+                                              "vulkan presenter");
+    if (!g.worker)
+    {
+        g.running = false;
+        g.ready = true;
+        LOGE("vulkan: could not start presenter worker");
+        return false;
+    }
     while (!g.ready.load(std::memory_order_acquire)) std::this_thread::yield();
     return g.running.load();
 }
@@ -1528,14 +1546,16 @@ uint64_t vk::GuestBlankPeriod()
 // stopping and destroying are two steps rather than one.
 void vk::StopPresenting()
 {
-    if (!g.worker.joinable()) return;
+    if (!g.worker) return;
     g.running = false;
     { std::lock_guard lock(g.lock); g.wake.notify_all(); g.takenWake.notify_all(); }
     { std::lock_guard lock(g.waitLock); g.waitWake.notify_all(); }
-    g.worker.join();
-    if (g.waiter.joinable())
+    platform::JoinThread(g.worker);
+    g.worker = nullptr;
+    if (g.waiter)
     {
-        g.waiter.join();
+        platform::JoinThread(g.waiter);
+        g.waiter = nullptr;
         LOGI("vulkan: the display's blank measured %.1f us; frames behind the one on screen"
              " when it was shown: 0 x%llu, 1 x%llu, 2 x%llu, 3+ x%llu; the guest's blank ran"
              " at the display's for %llu, longer for %llu",
