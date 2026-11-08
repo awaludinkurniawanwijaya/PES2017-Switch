@@ -20,7 +20,7 @@ PES-owned Vulkan integration executable.
 
 | Sample | Observation | Interpretation |
 | --- | --- | --- |
-| `nvk_tri.nro` | The application closed after being opened. | The triangle sample did not complete the expected visible test. The cause is unknown; this observation alone does not identify whether the failure occurred during Vulkan initialization, device creation, rendering, or process startup. |
+| `nvk_tri.nro` | A black screen appeared for approximately 1–2 seconds, then the application closed and returned to the Homebrew Menu. | The application began launching but did not complete the visible triangle test. The cause is unknown; this observation alone does not identify whether failure occurred during Vulkan initialization, device creation, swapchain setup, rendering, or process startup. |
 | `nvk_vi_swapchain.nro` | The display showed changing colors. | Positive evidence that this sample reached a visible VI swapchain presentation path on the physical console. It does not establish full Vulkan conformance or PES renderer compatibility. |
 
 ## Conclusions
