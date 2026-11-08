@@ -80,9 +80,18 @@ jobs:
               # Compile the project's loader against the exact pinned NXVK headers.
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
-              nm -g --defined-only \
-                /work/switch/build/pkg/lib/libnvk.a | \
+              NVK_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk.a
+              NVK_SUPPORT_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk_support.a
+              NVK_PC=/opt/devkitpro/portlibs/switch/lib/pkgconfig/nxvk.pc
+              test -s "$NVK_LIB"
+              test -s "$NVK_SUPPORT_LIB"
+              test -s "$NVK_PC"
+              nm -g --defined-only "$NVK_LIB" | \
                 grep -q 'vk_icdGetInstanceProcAddr'
+              # Preserve the installed portlib outputs outside the ephemeral
+              # container so Actions can publish the exact archives used to link.
+              mkdir -p /project/artifacts/nxvk
+              cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
               /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
                 -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
                 -I/project/runtime -I"$PWD/include" \
@@ -116,9 +125,9 @@ jobs:
             nxvk/switch/smoke/out/nvk_tri.nro
             nxvk/switch/smoke/out/nvk_vi_swapchain.nro
             nxvk/switch/build/cross/src/nouveau/vulkan/libnvk.a
-            nxvk/switch/build/pkg/lib/libnvk.a
-            nxvk/switch/build/pkg/lib/libnvk_support.a
-            nxvk/switch/build/pkg/lib/pkgconfig/nxvk.pc
+            artifacts/nxvk/libnvk.a
+            artifacts/nxvk/libnvk_support.a
+            artifacts/nxvk/nxvk.pc
             nxvk/include/vulkan/
             nxvk/include/vk_video/
             nxvk/licenses/
