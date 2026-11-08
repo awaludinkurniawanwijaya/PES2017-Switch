@@ -63,8 +63,8 @@ switch_input::State switch_input::Poll()
     if (raw & HidNpadButton_Y) out.buttons |= kButtonX;
     if (raw & HidNpadButton_X) out.buttons |= kButtonY;
 
-    // settings::Load() imports PES17_* entries from the game's .env file
-    // before the guest starts. The two pairs are deliberately independent.
+    // LoadInputConfig() reads [input] from config/PES.toml before the guest
+    // starts. The two pairs are deliberately independent.
     const settings::InputOptions options = settings::GetInputOptions();
     out.buttons = ApplyFaceButtonSwaps(out.buttons, options.swapAB, options.swapXY);
 
