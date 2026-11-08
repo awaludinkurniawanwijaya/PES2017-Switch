@@ -48,6 +48,12 @@ namespace platform
     bool StartThread(void (*body)(void*), void* argument, size_t stackBytes,
                      const char* name);
 
+    // Managed worker: resources remain owned by the caller until JoinThread.
+    using ThreadHandle = void*;
+    ThreadHandle StartJoinableThread(void (*body)(void*), void* argument,
+                                     size_t stackBytes, const char* name);
+    void JoinThread(ThreadHandle thread);
+
     // A shared library: loaded, or only if something already loaded it.
     void* OpenLibrary(const char* path);
     void* LoadedLibrary(const char* name);
