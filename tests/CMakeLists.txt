@@ -122,6 +122,7 @@ if(WIN32)
     target_link_options(volume-test PRIVATE -static)
     target_link_options(version-test PRIVATE -static)
     target_link_options(settings-test PRIVATE -static)
+    target_link_options(install-start-contract-test PRIVATE -static)
 endif()
 
 # ---- the dynamic scene scale -------------------------------------------------
@@ -162,5 +163,5 @@ add_test(NAME settings COMMAND settings-test)
 
 # The install start contract differs on Switch because libnx may pass argc=0.
 add_executable(install-start-contract-test "${CMAKE_CURRENT_SOURCE_DIR}/install_start_contract_test.cpp")
-target_include_directories(install-start-contract-test PRIVATE "${PES17_SOURCE}/runtime")
+target_include_directories(install-start-contract-test PRIVATE "${PES17_RUNTIME}")
 add_test(NAME install-start-contract COMMAND install-start-contract-test)
