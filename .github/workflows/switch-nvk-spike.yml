@@ -14,6 +14,7 @@ on:
       - "switch/smoke/pes_loader_smoke.cpp"
       - "switch/smoke/build-pes-loader-smoke.sh"
       - "CMakeLists.txt"
+      - "third_party/ffmpeg-xenia/CMakeLists.txt"
       - "cmake/switch-toolchain.cmake"
 
 permissions:
