@@ -17,7 +17,7 @@
 #include <csignal>
 #include <unistd.h>
 #endif
-#include "kernel/kernel.h"
+namespace kernel { void ReportWaits(); }
 
 namespace
 {
