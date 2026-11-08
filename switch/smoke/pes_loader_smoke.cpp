@@ -52,12 +52,6 @@ static void WaitForExit()
 
 int main()
 {
-    // NVK deliberately requires this opt-in before instance creation and
-    // physical-device enumeration. Setting it later (before vkCreateDevice)
-    // is too late: NVK can report zero physical devices.
-    setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1);
-    setenv("MESA_SHADER_CACHE_SHOW_STATS", "1", 1);
-
     consoleInit(nullptr);
     printf("PES NXVK loader diagnostic\\n");
     printf("stage 1: entered main()\\n");
@@ -78,8 +72,22 @@ int main()
     Log("sd mount result=0x%08X", unsigned(mountResult));
     Log("stage 3: log file opened");
 
+    // Apply NVK's opt-in after libnx console/SD initialization, but before
+    // vkCreateInstance and physical-device enumeration. This avoids touching
+    // the process environment during the earliest app startup path.
+    Log("stage 4: configuring NVK environment");
+    if (setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1) != 0 ||
+        setenv("MESA_SHADER_CACHE_SHOW_STATS", "1", 1) != 0) {
+        Log("FAIL could not configure NVK environment (errno=%d)", errno);
+        fclose(g_log); g_log = nullptr;
+        WaitForExit();
+        consoleExit(nullptr);
+        return 3;
+    }
+    Log("NVK environment configured");
+
     std::string error;
-    Log("stage 4: calling vk::loader::Open");
+    Log("stage 5: calling vk::loader::Open");
     if (!vk::loader::Open(error)) {
         Log("loader Open failed: %s", error.c_str());
         fclose(g_log); g_log = nullptr;
@@ -105,14 +113,14 @@ int main()
     ici.pApplicationInfo = &app;
     ici.enabledExtensionCount = 2;
     ici.ppEnabledExtensionNames = instanceExts;
-    Log("stage 5: vkCreateInstance");
+    Log("stage 6: vkCreateInstance");
     CHECK_VK(vkCreateInstance(&ici, nullptr, &instance));
     vk::loader::LoadInstance(instance);
     Log("vkCreateInstance OK");
 
     VkViSurfaceCreateInfoNN sci{VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN};
     sci.window = nwindowGetDefault();
-    Log("stage 6: vkCreateViSurfaceNN");
+    Log("stage 7: vkCreateViSurfaceNN");
     CHECK_VK(vkCreateViSurfaceNN(instance, &sci, nullptr, &surface));
     Log("vkCreateViSurfaceNN OK");
 
@@ -147,7 +155,7 @@ int main()
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci;
     dci.enabledExtensionCount = 1; dci.ppEnabledExtensionNames = deviceExts;
-    Log("stage 7: vkCreateDevice");
+    Log("stage 8: vkCreateDevice");
     CHECK_VK(vkCreateDevice(physical, &dci, nullptr, &device));
     vk::loader::LoadDevice(device);
     vkGetDeviceQueue(device, qFamily, 0, &queue);
@@ -176,7 +184,7 @@ int main()
     swci.imageUsage=(caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swci.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE; swci.preTransform=caps.currentTransform;
     swci.compositeAlpha=alpha; swci.presentMode=VK_PRESENT_MODE_FIFO_KHR; swci.clipped=VK_TRUE;
-    Log("stage 8: vkCreateSwapchainKHR");
+    Log("stage 9: vkCreateSwapchainKHR");
     CHECK_VK(vkCreateSwapchainKHR(device,&swci,nullptr,&swapchain));
     uint32_t actualImages=0;
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,nullptr));
