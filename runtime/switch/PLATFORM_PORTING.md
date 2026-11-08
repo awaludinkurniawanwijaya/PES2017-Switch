@@ -80,6 +80,7 @@ The project's Vulkan presenter now has a Switch VI path:
 - Checks required VI surface and swapchain dispatch functions before use, plus the surface's transfer-destination image capability before swapchain creation.
 - Explicitly sets `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, as required by this experimental NVK port, and logs the experimental/non-conformant status.
 - Uses the platform's managed joinable thread API for presenter and present-wait workers instead of creating raw `std::thread` objects on Switch.
+- The bootstrap and primary guest XInput poll now call `appletMainLoop()` through `switch_input::MainLoop()`, so Horizon applet events and exit requests are serviced on the main thread before HID polling.
 - Shutdown/deadline handling, player diagnostic workers, the stutter watcher, and the Switch GPU hang monitor also use the platform thread API. The Switch crash path avoids POSIX signal/pthread implementation headers and can be syntax-checked without generated PPC headers.
 - Enumerates global instance extensions with a null layer name, matching the Vulkan API contract.
 
