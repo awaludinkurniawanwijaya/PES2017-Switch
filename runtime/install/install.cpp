@@ -508,8 +508,14 @@ bool install::Prepare(int, char**, Launch& launch, int& exitCode)
     // Not installed, or installed for another version of this build: both are
     // the launcher's to put right.
     if (StartLauncher()) { exitCode = 0; return false; }
+#ifdef __SWITCH__
+    ShowError("PES 2017 is not installed. Place the verified game files in "
+              "sdmc:/switch/PES2017/game/ and launch again. The Switch build "
+              "does not include the desktop installer.");
+#else
     ShowError(std::string("The game is not installed here, and ") + kLauncher +
               " is not beside this program to install it.");
+#endif
     return false;
 }
 
