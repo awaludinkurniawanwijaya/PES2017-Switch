@@ -10,6 +10,7 @@ complete game-data launch path.
 ### Implemented platform groundwork
 
 - libnx platform adapter, SDMC mount, process paths, and managed thread APIs;
+- main-thread `appletMainLoop()` pumping in the bootstrap and primary XInput polling path, so Horizon lifecycle/exit events have an integration point;
 - Joy-Con / Pro Controller button and stick polling, with a partial XInput
   bridge (digital trigger mapping only; no vibration);
 - libnx AudOut PCM sink and Switch APU output path (not yet hardware validated);
@@ -37,9 +38,10 @@ complete game-data launch path.
   and syntax-compiling the project's loader and presenter against the pinned
   headers. The latest run is still in progress.
 
-Host tests and the bootstrap NRO build have passed. Those results do **not**
-prove that the Vulkan presenter runs on a Switch, that NVK presents to the
-screen, or that PES 2017 can boot.
+Host tests and the bootstrap NRO build have passed. The runtime XInput
+translation unit still needs the generated PPC headers for its full syntax
+check. These results do **not** prove that the Vulkan presenter runs on a
+Switch, that NVK presents to the screen, or that PES 2017 can boot.
 
 ## Bootstrap build
 
