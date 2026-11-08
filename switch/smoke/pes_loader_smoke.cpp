@@ -77,7 +77,7 @@ int main()
     printf("stage 2: fsdevMountSdmc = 0x%08X\n", unsigned(mountResult));
     consoleUpdate(nullptr);
 
-    g_log = fopen("sdmc:/pes_nxvk_loader_smoke.log", "w");
+    g_log = fopen("sdmc:/switch/pes_nxvk_loader_smoke.log", "w");
     if (!g_log) {
         printf("stage 3: fopen FAILED (errno=%d)\n", errno);
         WaitForExit();
@@ -88,14 +88,14 @@ int main()
     Log("sd mount result=0x%08X", unsigned(mountResult));
     Log("stage 3: log file opened");
     // Route Mesa/NVK stderr diagnostics to a separate SD-card log.
-    if (freopen("sdmc:/nvk_internal.log", "w", stderr)) {
+    if (freopen("sdmc:/switch/nvk_internal.log", "w", stderr)) {
         setvbuf(stderr, nullptr, _IONBF, 0);
         Log("stage 3a: NVK internal stderr capture opened");
     } else {
         Log("WARN could not redirect stderr to nvk_internal.log errno=%d", errno);
     }
-    g_mesa_log = fopen("sdmc:/nvk_mesa.log", "w");
-    if (!g_mesa_log) Log("WARN could not open sdmc:/nvk_mesa.log errno=%d", errno);
+    g_mesa_log = fopen("sdmc:/switch/nvk_mesa.log", "w");
+    if (!g_mesa_log) Log("WARN could not open sdmc:/switch/nvk_mesa.log errno=%d", errno);
 
     // Apply NVK's opt-in after libnx console/SD initialization, but before
     // vkCreateInstance and physical-device enumeration. This avoids touching
