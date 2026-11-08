@@ -80,11 +80,13 @@ The project's Vulkan presenter now has a Switch VI path:
 - Checks required VI surface and swapchain dispatch functions before use, plus the surface's transfer-destination image capability before swapchain creation.
 - Explicitly sets `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, as required by this experimental NVK port, and logs the experimental/non-conformant status.
 - Uses the platform's managed joinable thread API for presenter and present-wait workers instead of creating raw `std::thread` objects on Switch.
+- Shutdown/deadline handling, player diagnostic workers, the stutter watcher, and the Switch GPU hang monitor also use the platform thread API. The Switch crash path avoids POSIX signal/pthread implementation headers and can be syntax-checked without generated PPC headers.
 - Enumerates global instance extensions with a null layer name, matching the Vulkan API contract.
 
 ### Remaining integration gates
 
-- Complete the pinned NXVK archive build and the loader/presenter compile gate on the latest commit; these jobs are still running/queued.
+- Complete the pinned NXVK archive build and the loader/presenter compile gate; the toolchain image has built, and the NVK archive/smoke-NRO step is still running.
+- The libnx bootstrap workflow now syntax-checks the Switch crash/hang-monitor path and successfully builds the diagnostic bootstrap NRO; this does not link the full PES runtime.
 - Verify the exported ICD ABI and device dispatch at runtime; syntax compilation alone does not prove that all calls work.
 - Run the NXVK triangle and VI swapchain diagnostic NROs on physical Switch hardware and inspect their SD-card logs.
 - Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, platform/audio/input sources, and static NXVK archives. The bootstrap NRO does not include this runtime.
