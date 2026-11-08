@@ -1,7 +1,48 @@
 #include <switch.h>
 #include <cstdio>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <shared_mutex>
 
 #include "input.h"
+#include "platform.h"
+
+namespace {
+    std::mutex g_probeMutex;
+    std::condition_variable g_probeCondition;
+    std::shared_mutex g_probeSharedMutex;
+    bool g_probeReady = false;
+
+    void SyncProbeWorker(void*) {
+        {
+            std::lock_guard lock(g_probeMutex);
+            g_probeReady = true;
+        }
+        g_probeCondition.notify_one();
+    }
+
+    bool RunSyncProbe() {
+        g_probeReady = false;
+        auto worker = platform::StartJoinableThread(
+            SyncProbeWorker, nullptr, 256 * 1024, "C++ sync probe");
+        if (!worker) return false;
+        bool ready = false;
+        {
+            std::unique_lock lock(g_probeMutex);
+            ready = g_probeCondition.wait_for(lock, std::chrono::seconds(3),
+                                              [] { return g_probeReady; });
+        }
+        platform::JoinThread(worker);
+        {
+            std::unique_lock lock(g_probeSharedMutex);
+        }
+        {
+            std::shared_lock lock(g_probeSharedMutex);
+        }
+        return ready;
+    }
+}
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -9,10 +50,12 @@ int main(int argc, char* argv[]) {
 
     consoleInit(nullptr);
     switch_input::Initialize();
+    const bool syncOk = RunSyncProbe();
 
     std::printf("PES 2017 - Nintendo Switch port\n");
     std::printf("--------------------------------\n");
     std::printf("Native libnx bootstrap is running.\n");
+    std::printf("C++ thread/synchronization probe: %s\n", syncOk ? "passed" : "FAILED");
     std::printf("Joy-Con / Pro Controller input test\n");
     std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
     std::printf("Sticks: left and right analog\n");
