@@ -12,6 +12,7 @@ This note records the source-level blockers found while preparing the native Swi
 - The full runtime selects `sdmc:/switch/PES2017/pes2017-switch.log` by default when no `PES17_LOG_FILE` is supplied, so hardware startup and GPU errors have a persistent SD destination. This source path still awaits a full game-runtime build and physical validation.
 - A first Horizon guest-memory backend now reserves a 4 GiB address range through libnx `virtmem`, maps one 512 MiB shared-memory object at the cached/physical/aperture windows, and maps non-bank committed pages with `svcMapPhysicalMemory`. The devkitA64 syntax gate passes; SVC permissions, full-size allocation, and address placement still need physical Switch validation.
 - The existing runtime is a separate CMake target. Its desktop entry point is `runtime/main.cpp`; Android starts `pes17::Run` from JNI.
+- The devkitA64 NRO workflow now syntax-compiles the actual `runtime/switch/platform.cpp` adapter, in addition to the install, audio, crash, stutter, and guest-memory seams. This validates the adapter against CI libnx headers, not its runtime behavior on hardware.
 - The Switch bootstrap compiles selected runtime units as syntax/link probes, but does not link the complete `runtime/`, generated `ppc/`, or any guest code.
 
 ## Integration blockers
