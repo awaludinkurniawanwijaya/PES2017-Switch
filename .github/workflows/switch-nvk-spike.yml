@@ -88,6 +88,12 @@ jobs:
                   -DPES17_SWITCH=ON \
                   -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
 
+              # The placeholder PPC files keep private game output out of CI,
+              # while allowing the complete native runtime target to compile
+              # and link against the exact NXVK CMake integration.
+              run_stage "Build complete PES Switch runtime target (placeholder PPC only)" \
+                cmake --build /project/switch/build/cmake-configure --target pes17 --parallel 4
+
               NVK_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk.a
               NVK_SUPPORT_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk_support.a
               NVK_PC=/opt/devkitpro/portlibs/switch/lib/pkgconfig/nxvk.pc
