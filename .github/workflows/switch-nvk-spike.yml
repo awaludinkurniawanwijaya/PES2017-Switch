@@ -47,17 +47,8 @@ jobs:
           sed -n '1,80p' nxvk/switch/README.md
           find nxvk/licenses -maxdepth 2 -type f -print | sort
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build pinned NXVK toolchain image
-        uses: docker/build-push-action@v6
-        with:
-          context: nxvk/switch/docker
-          tags: pes17-nxvk:latest
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build --pull -t pes17-nxvk nxvk/switch/docker
 
       - name: Build NVK archives and smoke NROs
         run: |
