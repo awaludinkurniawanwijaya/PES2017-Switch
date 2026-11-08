@@ -14,6 +14,18 @@ COMMON="-std=gnu++20 -O2 -Wall -Wextra -ffunction-sections -fdata-sections -fPIE
 DEFS="-D__SWITCH__ -D_GNU_SOURCE -D_DEFAULT_SOURCE -DVK_USE_PLATFORM_VI_NN -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN -DPES17_NO_LOGGING"
 INCLUDES="-I$ROOT/runtime -I$NXVK/include -I$DKP/libnx/include -include cstdint"
 
+
+echo "==> Build minimal libnx startup probe (no Vulkan/NXVK)"
+$GXX $COMMON -D__SWITCH__ -I"$DKP/libnx/include" -c "$ROOT/switch/smoke/pes_startup_probe.cpp" -o "$OBJ/pes_startup_probe.o"
+$GXX -specs="$DKP/libnx/switch.specs" -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft \
+  -L"$DKP/libnx/lib" -o "$OBJ/pes_startup_probe.elf" \
+  "$OBJ/pes_startup_probe.o" -lnx -lstdc++ -pthread
+"$DKP/tools/bin/nacptool" --create "PES Switch Startup Probe" "PES2017-Switch" "0.1.0" "$OBJ/pes_startup_probe.nacp"
+"$DKP/tools/bin/elf2nro" "$OBJ/pes_startup_probe.elf" "$OUT/pes_startup_probe.nro" \
+  --icon="$DKP/libnx/default_icon.jpg" --nacp="$OBJ/pes_startup_probe.nacp"
+test -s "$OUT/pes_startup_probe.nro"
+ls -lh "$OUT/pes_startup_probe.nro"
+
 echo "==> Compile actual PES Vulkan loader.cpp"
 $GXX $COMMON $DEFS $INCLUDES -c "$ROOT/runtime/gpu/vulkan/loader.cpp" -o "$OBJ/loader.o"
 
