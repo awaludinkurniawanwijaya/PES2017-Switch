@@ -74,6 +74,30 @@ jobs:
               ("   const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();", """   fprintf(stderr, "[NVK-TRACE] before nvGpuGetCharacteristics\\n"); fflush(stderr);
              const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();
              fprintf(stderr, "[NVK-TRACE] after nvGpuGetCharacteristics ptr=%p\\n", (const void *)chars); fflush(stderr);"""),
+              ("   struct nvkmd_nvgpu_pdev *pdev = CALLOC_STRUCT(nvkmd_nvgpu_pdev);", """   fprintf(stderr, "[NVK-TRACE] characteristics accepted; before pdev allocation\\n"); fflush(stderr);
+             struct nvkmd_nvgpu_pdev *pdev = CALLOC_STRUCT(nvkmd_nvgpu_pdev);
+             fprintf(stderr, "[NVK-TRACE] after pdev allocation ptr=%p\\n", (void *)pdev); fflush(stderr);"""),
+              ("   nvkmd_nvgpu_get_dev_info(chars, &pdev->base.dev_info);", """   fprintf(stderr, "[NVK-TRACE] before get_dev_info\\n"); fflush(stderr);
+             nvkmd_nvgpu_get_dev_info(chars, &pdev->base.dev_info);
+             fprintf(stderr, "[NVK-TRACE] after get_dev_info chipset=0x%x sm=%u gpc=%u tpc=%u class3d=0x%x\\n",
+                     pdev->base.dev_info.chipset, pdev->base.dev_info.sm,
+                     pdev->base.dev_info.gpc_count, pdev->base.dev_info.tpc_count,
+                     pdev->base.dev_info.cls_eng3d); fflush(stderr);"""),
+              ("   if (!(debug_flags & NVK_DEBUG_NO_ZCULL))\n      nvkmd_nvgpu_get_zcull_info(&pdev->base.dev_info);", """   fprintf(stderr, "[NVK-TRACE] zcull enabled=%u; before get_zcull_info\\n",
+                   !(debug_flags & NVK_DEBUG_NO_ZCULL)); fflush(stderr);
+             if (!(debug_flags & NVK_DEBUG_NO_ZCULL))
+                nvkmd_nvgpu_get_zcull_info(&pdev->base.dev_info);
+             fprintf(stderr, "[NVK-TRACE] after get_zcull_info has_zcull=%u\\n",
+                     pdev->base.dev_info.has_zcull_info); fflush(stderr);"""),
+              ("   pdev->syncobj_timeline_type =\n      vk_sync_timeline_get_type(&nvkmd_nvgpu_syncobj_type);", """   fprintf(stderr, "[NVK-TRACE] before sync type init\\n"); fflush(stderr);
+             pdev->syncobj_timeline_type =
+                vk_sync_timeline_get_type(&nvkmd_nvgpu_syncobj_type);
+             fprintf(stderr, "[NVK-TRACE] after sync type init\\n"); fflush(stderr);"""),
+              ("   *pdev_out = &pdev->base;\n\n   return VK_SUCCESS;", """   *pdev_out = &pdev->base;
+             fprintf(stderr, "[NVK-TRACE] nvgpu pdev creation returning VK_SUCCESS pdev=%p\\n",
+                     (void *)*pdev_out); fflush(stderr);
+
+             return VK_SUCCESS;"""),
           ]
           for old, new in pairs:
               if old not in s:
