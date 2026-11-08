@@ -210,11 +210,19 @@ if(PES17_SWITCH)
         -ffunction-sections -fdata-sections -pthread)
     target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(NXVK REQUIRED IMPORTED_TARGET nxvk)
-    target_link_directories(pes17 PRIVATE "$ENV{DEVKITPRO}/libnx/lib")
-    # Keep libnx after the static NVK archives so its symbols resolve
-    # dependencies pulled in by the whole-archived ICD.
-    target_link_libraries(pes17 PRIVATE PkgConfig::NXVK nx)
+    pkg_check_modules(NXVK REQUIRED nxvk)
+    target_link_directories(pes17 PRIVATE
+        "$ENV{DEVKITPRO}/portlibs/switch/lib"
+        "$ENV{DEVKITPRO}/libnx/lib")
+    # The upstream nxvk.pc wraps libnvk.a in --whole-archive. That is not
+    # needed here: force the ICD entry point, then let the linker pull only
+    # referenced driver objects. The smoke link verified this layout.
+    # NVK has read-only-section dynamic relocations; NRO startup applies them.
+    target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,vk_icdGetInstanceProcAddr)
+    target_link_libraries(pes17 PRIVATE
+        nvk
+        "-Wl,--start-group" nvk_support z expat "-Wl,--end-group"
+        nx)
 endif()
 # The runtime checks the disc's executable against this hash before installing.
 # The selected local executable is PES 2017 Europe XEX v0x12. Validate its
