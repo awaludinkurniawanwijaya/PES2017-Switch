@@ -9,7 +9,7 @@
 #       only touches registers the PowerPC ABI makes dead at calls (ctr, xer, the
 #       reservation, cr). aggressive adds skip_lr/skip_msr and non-volatile/argument
 #       locals (-31%) and is only for a build whose guest code has been validated.
-#   RECOMPILE_ONLY=1   stop once ppc/ is generated and checked (step 7)
+#   RECOMPILE_ONLY=1   stop once ppc/ is generated and checked (step 8)
 #   JOBS=<n>           parallel compile jobs;  CCACHE=1 uses ccache when installed
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd); cd "$ROOT"
