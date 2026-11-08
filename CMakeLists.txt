@@ -212,7 +212,9 @@ if(PES17_SWITCH)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(NXVK REQUIRED IMPORTED_TARGET nxvk)
     target_link_directories(pes17 PRIVATE "$ENV{DEVKITPRO}/libnx/lib")
-    target_link_libraries(pes17 PRIVATE nx PkgConfig::NXVK)
+    # Keep libnx after the static NVK archives so its symbols resolve
+    # dependencies pulled in by the whole-archived ICD.
+    target_link_libraries(pes17 PRIVATE PkgConfig::NXVK nx)
 endif()
 # The runtime checks the disc's executable against this hash before installing.
 if(NOT PES17_XEX_SHA256_SP)
