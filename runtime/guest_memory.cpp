@@ -17,6 +17,13 @@
 #  ifndef MEM_PRESERVE_PLACEHOLDER
 #    define MEM_PRESERVE_PLACEHOLDER 0x00000002
 #  endif
+#elif defined(__SWITCH__)
+extern "C"
+{
+#  include <switch/result.h>
+#  include <switch/kernel/svc.h>
+#  include <switch/kernel/virtmem.h>
+}
 #else
 #  include <sys/mman.h>
 #  include <unistd.h>
@@ -32,6 +39,10 @@ namespace
 {
     uint8_t* g_base = nullptr;
     constexpr uint64_t kSpace = 0x100000000ull;   // full 32-bit guest space
+#ifdef __SWITCH__
+    VirtmemReservation* g_reservation = nullptr;
+    Handle g_physicalBank = INVALID_HANDLE;
+#endif
 }
 
 uint8_t* guest::Base() { return g_base; }
@@ -40,6 +51,32 @@ bool guest::Commit(uint32_t address, uint32_t size)
 {
 #ifdef _WIN32
     return VirtualAlloc(g_base + address, size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+#elif defined(__SWITCH__)
+    if (!g_base || !size) return false;
+    constexpr uint64_t kPage = 0x1000;
+    const uint64_t begin = uint64_t(address) & ~(kPage - 1);
+    const uint64_t end = (uint64_t(address) + size + kPage - 1) & ~(kPage - 1);
+    const uint64_t bankSize = uint64_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+    for (uint32_t window : { guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase })
+    {
+        const uint64_t windowBegin = window;
+        const uint64_t windowEnd = windowBegin + bankSize;
+        if (begin >= windowBegin && end <= windowEnd) return true;
+        if (begin < windowEnd && end > windowBegin)
+        {
+            LOGE("guest: Switch commit %08llX..%08llX overlaps physical bank window %08X",
+                 (unsigned long long)begin, (unsigned long long)end, window);
+            return false;
+        }
+    }
+    const Result rc = svcMapPhysicalMemory(g_base + begin, end - begin);
+    if (R_FAILED(rc))
+    {
+        LOGE("guest: svcMapPhysicalMemory(%08llX, %llu) failed: 0x%08X",
+             (unsigned long long)begin, (unsigned long long)(end - begin), unsigned(rc));
+        return false;
+    }
+    return true;
 #else
     // The reservation is already mapped read/write; pages are backed on touch.
     (void)address; (void)size;
@@ -138,6 +175,62 @@ namespace
                                PAGE_NOACCESS, nullptr, 0) &&
                g_virtualAlloc2(nullptr, g_base + apertureEnd, size_t(kSpace - apertureEnd),
                                MEM_RESERVE | MEM_REPLACE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+    }
+#elif defined(__SWITCH__)
+    bool ReserveSpace()
+    {
+        // Reserve one contiguous 4 GiB guest address range in Horizon's ASLR
+        // region. virtmemAddReservation keeps libnx's own random mappings out
+        // of the range; the individual guest pages are mapped on Commit().
+        virtmemLock();
+        void* address = virtmemFindAslr(size_t(kSpace), 0x1000);
+        if (address) g_reservation = virtmemAddReservation(address, size_t(kSpace));
+        virtmemUnlock();
+        if (!address || !g_reservation)
+        {
+            LOGE("guest: could not reserve a contiguous 4 GiB Switch address range");
+            return false;
+        }
+        g_base = static_cast<uint8_t*>(address);
+        return true;
+    }
+
+    bool MapPhysicalAperture()
+    {
+        const size_t size = size_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+        Result rc = svcCreateSharedMemory(&g_physicalBank, size, Perm_Rw, Perm_DontCare);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: svcCreateSharedMemory(%zu) failed: 0x%08X",
+                 size, unsigned(rc));
+            g_physicalBank = INVALID_HANDLE;
+            return false;
+        }
+
+        const uint32_t windows[] = {
+            guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase
+        };
+        size_t mapped = 0;
+        for (uint32_t window : windows)
+        {
+            rc = svcMapSharedMemory(g_physicalBank, g_base + window, size, Perm_Rw);
+            if (R_FAILED(rc))
+            {
+                LOGE("guest: mapping 512 MiB bank at %08X failed: 0x%08X",
+                     window, unsigned(rc));
+                while (mapped)
+                {
+                    --mapped;
+                    svcUnmapSharedMemory(g_physicalBank, g_base + windows[mapped], size);
+                }
+                svcCloseHandle(g_physicalBank);
+                g_physicalBank = INVALID_HANDLE;
+                return false;
+            }
+            ++mapped;
+        }
+        LOGI("guest: Switch shared 512 MiB bank mapped at cached/physical/aperture windows");
+        return true;
     }
 #else
     bool ReserveSpace()
