@@ -89,9 +89,10 @@ static void ResolveDiagnosticLogPaths(int argc, char** argv)
             path[n] = '\0';
             const bool sdPath = std::strncmp(path, "sdmc:/", 6) == 0;
             const char* ext = std::strrchr(path, '.');
-            bool nroExtension = ext && (std::tolower((unsigned char)ext[1]) == 'n') &&
+            bool nroExtension = ext && std::strlen(ext) == 4 &&
+                                (std::tolower((unsigned char)ext[1]) == 'n') &&
                                 (std::tolower((unsigned char)ext[2]) == 'r') &&
-                                (std::tolower((unsigned char)ext[3]) == 'o') && ext[4] == '\0';
+                                (std::tolower((unsigned char)ext[3]) == 'o');
             if (sdPath && nroExtension) {
                 FILE* nro = std::fopen(path, "rb");
                 if (nro) {
