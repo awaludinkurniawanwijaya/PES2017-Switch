@@ -10,7 +10,7 @@
 #include "../../signin.h"
 #include "../../online/service.h"
 
-#if !defined(PES17_HAVE_VULKAN) || (!defined(PES17_USE_SDL) && !defined(PES17_ANDROID))
+#if !defined(PES17_HAVE_VULKAN) || (!defined(PES17_USE_SDL) && !defined(PES17_ANDROID) && !defined(__SWITCH__))
 // Without a loader or a window system there is nothing to present to; the rest
 // of the runtime carries on headless.
 bool     vk::Start()           { return false; }
@@ -45,6 +45,9 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #ifdef PES17_USE_SDL
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#endif
+#ifdef __SWITCH__
+#include <switch.h>
 #endif
 #ifdef PES17_ANDROID
 #include <android/native_window.h>
@@ -426,6 +429,9 @@ namespace
                 width = ANativeWindow_getWidth(g.nativeWindow);
                 height = ANativeWindow_getHeight(g.nativeWindow);
             }
+#elif defined(__SWITCH__)
+            width = int(kWidth);
+            height = int(kHeight);
 #else
             SDL_GetWindowSizeInPixels(g.window, &width, &height);
 #endif
@@ -587,12 +593,16 @@ namespace
     void FollowTheDisplay()
     {
         double hz = 0;
-#ifdef PES17_ANDROID
+#if defined(PES17_ANDROID)
         // Display.getRefreshRate, as the app reported it. A phone that can
         // run at 90 or 120 is asked for 60 by the app where it can, because
         // the console's frame is a 60 Hz frame and a display at 90 shows
         // every other one twice.
         hz = android::RefreshHz();
+        g.exactRate = false;
+#elif defined(__SWITCH__)
+        // Horizon's VI display mode for the default applet is 60 Hz.
+        hz = 60.0;
         g.exactRate = false;
 #else
         if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(g.window)))
@@ -1125,6 +1135,25 @@ namespace
         g.instance = VK_NULL_HANDLE;
     }
 
+#ifdef __SWITCH__
+    // Horizon VI owns the default applet window. Keep this minimal and use the
+    // same window/surface contract as the upstream NXVK smoke test.
+    bool CreateSurfaceForWindow()
+    {
+#if defined(PES17_VULKAN_DYNAMIC)
+        if (!vkCreateViSurfaceNN)
+        {
+            LOGE("vulkan: this driver has no VK_NN_vi_surface");
+            return false;
+        }
+#endif
+        VkViSurfaceCreateInfoNN info{ VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN };
+        info.window = nwindowGetDefault();
+        return Check(vkCreateViSurfaceNN(g.instance, &info, nullptr, &g.surface),
+                     "vkCreateViSurfaceNN");
+    }
+#endif
+
 #ifdef PES17_ANDROID
     // The Vulkan surface for the window the activity handed over.
     bool CreateSurfaceForWindow()
@@ -1237,6 +1266,18 @@ namespace
         vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
         android::SetStatus((std::string("Running on ") + vk::pipeline::DeviceName()).c_str());
         return true;
+#elif defined(__SWITCH__)
+        std::string error;
+        if (!vk::loader::Opened() && !vk::loader::Open(error))
+        {
+            LOGE("vulkan: %s", error.c_str());
+            return false;
+        }
+        if (!CreateInstance() || !CreateSurfaceForWindow() ||
+            !PickDevice() || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            return false;
+        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        return true;
 #else
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         {
@@ -1304,7 +1345,7 @@ namespace
                 g.wake.wait_for(lock, std::chrono::milliseconds(32));
                 continue;
             }
-#else
+#elif !defined(__SWITCH__)
             SDL_Event event;
             while (SDL_PollEvent(&event))
                 // Not `g.running = false`: that stops the pump, and with nothing
@@ -1379,7 +1420,7 @@ namespace
                 else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
                          event.type == SDL_EVENT_WINDOW_RESIZED)
                     g.remakeSwapchain = true;
-#endif  // PES17_ANDROID
+#endif  // platform event pump
 
             // A frame to show, or 16 ms to go round the events again. Until the
             // renderer has finished one, the window shows its own colour.
