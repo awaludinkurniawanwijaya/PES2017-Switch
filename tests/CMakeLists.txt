@@ -131,3 +131,11 @@ add_executable(dynamic-scale-test
     "${CMAKE_CURRENT_SOURCE_DIR}/dynamic_scale_test.cpp")
 target_include_directories(dynamic-scale-test PRIVATE "${PES17_RUNTIME}")
 add_test(NAME dynamic-scale COMMAND dynamic-scale-test)
+
+# ---- XEX execution-info target version --------------------------------------
+# The executable's execution-info version is metadata, not a hard-coded
+# parser restriction. Verify that 0x12 is accepted while other versions remain
+# readable, and reject malformed XEX headers before a local recompilation.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME xex-version
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/xex_version_test.py")
