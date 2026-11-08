@@ -53,6 +53,14 @@ jobs:
             bash -lc '
               set -euo pipefail
               make CONTAINER= driver
+              # Compile the project's loader against the exact pinned NXVK headers.
+              # This proves the loaderless ICD entry-point adapter is type-correct
+              # with the same Vulkan ABI used by the smoke NROs.
+              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                -I"$GITHUB_WORKSPACE/runtime" -I"$PWD/include" \
+                -I/opt/devkitpro/libnx/include -include cstdint \
+                -fsyntax-only "$GITHUB_WORKSPACE/runtime/gpu/vulkan/loader.cpp"
               # The upstream smoke shader headers are generated build products,
               # intentionally not committed. Generate them inside the pinned image
               # before compiling the validation NROs.
