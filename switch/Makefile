@@ -58,7 +58,7 @@ export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
 
 .PHONY: all clean $(BUILD)
-all: check-runtime-input check-runtime-install $(BUILD)
+all: check-runtime-input check-runtime-install check-runtime-audio $(BUILD)
 
 # Compile the SD-card install/discovery path with the Switch compiler. This
 # source has no generated PPC dependency and catches Switch filesystem API
@@ -66,6 +66,10 @@ all: check-runtime-input check-runtime-install $(BUILD)
 .PHONY: check-runtime-install
 check-runtime-install:
 	$(CXX) -std=gnu++20 -D__SWITCH__ -DPES17_XEX_SHA256_SP='"0000000000000000000000000000000000000000000000000000000000000000"' -DPES17_XEX_SHA256_MP='"0000000000000000000000000000000000000000000000000000000000000000"' -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/install/install.cpp
+
+.PHONY: check-runtime-audio
+check-runtime-audio:
+	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/switch/audio.cpp
 
 # Compile the actual guest XInput bridge with the Switch compiler as a
 # syntax-only gate. The bootstrap NRO does not yet link the full game runtime.
