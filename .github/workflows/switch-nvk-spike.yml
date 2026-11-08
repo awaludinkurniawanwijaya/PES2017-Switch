@@ -68,7 +68,6 @@ jobs:
             nxvk/switch/smoke/out/nvk_tri.nro
             nxvk/switch/smoke/out/nvk_vi_swapchain.nro
             nxvk/switch/build/cross/src/nouveau/vulkan/libnvk.a
-            nxvk/switch/build/pkg/lib/libnvk_support.a
             nxvk/licenses/
           if-no-files-found: error
           retention-days: 14
