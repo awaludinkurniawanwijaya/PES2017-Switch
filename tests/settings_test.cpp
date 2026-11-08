@@ -36,51 +36,53 @@ int main()
         "PES17_INPUT_SWAP_A_B", "PES17_INPUT_SWAP_X_Y", "PES17_EXISTING"
     };
     for (const char* name : names) SetEnv(name, nullptr);
-    SetEnv("PES17_INPUT_SWAP_X_Y", "process");
     SetEnv("PES17_EXISTING", "from-process");
 
-    const auto root = std::filesystem::temp_directory_path() / "pes17-settings-test";
-    const auto config = root / "config";
-    std::filesystem::create_directories(config);
-    const auto envPath = root / ".env";
-    {
-        std::ofstream file(config / "PES.toml", std::ios::binary | std::ios::trunc);
-        file << "[main]\n"
-                "skip_lr = false\n"
-                "\n"
-                "[input]\n"
-                "swap_a_b = true\n"
-                "swap_x_y = false # process override must win\n"
-                "unknown = true\n";
-        Check(bool(file), "write temporary config/PES.toml");
-    }
+    const auto envPath = std::filesystem::temp_directory_path() / "pes17-settings-test.env";
     {
         std::ofstream file(envPath, std::ios::binary | std::ios::trunc);
-        file << "PES17_INPUT_SWAP_A_B=1\r\n"
-                "PES17_INPUT_SWAP_X_Y=0\n"
-                "OTHER_SETTING=ignored\n"
-                "PES17_MALFORMED\n"
-                "PES17_EXISTING=from-file\n";
-        Check(bool(file), "write temporary .env");
+        file << "PES17_EXISTING=from-file\nOTHER_SETTING=ignored\nPES17_MALFORMED\n";
+        Check(bool(file), "write temporary legacy environment file");
     }
-
     const std::string loaded = settings::Load(envPath);
-    const char* ab = std::getenv("PES17_INPUT_SWAP_A_B");
-    const char* xy = std::getenv("PES17_INPUT_SWAP_X_Y");
     const char* existing = std::getenv("PES17_EXISTING");
+    Check(existing && std::string(existing) == "from-process", "preserve existing process setting");
+    Check(loaded.empty(), "ignore non-runtime entries and preserve existing values");
 
-    Check(ab && std::string(ab) == "true", "load boolean A/B setting from config/PES.toml");
-    Check(xy && std::string(xy) == "process", "preserve process override over TOML and .env");
-    Check(existing && std::string(existing) == "from-process",
-          "preserve an existing process setting");
-    Check(loaded == "PES17_INPUT_SWAP_A_B=true",
-          "report only settings imported from config and .env");
+    const auto tomlPath = std::filesystem::temp_directory_path() / "pes17-settings-test.toml";
+    {
+        std::ofstream file(tomlPath, std::ios::binary | std::ios::trunc);
+        file << "[main]\nskip_lr = false\n[input]\nswap_a_b = true # enabled\nswap_x_y = false\n[other]\nswap_a_b = false\n";
+        Check(bool(file), "write temporary TOML input config");
+    }
+    Check(settings::LoadInputConfig(tomlPath), "load TOML input table");
+    auto options = settings::GetInputOptions();
+    Check(options.swapAB, "read true A/B boolean");
+    Check(!options.swapXY, "read false X/Y boolean independently");
 
-    Check(settings::Load(root / "missing.env").empty(),
-          "missing .env and config are harmless");
+    {
+        std::ofstream file(tomlPath, std::ios::binary | std::ios::trunc);
+        file << "[input]\nswap_a_b = false\nswap_x_y = true\n";
+    }
+    Check(settings::LoadInputConfig(tomlPath), "reload changed TOML values");
+    options = settings::GetInputOptions();
+    Check(!options.swapAB && options.swapXY, "reload each pair independently");
+
+    {
+        std::ofstream file(tomlPath, std::ios::binary | std::ios::trunc);
+        file << "[input]\nswap_a_b = 1\nswap_x_y = \"true\"\n";
+    }
+    Check(!settings::LoadInputConfig(tomlPath), "reject non-boolean TOML values");
+    options = settings::GetInputOptions();
+    Check(!options.swapAB && !options.swapXY, "invalid values safely default to false");
+
+    Check(!settings::LoadInputConfig(tomlPath.string() + ".missing"), "missing TOML file returns false");
+    options = settings::GetInputOptions();
+    Check(!options.swapAB && !options.swapXY, "missing file resets to defaults");
 
     std::error_code ignored;
-    std::filesystem::remove_all(root, ignored);
+    std::filesystem::remove(envPath, ignored);
+    std::filesystem::remove(tomlPath, ignored);
     for (const char* name : names) SetEnv(name, nullptr);
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

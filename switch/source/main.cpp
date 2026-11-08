@@ -56,13 +56,12 @@ int main(int argc, char* argv[]) {
 
     consoleInit(nullptr);
 
-    // Load the same independent controller switches as the full runtime so
-    // this diagnostic NRO can verify the physical button mapping on hardware.
+    // Read the player-facing boolean options from config/PES.toml.
     const Result sdResult = fsdevMountSdmc();
     const bool sdMounted = R_SUCCEEDED(sdResult);
-    std::string loadedSettings;
-    if (sdMounted)
-        loadedSettings = settings::Load("sdmc:/switch/PES2017/.env");
+    const bool inputConfigLoaded = sdMounted &&
+        settings::LoadInputConfig("sdmc:/switch/PES2017/config/PES.toml");
+    const settings::InputOptions inputOptions = settings::GetInputOptions();
 
     switch_input::Initialize();
     const bool syncOk = RunSyncProbe();
@@ -87,8 +86,10 @@ int main(int argc, char* argv[]) {
     std::printf("Joy-Con / Pro Controller input test\n");
     std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
     std::printf("Sticks: left and right analog\n");
-    std::printf("Settings: %s\n", loadedSettings.empty() ? "defaults" : loadedSettings.c_str());
-    std::printf("Config: sdmc:/switch/PES2017/.env\n");
+    std::printf("Input config: %s\n", inputConfigLoaded ? "loaded" : "defaults (file missing or invalid)");
+    std::printf("  swap_a_b = %s\n", inputOptions.swapAB ? "true" : "false");
+    std::printf("  swap_x_y = %s\n", inputOptions.swapXY ? "true" : "false");
+    std::printf("Config: sdmc:/switch/PES2017/config/PES.toml\n");
     std::printf("Press + to exit.\n\n");
 
     while (switch_input::MainLoop()) {

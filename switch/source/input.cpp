@@ -1,11 +1,10 @@
 #include "input.h"
+#include "settings.h"
 
 #include <switch.h>
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 
 namespace
 {
@@ -22,13 +21,6 @@ namespace
     constexpr uint16_t kRThumb = 0x0080;
     constexpr uint16_t kLB = 0x0100;
     constexpr uint16_t kRB = 0x0200;
-
-    bool SettingEnabled(const char* name)
-    {
-        const char* value = std::getenv(name);
-        return value && (std::strcmp(value, "true") == 0 ||
-                         std::strcmp(value, "1") == 0);
-    }
 
     int16_t ClampStick(s32 value)
     {
@@ -73,10 +65,8 @@ switch_input::State switch_input::Poll()
 
     // settings::Load() imports PES17_* entries from the game's .env file
     // before the guest starts. The two pairs are deliberately independent.
-    out.buttons = ApplyFaceButtonSwaps(
-        out.buttons,
-        SettingEnabled("PES17_INPUT_SWAP_A_B"),
-        SettingEnabled("PES17_INPUT_SWAP_X_Y"));
+    const settings::InputOptions options = settings::GetInputOptions();
+    out.buttons = ApplyFaceButtonSwaps(out.buttons, options.swapAB, options.swapXY);
 
     if (raw & HidNpadButton_Up) out.buttons |= kDpadUp;
     if (raw & HidNpadButton_Down) out.buttons |= kDpadDown;
