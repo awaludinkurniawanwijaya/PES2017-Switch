@@ -1,0 +1,157 @@
+#include "platform.h"
+
+#include <switch.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
+
+// libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
+// process services. Keep those operations explicit rather than importing the
+// desktop implementation's Linux headers into the Switch target.
+
+namespace
+{
+    u64 g_mainThreadId = 0;
+
+    struct ThreadControl
+    {
+        Thread thread{};
+        void (*body)(void*) = nullptr;
+        void* argument = nullptr;
+        char name[16]{};
+        ThreadControl* next = nullptr;
+    };
+
+    // libnx requires the Thread object and its backing stack/TLS to remain
+    // alive until the kernel thread has exited and threadClose has run.
+    // The current runtime API is detached and has no join/reap operation, so
+    // controls are retained for the process lifetime. This is bounded by the
+    // number of runtime worker threads and avoids use-after-free on exit.
+    std::mutex g_threadListMutex;
+    ThreadControl* g_threads = nullptr;
+
+    void ThreadEntry(void* raw)
+    {
+        auto* control = static_cast<ThreadControl*>(raw);
+        control->body(control->argument);
+    }
+
+    u32 CurrentThreadId()
+    {
+        u64 id = 0;
+        if (R_FAILED(svcGetThreadId(&id, CUR_THREAD_HANDLE))) return 0;
+        return static_cast<u32>(id);
+    }
+}
+
+void platform::Initialise()
+{
+    g_mainThreadId = CurrentThreadId();
+}
+
+uint32_t platform::ThreadId()
+{
+    return CurrentThreadId();
+}
+
+bool platform::IsMainThread()
+{
+    return g_mainThreadId != 0 && CurrentThreadId() == g_mainThreadId;
+}
+
+void platform::SetThreadName(const char* name)
+{
+    // Horizon does not provide a public thread-name service through libnx.
+    (void)name;
+}
+
+void platform::LowerThreadPriority()
+{
+    // 0x3B is libnx's documented preemptive-multithreading priority.
+    svcSetThreadPriority(threadGetCurHandle(), 0x3B);
+}
+
+void platform::IdleThreadPriority()
+{
+    // 0x3F is the lowest priority in the libnx thread priority range.
+    svcSetThreadPriority(threadGetCurHandle(), 0x3F);
+}
+
+void platform::SetThreadAffinity(ThreadAffinityRole role)
+{
+    // Core topology and permitted masks vary by application/process type.
+    // Keep the system scheduler in control until runtime measurements justify
+    // a specific Switch core policy.
+    (void)role;
+}
+
+void platform::PrintBacktrace(const char* why)
+{
+    const char* message = why ? why : "unspecified";
+    svcOutputDebugString("[PES17] backtrace unavailable on Switch: ", 46);
+    svcOutputDebugString(message, std::strlen(message));
+    svcOutputDebugString("\n", 1);
+}
+
+bool platform::StartThread(void (*body)(void*), void* argument, size_t stackBytes,
+                           const char* name)
+{
+    if (!body) return false;
+
+    auto* control = new (std::nothrow) ThreadControl{};
+    if (!control) return false;
+
+    control->body = body;
+    control->argument = argument;
+    if (name) std::snprintf(control->name, sizeof(control->name), "%s", name);
+
+    // libnx allocates stack/TLS storage when stack_mem is NULL. Round the
+    // requested guest-worker stack up to a page boundary.
+    constexpr size_t kPageSize = 0x1000;
+    stackBytes = std::max(stackBytes, size_t(0x4000));
+    stackBytes = (stackBytes + kPageSize - 1) & ~(kPageSize - 1);
+
+    Result rc = threadCreate(&control->thread, ThreadEntry, control, nullptr,
+                             stackBytes, 0x3B, -2);
+    if (R_FAILED(rc))
+    {
+        delete control;
+        return false;
+    }
+
+    rc = threadStart(&control->thread);
+    if (R_FAILED(rc))
+    {
+        threadClose(&control->thread);
+        delete control;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_threadListMutex);
+        control->next = g_threads;
+        g_threads = control;
+    }
+    return true;
+}
+
+void* platform::OpenLibrary(const char* path)
+{
+    (void)path;
+    return nullptr;
+}
+
+void* platform::LoadedLibrary(const char* name)
+{
+    (void)name;
+    return nullptr;
+}
+
+void* platform::Symbol(void* library, const char* name)
+{
+    (void)library;
+    (void)name;
+    return nullptr;
+}
