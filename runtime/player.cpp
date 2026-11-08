@@ -12,6 +12,7 @@
 #include "log.h"
 #include "player.h"
 #include "console.h"
+#include "platform.h"
 
 #if PES17_DIAGNOSTICS
 
@@ -22,6 +23,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -598,21 +600,24 @@ namespace
         if (!f) { LOGE("player: cannot write the flight to %s", path); return; }
         std::fprintf(f, "# seconds x y z yaw pitch -- recorded flight, replay with PES17_FLY_PATH\n");
         LOGI("player: recording the flight to %s", path);
-        std::thread([f] {
-            Clock::time_point from{};
-            for (;;)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                player::Where here;
-                if (!player::Locate(here)) continue;
-                const auto now = Clock::now();
-                if (from.time_since_epoch().count() == 0) from = now;
-                std::fprintf(f, "%.3f %.1f %.1f %.1f %.2f %.2f\n",
-                             std::chrono::duration<double>(now - from).count(), here.x, here.y,
-                             here.z, here.yaw, here.pitch);
-                std::fflush(f);
-            }
-        }).detach();
+        if (!platform::StartThread([](void* raw) {
+                auto* file = static_cast<std::FILE*>(raw);
+                Clock::time_point from{};
+                for (;;) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    player::Where here;
+                    if (!player::Locate(here)) continue;
+                    const auto now = Clock::now();
+                    if (from.time_since_epoch().count() == 0) from = now;
+                    std::fprintf(file, "%.3f %.1f %.1f %.1f %.2f %.2f\n",
+                                 std::chrono::duration<double>(now - from).count(), here.x, here.y,
+                                 here.z, here.yaw, here.pitch);
+                    std::fflush(file);
+                }
+            }, f, 256 * 1024, "flight recorder")) {
+            LOGE("player: could not start flight recorder");
+            std::fclose(f);
+        }
     }
 
     float Between(float a, float b, float part) { return a + (b - a) * part; }
@@ -635,36 +640,40 @@ namespace
         if (flight.size() < 2) { LOGW("player: no flight to replay in %s", path); return; }
         LOGI("player: flight of %zu moments over %.1f s read from %s", flight.size(),
              flight.back().t, path);
-        std::thread([flight = std::move(flight)] {
-            player::Where here;
-            while (!player::Locate(here)) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            const auto from = Clock::now();
-            LOGI("player: the flight starts");
-            size_t i = 0;
-            for (;;)
-            {
-                const double t = std::chrono::duration<double>(Clock::now() - from).count();
-                if (t >= flight.back().t) break;
-                while (flight[i + 1].t <= t) i++;
-                const Moment& a = flight[i];
-                const Moment& b = flight[i + 1];
-                const float part = float((t - a.t) / (b.t - a.t));
-                char text[160];
-                std::snprintf(text, sizeof text, "setviewpos %.1f %.1f %.1f %.2f %.2f",
-                              Between(a.at.x, b.at.x, part), Between(a.at.y, b.at.y, part),
-                              // The title's teleport lifts whoever it moves by one unit.
-                              Between(a.at.z, b.at.z, part) - 1.0f, Turned(a.at.yaw, b.at.yaw, part),
-                              Turned(a.at.pitch, b.at.pitch, part));
-                console::Place(text);
-                std::this_thread::sleep_for(std::chrono::milliseconds(4));
-            }
-            if (player::Locate(here))
-                LOGI("player: the flight is over, at %.1f %.1f %.1f yaw %.1f pitch %.1f; it was"
-                     " recorded ending at %.1f %.1f %.1f yaw %.1f pitch %.1f", here.x, here.y,
-                     here.z, here.yaw, here.pitch, flight.back().at.x, flight.back().at.y,
-                     flight.back().at.z, flight.back().at.yaw, flight.back().at.pitch);
-            g.arrived = true;
-        }).detach();
+        auto* owned = new (std::nothrow) std::vector<Moment>(std::move(flight));
+        if (!owned || !platform::StartThread([](void* raw) {
+                auto* path = static_cast<std::vector<Moment>*>(raw);
+                player::Where here;
+                while (!player::Locate(here)) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                const auto from = Clock::now();
+                LOGI("player: the flight starts");
+                size_t i = 0;
+                for (;;) {
+                    const double t = std::chrono::duration<double>(Clock::now() - from).count();
+                    if (t >= path->back().t) break;
+                    while ((*path)[i + 1].t <= t) i++;
+                    const Moment& a = (*path)[i];
+                    const Moment& b = (*path)[i + 1];
+                    const float part = float((t - a.t) / (b.t - a.t));
+                    char command[160];
+                    std::snprintf(command, sizeof command, "setviewpos %.1f %.1f %.1f %.2f %.2f",
+                                  Between(a.at.x, b.at.x, part), Between(a.at.y, b.at.y, part),
+                                  Between(a.at.z, b.at.z, part) - 1.0f,
+                                  Turned(a.at.yaw, b.at.yaw, part), Turned(a.at.pitch, b.at.pitch, part));
+                    console::Place(command);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+                }
+                if (player::Locate(here))
+                    LOGI("player: the flight is over, at %.1f %.1f %.1f yaw %.1f pitch %.1f; it was"
+                         " recorded ending at %.1f %.1f %.1f yaw %.1f pitch %.1f", here.x, here.y,
+                         here.z, here.yaw, here.pitch, path->back().at.x, path->back().at.y,
+                         path->back().at.z, path->back().at.yaw, path->back().at.pitch);
+                g.arrived = true;
+                delete path;
+            }, owned, 512 * 1024, "flight replay")) {
+            LOGE("player: could not start flight replay");
+            delete owned;
+        }
     }
 }
 
@@ -682,36 +691,42 @@ void player::Record()
     std::fflush(f);
     g_record = f;
     LOGI("player: recording the route to %s, a point every %.0f units", path, spacing);
-    std::thread([f, spacing] {
-        const long header = std::ftell(f);
-        Where last{};
-        bool have = false;
-        size_t kept = 0;
-        for (;;)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            Where here;
-            if (!Locate(here)) continue;
-            const float dx = here.x - last.x, dy = here.y - last.y;
-            const float square = dx * dx + dy * dy;
-            if (have && square < spacing * spacing) continue;
-            std::lock_guard held(g_recordLock);
-            // The route starts at the spawn: what came before it is the menu, or
-            // a life that ended.
-            if (have && square > kTeleport * kTeleport)
-            {
-                LOGI("player: spawned at %.1f %.1f -- the route starts here", here.x, here.y);
-                std::fseek(f, header, SEEK_SET);
-                if (ftruncate(fileno(f), header) != 0) { /* best effort */ }
-                kept = 0;
+    auto* args = new (std::nothrow) std::pair<std::FILE*, float>{ f, spacing };
+    if (!args || !platform::StartThread([](void* raw) {
+            auto* options = static_cast<std::pair<std::FILE*, float>*>(raw);
+            std::FILE* file = options->first;
+            const float distance = options->second;
+            delete options;
+            const long header = std::ftell(file);
+            Where last{};
+            bool have = false;
+            size_t kept = 0;
+            for (;;) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                Where here;
+                if (!Locate(here)) continue;
+                const float dx = here.x - last.x, dy = here.y - last.y;
+                const float square = dx * dx + dy * dy;
+                if (have && square < distance * distance) continue;
+                std::lock_guard held(g_recordLock);
+                if (have && square > kTeleport * kTeleport) {
+                    LOGI("player: spawned at %.1f %.1f -- the route starts here", here.x, here.y);
+                    std::fseek(file, header, SEEK_SET);
+                    if (ftruncate(fileno(file), header) != 0) { /* best effort */ }
+                    kept = 0;
+                }
+                std::fprintf(file, "%.1f %.1f %.1f %.1f %.1f\n", here.x, here.y, here.z, here.yaw,
+                             here.pitch);
+                std::fflush(file);
+                last = here; have = true;
+                if (++kept % 25 == 0) LOGI("player: %zu route points so far", kept);
             }
-            std::fprintf(f, "%.1f %.1f %.1f %.1f %.1f\n", here.x, here.y, here.z, here.yaw,
-                         here.pitch);
-            std::fflush(f);   // a run that ends in a crash still leaves its route
-            last = here; have = true;
-            if (++kept % 25 == 0) LOGI("player: %zu route points so far", kept);
-        }
-    }).detach();
+        }, args, 256 * 1024, "route recorder")) {
+        delete args;
+        g_record = nullptr;
+        LOGE("player: could not start route recorder");
+        std::fclose(f);
+    }
 }
 
 bool player::Locate(Where& out)
