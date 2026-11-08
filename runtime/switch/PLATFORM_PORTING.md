@@ -71,16 +71,24 @@ Do not describe the project as playable until those hardware gates pass.
 
 ## NVK / Vulkan feasibility spike (2026-11-08)
 
-The pinned NXVK revision `c3abea1efde44027b7e3e20b48eb55beeecd5ab4` is being built in GitHub Actions into diagnostic NROs: an offscreen NAK triangle and a VI swapchain clear/present test. A successful CI build proves compilation and linking only; neither NRO is evidence of GPU execution on physical hardware.
+The pinned NXVK revision `c3abea1efde44027b7e3e20b48eb55beeecd5ab4` is built by a dedicated GitHub Actions workflow. Its diagnostic NROs exercise an offscreen NAK triangle and a VI swapchain clear/present loop. A successful CI build proves compilation and linking only; neither NRO is evidence of GPU execution on physical hardware.
 
-The runtime Vulkan loader has a Switch-specific static-ICD entry path. On Horizon it resolves `vk_icdGetInstanceProcAddr` from the linked NXVK archive rather than attempting `dlopen("libvulkan.so")`. The pinned-NXVK workflow also syntax-checks this loader translation unit against the exact Vulkan headers used by the driver.
+The runtime Vulkan loader has a Switch-specific static-ICD entry path. On Horizon it resolves `vk_icdGetInstanceProcAddr` from the linked NXVK archive rather than attempting `dlopen("libvulkan.so")`. The CI gate checks the exported ICD symbol and syntax-compiles both the project's loader and presenter against the exact pinned Vulkan headers.
+
+The project's Vulkan presenter now has a Switch VI path:
+- Enables `VK_KHR_surface` and `VK_NN_vi_surface`, verifies that the implementation advertises them, and creates a surface over `nwindowGetDefault()`.
+- Checks required VI surface and swapchain dispatch functions before use, plus the surface's transfer-destination image capability before swapchain creation.
+- Explicitly sets `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, as required by this experimental NVK port, and logs the experimental/non-conformant status.
+- Uses the platform's managed joinable thread API for presenter and present-wait workers instead of creating raw `std::thread` objects on Switch.
+- Enumerates global instance extensions with a null layer name, matching the Vulkan API contract.
 
 ### Remaining integration gates
 
-- Complete the loader ABI check and ensure required instance/device functions are returned by the pinned ICD; successful linking is not proof of runtime dispatch.
-- Implement a Switch VI presentation path in `runtime/gpu/vulkan/presenter.cpp`. The current presenter compiles headless unless SDL or Android presentation is selected; the separate NXVK VI smoke test does not connect the project's frame queue to the Switch window.
-- Check device-extension and feature requirements in `pipeline.cpp` against NXVK capabilities; add explicit capability gates rather than assuming desktop Vulkan support.
-- Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, and static NXVK archives. The bootstrap NRO does not include this runtime.
-- Validate shader translation, memory heaps, image formats, synchronization, swapchain recreation, and sustained frame pacing on a physical Switch.
+- Complete the pinned NXVK archive build and the loader/presenter compile gate on the latest commit; these jobs are still running/queued.
+- Verify the exported ICD ABI and device dispatch at runtime; syntax compilation alone does not prove that all calls work.
+- Run the NXVK triangle and VI swapchain diagnostic NROs on physical Switch hardware and inspect their SD-card logs.
+- Build and link the actual runtime with `PES17_HAVE_VULKAN`, the Switch presenter, platform/audio/input sources, and static NXVK archives. The bootstrap NRO does not include this runtime.
+- Check `pipeline.cpp` feature/extension requirements against actual NVK capabilities, then validate Xenos shader translation, memory heaps, image formats, synchronization, swapchain recreation, and sustained frame pacing on hardware.
+- Generate title-specific PPC code from the user's legally obtained `default.xex`; the generated code and proprietary game data must remain outside this public repository.
 
 The CI workflow is a feasibility probe and is deliberately separate from the bootstrap workflow. NXVK is experimental and non-conformant; this port must not be described as playable until the full runtime reaches a game menu and passes hardware tests.
