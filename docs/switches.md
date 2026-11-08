@@ -32,9 +32,8 @@ swap_x_y = false
 
 Set either value to `true` to swap only that pair. The Nintendo-to-Xbox
 physical layout translation happens first; these options then swap the logical
-Xbox A/B or X/Y pair. A setting already supplied in the process environment
-takes precedence. The file is read from the game install folder's
-`config/PES.toml` path.
+Xbox A/B or X/Y pair. The file is read from the executable/install folder's `config/PES.toml` path.
+Missing keys and invalid non-boolean values default to `false`.
 
 ## Running
 

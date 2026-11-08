@@ -73,22 +73,19 @@ start PES 2017.
 
 ## Controller face-button options
 
-The full Switch runtime reads optional controller settings from
-`sdmc:/switch/PES2017/.env`. The two face-button swaps are independent:
+The Switch runtime reads the two independent controller options from
+`sdmc:/switch/PES2017/config/PES.toml`, under `[input]`:
 
-```ini
-# Swap the logical Xbox A and B buttons (0 = off, 1 = on)
-PES17_INPUT_SWAP_A_B=0
-
-# Swap the logical Xbox X and Y buttons (0 = off, 1 = on)
-PES17_INPUT_SWAP_X_Y=0
+```toml
+[input]
+swap_a_b = false
+swap_x_y = false
 ```
 
-Set either value to `1` to swap only that pair. For example, setting
-`PES17_INPUT_SWAP_A_B=1` while leaving `PES17_INPUT_SWAP_X_Y=0` changes
-only A/B. Both default to off when omitted. These are runtime `.env`
-settings; they do not belong in `config/PES.toml`, which configures
-XenonRecomp rather than controller behavior.
+Set either value to `true` to swap only that pair. Both default to `false`
+when missing or invalid. The physical Nintendo-to-Xbox layout translation
+happens first, then these options independently swap the logical Xbox A/B
+and X/Y pairs.
 
 
 ## SD-card location reserved for the game runtime
