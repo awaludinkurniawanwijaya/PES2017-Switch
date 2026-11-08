@@ -99,6 +99,8 @@ namespace
         fn(ctx, guest::Base());
     }
 
+    void Worker();
+    void VBlankWorker();
     void WorkerEntry(void*) { Worker(); }
     void VBlankEntry(void*) { VBlankWorker(); }
 
