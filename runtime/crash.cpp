@@ -14,6 +14,120 @@
 #include "gpu/gpu.h"
 #include <ppc_config.h>
 #include <ppc_recomp_shared.h>
+
+#if defined(__SWITCH__)
+#include <atomic>
+#include <chrono>
+#include <string>
+#include <thread>
+
+namespace
+{
+    thread_local std::string g_switchThreadName;
+    std::atomic<bool> g_switchHangMonitorRunning{ false };
+    platform::ThreadHandle g_switchHangMonitorThread = nullptr;
+
+    void SwitchHangMonitor(void*)
+    {
+        uint32_t lastLoggedSec = 0;
+        while (g_switchHangMonitorRunning.load(std::memory_order_relaxed))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (!g_switchHangMonitorRunning.load(std::memory_order_relaxed)) break;
+
+            auto batch = gpu::detail::CurrentBatchStatus();
+            uint32_t neededSeq = 0, neededPos = 0;
+            if (gpu::CheckArenaWaitDeadlock(2000000ull, neededSeq, neededPos) &&
+                (!batch.inBatch || batch.readIndex == batch.wptr))
+            {
+                const uint32_t block = gpu::GetArenaProgressBlock();
+                if (block)
+                {
+                    const uint32_t posTag = (neededPos & ~3u) | (neededSeq & 3u);
+                    LOGW("hang_monitor: resolving stalled GPU arena wait to seq=%u pos=%08X",
+                         neededSeq, posTag);
+                    gpu::ForceArenaProgress(neededSeq, posTag);
+                }
+            }
+
+            if (batch.inBatch && batch.elapsedMs >= 4000)
+            {
+                const char* stage = gpu::detail::CurrentDrawStage();
+                const uint32_t sec = uint32_t(batch.elapsedMs / 1000);
+                if (sec != lastLoggedSec && (sec % 3 == 0 || sec == 4))
+                {
+                    lastLoggedSec = sec;
+                    LOGE("hang_monitor: GPU ring batch running for %llu ms; stage=%s read=%u wptr=%u",
+                         (unsigned long long)batch.elapsedMs, stage ? stage : "none",
+                         batch.readIndex, batch.wptr);
+                    kernel::ReportWaits();
+                    platform::PrintBacktrace("GPU ring batch hang monitor");
+                }
+            }
+        }
+    }
+}
+
+void crash::Install()
+{
+    LOGW("crash: Switch exception signal handlers are not installed; use the system crash report if the process faults");
+}
+
+void crash::RegisterThread(const char* name)
+{
+    g_switchThreadName = name ? name : "";
+    if (name) platform::SetThreadName(name);
+}
+
+const char* crash::CurrentThreadName()
+{
+    return g_switchThreadName.empty() ? nullptr : g_switchThreadName.c_str();
+}
+
+void crash::UnregisterThread() { g_switchThreadName.clear(); }
+
+void crash::DumpAllThreads(const char* reason)
+{
+    platform::PrintBacktrace(reason ? reason : "thread dump requested");
+}
+
+void crash::StartHangMonitor()
+{
+    if (g_switchHangMonitorRunning.exchange(true)) return;
+    g_switchHangMonitorThread = platform::StartJoinableThread(
+        SwitchHangMonitor, nullptr, 512 * 1024, "GPU hang monitor");
+    if (!g_switchHangMonitorThread)
+    {
+        g_switchHangMonitorRunning = false;
+        LOGW("crash: could not start Switch GPU hang monitor");
+    }
+}
+
+void crash::StopHangMonitor()
+{
+    g_switchHangMonitorRunning = false;
+    if (g_switchHangMonitorThread)
+    {
+        platform::JoinThread(g_switchHangMonitorThread);
+        g_switchHangMonitorThread = nullptr;
+    }
+}
+
+void crash::SampleThreadEvery(const char* name, unsigned seconds)
+{
+    LOGW("crash: per-thread sampling unavailable on Switch (requested %s every %u s)",
+         name ? name : "?", seconds);
+}
+
+extern "C" void PES17ReportBadIndirectCall(unsigned int guestAddress, const void*, const uint8_t*)
+{
+    LOGE("indirect call to %08X has no recompiled function", guestAddress);
+    platform::PrintBacktrace("bad indirect call");
+    crash::OnFault();
+    std::exit(4);
+}
+
+#else
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -683,3 +797,5 @@ void crash::SampleThreadEvery(const char* name, unsigned seconds)
     }).detach();
     LOGI("crash: sampling '%s' every %u s", name, seconds);
 }
+
+#endif  // !__SWITCH__
