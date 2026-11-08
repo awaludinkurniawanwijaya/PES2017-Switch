@@ -58,7 +58,7 @@ export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
 
 .PHONY: all clean $(BUILD)
-all: check-runtime-input check-runtime-install check-runtime-audio check-runtime-crash check-runtime-stutters check-runtime-guest-memory $(BUILD)
+all: check-runtime-input check-runtime-install check-runtime-audio check-runtime-crash check-runtime-stutters check-runtime-platform check-runtime-guest-memory $(BUILD)
 
 # Compile the SD-card install/discovery path with the Switch compiler. This
 # source has no generated PPC dependency and catches Switch filesystem API
@@ -84,6 +84,13 @@ check-runtime-crash:
 # Compile the guest memory manager with a tiny generated-config stand-in.
 # This catches Switch libc/SVC portability problems without exposing the private
 # title-specific PPC configuration or generated guest output.
+# Compile the actual Horizon platform adapter with devkitA64. This catches
+# libnx thread, filesystem-mount and SVC API drift before a full PPC build is
+# available (the bootstrap's platform shim is not a substitute for this TU).
+.PHONY: check-runtime-platform
+check-runtime-platform:
+	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(TOPDIR)/../runtime -I$(CURDIR)/source -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/switch/platform.cpp
+
 .PHONY: check-runtime-guest-memory
 check-runtime-guest-memory:
 	@mkdir -p $(BUILD)/probe
