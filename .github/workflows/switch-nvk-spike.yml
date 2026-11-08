@@ -104,6 +104,7 @@ jobs:
                   -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
                   -I/project/runtime -I/work/include \
                   -I/opt/devkitpro/libnx/include -include cstdint \
+                  -include /project/runtime/gpu/vulkan/loader.h \
                   -c /project/runtime/gpu/vulkan/loader.cpp \
                   -o switch/build/loader-switch.o
               nm -u switch/build/loader-switch.o > /tmp/loader-undefined-symbols.txt
@@ -114,6 +115,7 @@ jobs:
                   -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
                   -I/project/runtime -I/work/include \
                   -I/opt/devkitpro/libnx/include -include cstdint \
+                  -include /project/runtime/gpu/vulkan/loader.h \
                   -c /project/runtime/gpu/vulkan/presenter.cpp \
                   -o switch/build/presenter-switch.o
 
