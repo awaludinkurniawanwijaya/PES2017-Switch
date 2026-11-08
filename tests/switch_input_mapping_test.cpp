@@ -1,35 +1,56 @@
 #include "../switch/source/input.h"
 
-#include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <string>
+
+namespace
+{
+    int g_checks = 0;
+    int g_failures = 0;
+
+    void Check(bool ok, const char* what)
+    {
+        ++g_checks;
+        if (ok) return;
+        ++g_failures;
+        std::fprintf(stderr, "FAIL: %s\n", what);
+    }
+}
 
 int main()
 {
     using namespace switch_input;
     constexpr uint16_t kOther = 0x0001 | 0x0100;
 
-    // Defaults preserve the established Nintendo-to-Xbox translation.
-    assert(ApplyFaceButtonSwaps(kButtonA | kOther, false, false) == (kButtonA | kOther));
+    Check(ApplyFaceButtonSwaps(kButtonA | kOther, false, false) ==
+              (kButtonA | kOther),
+          "defaults preserve the established mapping");
 
-    // A/B can be changed without affecting X/Y.
-    assert(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, true, false) ==
-           (kButtonB | kButtonX | kOther));
-    assert(ApplyFaceButtonSwaps(kButtonB | kButtonY | kOther, true, false) ==
-           (kButtonA | kButtonY | kOther));
+    Check(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, true, false) ==
+              (kButtonB | kButtonX | kOther),
+          "A/B swap does not affect X/Y");
+    Check(ApplyFaceButtonSwaps(kButtonB | kButtonY | kOther, true, false) ==
+              (kButtonA | kButtonY | kOther),
+          "A/B swap works in both directions");
 
-    // X/Y can be changed without affecting A/B.
-    assert(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, false, true) ==
-           (kButtonA | kButtonY | kOther));
-    assert(ApplyFaceButtonSwaps(kButtonB | kButtonY | kOther, false, true) ==
-           (kButtonB | kButtonX | kOther));
+    Check(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, false, true) ==
+              (kButtonA | kButtonY | kOther),
+          "X/Y swap does not affect A/B");
+    Check(ApplyFaceButtonSwaps(kButtonB | kButtonY | kOther, false, true) ==
+              (kButtonB | kButtonX | kOther),
+          "X/Y swap works in both directions");
 
-    // Both options can be enabled together, without losing unrelated bits.
-    assert(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, true, true) ==
-           (kButtonB | kButtonY | kOther));
+    Check(ApplyFaceButtonSwaps(kButtonA | kButtonX | kOther, true, true) ==
+              (kButtonB | kButtonY | kOther),
+          "both independent swaps can be enabled together");
+    Check(ApplyFaceButtonSwaps(kButtonA | kButtonB | kButtonX | kButtonY,
+                               true, true) ==
+              (kButtonA | kButtonB | kButtonX | kButtonY),
+          "simultaneous presses remain simultaneous");
+    Check(ApplyFaceButtonSwaps(kOther, true, true) == kOther,
+          "unrelated buttons are preserved");
 
-    // Pressing both buttons in a pair remains both pressed after swapping.
-    assert(ApplyFaceButtonSwaps(kButtonA | kButtonB | kButtonX | kButtonY,
-                                true, true) ==
-           (kButtonA | kButtonB | kButtonX | kButtonY));
-    return 0;
+    std::printf("%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
 }
