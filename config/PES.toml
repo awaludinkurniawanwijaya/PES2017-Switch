@@ -236,3 +236,9 @@ functions = [
     { address = 0x83911928, size = 0x4C },
 # --- fix_ladders end ---
 ]
+
+
+# Nintendo Switch controller layout (independent Xbox face-button pairs).
+[input]
+swap_a_b = false
+swap_x_y = false
