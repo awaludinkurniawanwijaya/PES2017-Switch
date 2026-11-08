@@ -245,6 +245,12 @@ namespace
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back("VK_KHR_android_surface");
 #elif defined(__SWITCH__)
+        if (!InstanceHasExtension(VK_KHR_SURFACE_EXTENSION_NAME) ||
+            !InstanceHasExtension("VK_NN_vi_surface"))
+        {
+            LOGW("vulkan: NXVK does not advertise the required KHR surface and NN VI surface extensions");
+            return false;
+        }
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back("VK_NN_vi_surface");
 #else
@@ -315,6 +321,20 @@ namespace
         // Everything past this point is called through the driver's own
         // entry points rather than a link-time symbol (loader.h).
         vk::loader::LoadInstance(g.instance);
+#endif
+#ifdef __SWITCH__
+        // These WSI entry points are essential for the VI presenter. The
+        // generic loader treats extension-owned symbols as optional, so fail
+        // here with a useful message rather than calling a null function.
+        if (!vkCreateViSurfaceNN || !vkDestroySurfaceKHR ||
+            !vkGetPhysicalDeviceSurfaceSupportKHR ||
+            !vkGetPhysicalDeviceSurfaceCapabilitiesKHR ||
+            !vkGetPhysicalDeviceSurfaceFormatsKHR ||
+            !vkGetPhysicalDeviceSurfacePresentModesKHR)
+        {
+            LOGW("vulkan: NXVK is missing one or more required VI surface dispatch functions");
+            return false;
+        }
 #endif
         if (validating)
         {
@@ -408,6 +428,14 @@ namespace
             return false;
         g.device = static_cast<VkDevice>(device);
         g.queue = static_cast<VkQueue>(queue);
+#ifdef __SWITCH__
+        if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
+            !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
+        {
+            LOGW("vulkan: NXVK is missing one or more required swapchain dispatch functions");
+            return false;
+        }
+#endif
         if (g.presentWait)
         {
             g.waitForPresent = reinterpret_cast<PFN_vkWaitForPresentKHR>(
