@@ -38,7 +38,7 @@ References:
 5. **Hardware status:** NVK on GM20B is experimental and not considered conformant by Mesa; smoke-test results from another project do not validate PES 2017 rendering.
 6. **Version pinning:** pin an exact NXVK/Mesa revision and preserve upstream notices and build provenance. Avoid downloading an unpinned prebuilt archive in the production workflow.
 
-**Preferred decision gate:** first build a tiny Vulkan triangle/compute smoke NRO using the exact NXVK revision in a dedicated GitHub Actions job. Then link the existing renderer with a minimal surface/present test. Only if both pass should the project choose NVK as the Switch graphics backend. If this path fails, return to the deko3d shader-feasibility work below.
+**Preferred decision gate (updated 2026-11-08):** the dedicated GitHub Actions job now successfully builds the pinned NXVK static archives and both upstream smoke NROs (`nvk_tri` and `nvk_vi_swapchain`), and compiles the PES Vulkan loader and presenter adapters for Switch. This proves toolchain/build compatibility and adapter compilation only. It does not prove the smoke NROs run on retail hardware, nor that the PES presenter can create a VI surface, create a device, or present a frame. Next gate: run the two smoke NROs on a Switch, then produce a small PES-owned adapter/presenter integration NRO and validate it on hardware. Only after those gates pass should NVK be selected as the production Switch GPU backend. If this path fails, return to the deko3d shader-feasibility work below.
 
 ### Concrete loader mismatch found in source inspection
 
