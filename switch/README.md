@@ -34,14 +34,19 @@ complete game-data launch path.
 - NXVK is an experimental, non-conformant NVK port. The runtime explicitly
   opts in with `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1`; compatibility and
   stability are not guaranteed.
-- The pinned NXVK workflow is building the NVK archive and diagnostic NROs,
-  and syntax-compiling the project's loader and presenter against the pinned
-  headers. The latest run is still in progress.
+- The pinned NXVK workflow has successfully built the NVK archive, packaged
+  the portlib, syntax-compiled the project's loader and presenter, and built
+  three diagnostic NROs (`nvk_tri.nro`, `nvk_vi_swapchain.nro`, and
+  `pes_loader_smoke.nro`). This is CI build/link evidence only; no physical
+  Switch GPU execution has been confirmed.
+- The separate libnx bootstrap workflow has successfully built
+  `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
+  diagnostic app, not the PES game.
 
-Host tests and the bootstrap NRO build have passed. The runtime XInput
-translation unit still needs the generated PPC headers for its full syntax
-check. These results do **not** prove that the Vulkan presenter runs on a
-Switch, that NVK presents to the screen, or that PES 2017 can boot.
+Host tests passed (8/8), and the bootstrap NRO was packaged successfully.
+The runtime XInput translation unit still needs generated PPC headers for its
+full syntax check. These results do **not** prove that NVK presents to the
+screen or that PES 2017 can boot.
 
 ## Bootstrap build
 
@@ -108,12 +113,12 @@ PPC output.
 
 ## Remaining gates, in dependency order
 
-1. **Complete the NXVK feasibility workflow.** It must produce the NVK archive,
-   the project's loader/presenter compile checks, and the `nvk_tri.nro` and
-   `nvk_vi_swapchain.nro` diagnostic apps.
-2. **Validate NVK on a physical Switch.** Run the triangle and VI swapchain
-   tests, then inspect the logs. CI compilation alone cannot prove GPU
-   execution or display presentation.
+1. **CI feasibility build — passed.** The NVK archive/portlib, project
+   loader/presenter compile checks, and three diagnostic NROs are now produced
+   successfully by the pinned workflow.
+2. **Validate NXVK on a physical Switch.** Run the triangle and VI swapchain
+   tests, then inspect logs. CI compilation alone cannot prove GPU execution
+   or display presentation.
 3. **Link a PES-specific presenter test.** Exercise the project's static ICD
    loader, VI surface, swapchain, and frame-present path together in an NRO.
 4. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
