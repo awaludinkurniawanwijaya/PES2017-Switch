@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
     std::printf("Sticks: left and right analog\n");
     std::printf("Press + to exit.\n\n");
 
-    while (appletMainLoop()) {
+    while (switch_input::MainLoop()) {
         const switch_input::State pad = switch_input::Poll();
         std::printf("\x1b[8;1H");
         std::printf("Controller: %s       \n", pad.connected ? "connected" : "not detected");
