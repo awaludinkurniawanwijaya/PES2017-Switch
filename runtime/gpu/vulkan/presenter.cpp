@@ -507,8 +507,10 @@ namespace
         info.imageColorSpace = chosen.colorSpace;
         info.imageExtent = g.extent;
         info.imageArrayLayers = 1;
-        // The renderer's frame is blitted in, so a transfer destination.
-        info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        // The renderer only blits completed frames into the swapchain;
+        // requesting color-attachment usage as well needlessly rejects WSI
+        // implementations that expose transfer-destination images only.
+        info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         // How the frame sits on the panel.
         //
@@ -539,7 +541,29 @@ namespace
         else if (caps.currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
             LOGW("vulkan: the surface will not take an identity transform; the picture may be"
                  " rotated");
-        info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+            info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        else
+        {
+            constexpr VkCompositeAlphaFlagBitsKHR choices[] = {
+                VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+                VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+                VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
+            };
+            bool foundAlpha = false;
+            for (VkCompositeAlphaFlagBitsKHR choice : choices)
+                if (caps.supportedCompositeAlpha & choice)
+                {
+                    info.compositeAlpha = choice;
+                    foundAlpha = true;
+                    break;
+                }
+            if (!foundAlpha)
+            {
+                LOGW("vulkan: surface exposes no supported composite-alpha mode");
+                return false;
+            }
+        }
         info.presentMode = VK_PRESENT_MODE_FIFO_KHR;      // always supported
         info.clipped = VK_TRUE;
         // The one being replaced, if any, so the driver can carry over what it
