@@ -72,13 +72,18 @@ int main(int argc, char* argv[]) {
     std::printf("--------------------------------\n");
     std::printf("Native libnx bootstrap is running.\n");
     std::printf("C++ thread/synchronization probe: %s\n", syncOk ? "passed" : "FAILED");
-    std::printf("Guest RAM probe: %s\n", memoryProbe.available ? "passed" : "not available");
-    std::printf("  4 GiB reservation: 0x%08X\n", unsigned(memoryProbe.reserve));
-    std::printf("  shared bank create: 0x%08X\n", unsigned(memoryProbe.create));
-    std::printf("  3 fixed aliases: 0x%08X / 0x%08X / 0x%08X\n",
-                unsigned(memoryProbe.map[0]), unsigned(memoryProbe.map[1]), unsigned(memoryProbe.map[2]));
-    std::printf("  extra page commit: 0x%08X; alias coherent: %s\n",
-                unsigned(memoryProbe.commit), memoryProbe.coherent ? "yes" : "no");
+    std::printf("Guest RAM probe: %s\n", memoryProbe.available ? "PASSED" : "FAILED");
+    std::printf("  4 GiB reservation: %s (0x%08X)\n",
+                R_SUCCEEDED(memoryProbe.reserve) ? "OK" : "FAILED", unsigned(memoryProbe.reserve));
+    std::printf("  shared bank create: %s (0x%08X)\n",
+                R_SUCCEEDED(memoryProbe.create) ? "OK" : "FAILED", unsigned(memoryProbe.create));
+    std::printf("  fixed aliases: %s / %s / %s\n",
+                R_SUCCEEDED(memoryProbe.map[0]) ? "OK" : "FAILED",
+                R_SUCCEEDED(memoryProbe.map[1]) ? "OK" : "FAILED",
+                R_SUCCEEDED(memoryProbe.map[2]) ? "OK" : "FAILED");
+    std::printf("  extra page commit: %s; alias coherent: %s\n",
+                R_SUCCEEDED(memoryProbe.commit) ? "OK" : "FAILED",
+                memoryProbe.coherent ? "yes" : "no");
     std::printf("Joy-Con / Pro Controller input test\n");
     std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
     std::printf("Sticks: left and right analog\n");
