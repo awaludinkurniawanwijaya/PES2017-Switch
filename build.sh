@@ -14,6 +14,8 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd); cd "$ROOT"
 GAME=${GAME:-"$ROOT/../GAME"}
+XEX_VERSION=${XEX_VERSION:-0x00000012}
+TITLE_ID=${TITLE_ID:-0x4A3007D1}
 PROFILE=${PROFILE:-balanced}
 CMAKE_CC=${CMAKE_CC:-/usr/bin/clang}; CMAKE_CXX=${CMAKE_CXX:-/usr/bin/clang++}
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN)}   # every core; override with JOBS=n
@@ -37,11 +39,22 @@ cmake --build $XENON/build -j"$JOBS" >/dev/null 2>&1
 
 echo "==> 3. the executable"
 mkdir -p pes
-[ -f pes/default.xex ] || cp "$GAME/default.xex" pes/default.xex
-echo "==> 4. decrypt/decompress XEX -> flat PE image"
-[ -f pes/default.pe ] || python3 tools/xexdump.py pes/default.xex pes/default.pe
+if [ -s "$GAME/default.xex" ]; then
+    if ! cmp -s "$GAME/default.xex" pes/default.xex 2>/dev/null; then
+        cp "$GAME/default.xex" pes/default.xex
+    fi
+elif [ ! -s pes/default.xex ]; then
+    echo "missing $GAME/default.xex and pes/default.xex; set GAME to the extracted PES 2017 folder"
+    exit 1
+fi
+echo "==> 4. verify the selected PES 2017 XEX target (version $XEX_VERSION)"
+python3 tools/verify_xex.py pes/default.xex --title-id "$TITLE_ID" --version "$XEX_VERSION"
+echo "==> 5. decrypt/decompress XEX -> flat PE image"
+if [ ! -s pes/default.pe ] || [ pes/default.xex -nt pes/default.pe ]; then
+    python3 tools/xexdump.py pes/default.xex pes/default.pe
+fi
 
-echo "==> 5. jump tables, save/restore helpers"
+echo "==> 6. jump tables, save/restore helpers"
 ./$XENON/build/XenonAnalyse/XenonAnalyse pes/default.xex config/pes_switch_tables.toml >logs-analyse.txt 2>&1
 python3 tools/trim_switch_tables.py config/pes_switch_tables.toml
 python3 tools/fix_switch_regs.py config/pes_switch_tables.toml --apply >/dev/null || true
@@ -57,7 +70,7 @@ python3 tools/find_helpers.py --write config/PES.toml >/dev/null
 # bound, so the loop ends. A pass that changes nothing is the fixed point.
 #   fixbounds.py   jump-table cases outside the function (the log says which)
 #   fix_ladders.py a goto to a label no function holds (read from the C++)
-echo "==> 6. recompile PPC -> C++ (profile: $PROFILE)"
+echo "==> 7. recompile PPC -> C++ (profile: $PROFILE)"
 python3 - "$CFG" $LOCALS <<'PY'
 import re, sys
 s = open("config/PES.toml").read()
@@ -85,13 +98,13 @@ done
 [ $changed = 0 ] || { echo "bounds did not converge; see logs-recomp.txt"; exit 1; }
 echo "$PROFILE" > ppc/PROFILE
 
-echo "==> 7. declarations + kernel import stubs"
+echo "==> 8. declarations + kernel import stubs"
 python3 tools/genshared.py
 python3 tools/gen_kernel_stubs.py | head -1
 
 [ -n "${RECOMPILE_ONLY:-}" ] && [ "$RECOMPILE_ONLY" != 0 ] && { echo "done: ppc/ has $(ls ppc | wc -l) files"; exit 0; }
 
-echo "==> 8. build libpes17.so for arm64 Android"
+echo "==> 9. build libpes17.so for arm64 Android"
 # CMake and ninja run Python; with pyenv the shim needs a version (as in tools/deploy.sh).
 command -v pyenv >/dev/null && export PYENV_VERSION=${PYENV_VERSION:-3.10.14}
 NDK=${ANDROID_NDK_HOME:-$(ls -d "$HOME"/Library/Android/sdk/ndk/28.* "${ANDROID_HOME:-/nonexistent}"/ndk/28.* 2>/dev/null | tail -1)}
