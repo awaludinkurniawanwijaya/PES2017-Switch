@@ -1,0 +1,74 @@
+name: Switch NVK feasibility spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/switch-libnx-platform
+    paths:
+      - ".github/workflows/switch-nvk-spike.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-nvk-spike-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-nxvk-smoke:
+    name: Build pinned NXVK Vulkan smoke NROs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out PES 2017 Switch project
+        uses: actions/checkout@v4
+
+      - name: Check out pinned NXVK source (GPL-2.0-or-later additions)
+        uses: actions/checkout@v4
+        with:
+          repository: PalindromicBreadLoaf/nxvk
+          ref: c3abea1efde44027b7e3e20b48eb55beeecd5ab4
+          path: nxvk
+          persist-credentials: false
+
+      - name: Record source revisions and license notices
+        run: |
+          git -C nxvk rev-parse HEAD
+          git -C nxvk status --short
+          test -s nxvk/LICENSE || true
+          test -s nxvk/licenses/GPL-2.0-or-later
+          sed -n '1,80p' nxvk/switch/README.md
+          find nxvk/licenses -maxdepth 2 -type f -print | sort
+
+      - name: Build pinned NXVK toolchain image
+        run: docker build --pull -t pes17-nxvk nxvk/switch/docker
+
+      - name: Build NVK archives and smoke NROs
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/nxvk:/work" \
+            -w /work \
+            pes17-nxvk \
+            bash -lc '
+              set -euo pipefail
+              make CONTAINER= driver
+              make CONTAINER= nro APP=nvk_tri
+              make CONTAINER= nro APP=nvk_vi_swapchain
+              test -s switch/smoke/out/nvk_tri.nro
+              test -s switch/smoke/out/nvk_vi_swapchain.nro
+              ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro
+            '
+
+      - name: Upload NXVK smoke NROs and build metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxvk-switch-smoke-nros-c3abea1
+          path: |
+            nxvk/switch/smoke/out/nvk_tri.nro
+            nxvk/switch/smoke/out/nvk_vi_swapchain.nro
+            nxvk/switch/build/cross/src/nouveau/vulkan/libnvk.a
+            nxvk/switch/build/pkg/lib/libnvk_support.a
+            nxvk/licenses/
+          if-no-files-found: error
+          retention-days: 14
