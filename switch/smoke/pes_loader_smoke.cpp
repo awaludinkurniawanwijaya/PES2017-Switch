@@ -8,8 +8,6 @@
 #include <string>
 #include <cstdarg>
 #include <cstdlib>
-#include <cstdarg>
-#include <cstdlib>
 #include <vector>
 
 extern "C" {
@@ -82,7 +80,7 @@ int main()
         VkBool32 present = VK_FALSE;
         if (qprops[i].queueCount && vkGetPhysicalDeviceSurfaceSupportKHR(physical,i,surface,&present)==VK_SUCCESS && present) { qFamily=i; break; }
     }
-    if (qFamily == UINT32_MAX) { Log("FAIL no present queue family"); result = 5; goto cleanup; }
+    if (qFamily == UINT32_MAX) { Log("FAIL no present queue family"); result = 5; break; }
 
     const char* deviceExts[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
     float priority = 1.0f;
@@ -101,7 +99,7 @@ int main()
     CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps));
     uint32_t formatCount = 0;
     CHECK_VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical,surface,&formatCount,nullptr));
-    if (!formatCount) { Log("FAIL no surface formats"); result = 6; goto cleanup; }
+    if (!formatCount) { Log("FAIL no surface formats"); result = 6; break; }
     std::vector<VkSurfaceFormatKHR> formats(formatCount);
     CHECK_VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical,surface,&formatCount,formats.data()));
     VkSurfaceFormatKHR format = formats[0];
@@ -129,12 +127,12 @@ int main()
     for (uint32_t frame=0; frame<120; ++frame) {
         uint32_t imageIndex=0;
         VkResult ar=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,acquired,VK_NULL_HANDLE,&imageIndex);
-        if (ar!=VK_SUCCESS && ar!=VK_SUBOPTIMAL_KHR) { Log("FAIL acquire frame=%u result=%d",frame,int(ar)); result=7; goto cleanup; }
+        if (ar!=VK_SUCCESS && ar!=VK_SUBOPTIMAL_KHR) { Log("FAIL acquire frame=%u result=%d",frame,int(ar)); result=7; break; }
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&acquired;
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
         VkResult pr=vkQueuePresentKHR(queue,&pi);
-        if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; goto cleanup; }
+        if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
     }
     if (!result) Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
