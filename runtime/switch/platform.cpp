@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <mutex>
 #include <new>
 
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
@@ -22,16 +21,13 @@ namespace
         void (*body)(void*) = nullptr;
         void* argument = nullptr;
         char name[16]{};
-        ThreadControl* next = nullptr;
-    };
+        };
 
     // libnx requires the Thread object and its backing stack/TLS to remain
     // alive until the kernel thread has exited and threadClose has run.
     // The current runtime API is detached and has no join/reap operation, so
     // controls are retained for the process lifetime. This is bounded by the
     // number of runtime worker threads and avoids use-after-free on exit.
-    std::mutex g_threadListMutex;
-    ThreadControl* g_threads = nullptr;
 
     void ThreadEntry(void* raw)
     {
@@ -131,11 +127,8 @@ bool platform::StartThread(void (*body)(void*), void* argument, size_t stackByte
         return false;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(g_threadListMutex);
-        control->next = g_threads;
-        g_threads = control;
-    }
+    // The control remains allocated because the runtime's detached-thread API
+    // has no join/reap callback with which to safely release libnx resources.
     return true;
 }
 
