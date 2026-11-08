@@ -86,8 +86,12 @@ jobs:
               test -s "$NVK_LIB"
               test -s "$NVK_SUPPORT_LIB"
               test -s "$NVK_PC"
-              nm -g --defined-only "$NVK_LIB" | \
-                grep -q 'vk_icdGetInstanceProcAddr'
+              echo ">> exported Vulkan/ICD symbols from libnvk.a"
+              nm -g --defined-only "$NVK_LIB" | grep -Ei 'vk_icd|GetInstanceProcAddr|vkCreateInstance' || true
+              if ! nm -g --defined-only "$NVK_LIB" | grep -q 'vk_icdGetInstanceProcAddr'; then
+                echo "::error::libnvk.a does not export vk_icdGetInstanceProcAddr; inspect the symbol list above and update the static ICD adapter to the pinned NXVK ABI."
+                exit 1
+              fi
               # Preserve the installed portlib outputs outside the ephemeral
               # container so Actions can publish the exact archives used to link.
               mkdir -p /project/artifacts/nxvk
