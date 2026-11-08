@@ -12,9 +12,12 @@ namespace {
     std::mutex g_probeMutex;
     std::condition_variable g_probeCondition;
     std::shared_mutex g_probeSharedMutex;
+    std::once_flag g_probeOnce;
+    unsigned g_probeOnceCount = 0;
     bool g_probeReady = false;
 
     void SyncProbeWorker(void*) {
+        std::call_once(g_probeOnce, [] { ++g_probeOnceCount; });
         {
             std::lock_guard lock(g_probeMutex);
             g_probeReady = true;
@@ -34,13 +37,14 @@ namespace {
                                               [] { return g_probeReady; });
         }
         platform::JoinThread(worker);
+        std::call_once(g_probeOnce, [] { ++g_probeOnceCount; });
         {
             std::unique_lock lock(g_probeSharedMutex);
         }
         {
             std::shared_lock lock(g_probeSharedMutex);
         }
-        return ready;
+        return ready && g_probeOnceCount == 1;
     }
 }
 
