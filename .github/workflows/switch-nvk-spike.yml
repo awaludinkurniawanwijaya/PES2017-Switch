@@ -51,6 +51,38 @@ jobs:
           sed -n '1,80p' nxvk/switch/README.md
           find nxvk/licenses -maxdepth 2 -type f -print | sort
 
+      - name: Instrument Horizon NVK device initialization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("nxvk/src/nouveau/vulkan/nvkmd/nvgpu/nvkmd_nvgpu_pdev.c")
+          s = p.read_text()
+          s = s.replace('#include "nvkmd_nvgpu.h"', '#include "nvkmd_nvgpu.h"\\n#include <stdio.h>', 1)
+          pairs = [
+              ("   Result rc = nvInitialize();", """   fprintf(stderr, "[NVK-TRACE] before nvInitialize\\n"); fflush(stderr);
+             Result rc = nvInitialize();
+             fprintf(stderr, "[NVK-TRACE] after nvInitialize rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvGpuInit();", """   fprintf(stderr, "[NVK-TRACE] before nvGpuInit\\n"); fflush(stderr);
+             rc = nvGpuInit();
+             fprintf(stderr, "[NVK-TRACE] after nvGpuInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvMapInit();", """   fprintf(stderr, "[NVK-TRACE] before nvMapInit\\n"); fflush(stderr);
+             rc = nvMapInit();
+             fprintf(stderr, "[NVK-TRACE] after nvMapInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvFenceInit();", """   fprintf(stderr, "[NVK-TRACE] before nvFenceInit\\n"); fflush(stderr);
+             rc = nvFenceInit();
+             fprintf(stderr, "[NVK-TRACE] after nvFenceInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();", """   fprintf(stderr, "[NVK-TRACE] before nvGpuGetCharacteristics\\n"); fflush(stderr);
+             const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();
+             fprintf(stderr, "[NVK-TRACE] after nvGpuGetCharacteristics ptr=%p\\n", (const void *)chars); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing expected NVK source anchor: " + old)
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Horizon NVK initialization tracepoints installed")
+          PY
+
       - name: Build pinned NXVK toolchain image
         run: |
           docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker
