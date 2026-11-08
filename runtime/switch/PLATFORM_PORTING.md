@@ -26,18 +26,18 @@ The platform contract now has `StartJoinableThread` and `JoinThread`, implemente
 
 The original detached `StartThread` remains for guest threads and other existing call sites. On Switch, those detached controls are still retained for process lifetime because that legacy API has no completion/reap callback. Converting all detached guest threads to managed ownership remains necessary before calling thread lifecycle complete. The new GPU path has not yet been linked into a full Switch runtime.
 
-### 2. GPU backend is still Vulkan-only
+### 2. GPU backend: complete the NXVK/Vulkan path first
 
-`runtime/gpu/backend.h` is already a useful backend-neutral interface. The only implementation is `runtime/gpu/vulkan/backend.cpp`, which delegates drawing, resolve, swap, queries and guest-memory synchronization to the Vulkan renderer.
+`runtime/gpu/backend.h` is already a useful backend-neutral interface. The active implementation is `runtime/gpu/vulkan/backend.cpp`, which delegates drawing, resolve, swap, queries and guest-memory synchronization to the Vulkan renderer. The pinned NXVK port has now built successfully in CI, including its static archives and three diagnostic NROs. This is a build/link milestone only; physical GPU execution and the complete PES renderer remain unverified.
 
-The top-level CMake configuration currently rejects every backend except `vulkan`. A Switch port therefore needs all of the following before it can render:
-- a real Switch backend (deko3d is the candidate to investigate, not an implemented backend);
-- shader translation and pipeline creation for that backend;
-- guest texture/EDRAM surface handling, resolve, synchronization and occlusion-query semantics;
-- a Switch presentation path and display timing;
-- a build target that compiles and links the selected backend with the actual runtime.
+The top-level CMake configuration currently selects only `vulkan`. The immediate goal is to finish this existing path, not replace it:
+- compile and link the complete PES runtime against the pinned NXVK static ICD;
+- validate Vulkan instance/device dispatch and the VI surface/swapchain on a physical Switch;
+- verify the PES renderer's required Vulkan extensions, formats, memory types, shader/pipeline features and synchronization against NXVK;
+- complete guest texture/EDRAM surface handling, resolve, occlusion queries and frame presentation;
+- reach the PES 2017 menu and then validate an actual match, stability and frame pacing.
 
-A stub backend that merely returns success would conceal the missing renderer and is not an acceptable milestone.
+Do not start a deko3d implementation while NXVK remains unproven. Keep it as a separate future option only if measured NXVK performance or compatibility is inadequate after the game is running. Do not remove or destabilize the working NXVK build path.
 
 ### 3. Switch audio output now has an audout sink; hardware validation remains
 
@@ -57,7 +57,7 @@ The CMake runtime requires generated files in `ppc/` and a verified `default.xex
 
 1. **Thread contract:** introduce a managed thread handle with start, wait/join and cleanup semantics; migrate GPU-owned workers without changing desktop behavior; make the Switch reaper release libnx resources only after exit.
 2. **Runtime source selection:** add a devkitA64 CMake/toolchain or equivalent Make target for the actual runtime, excluding desktop POSIX and Vulkan-only sources while retaining the existing Linux/Android builds.
-3. **GPU bring-up:** select and prototype the Switch graphics API, then implement the complete backend contract rather than a success-only stub.
+3. **GPU bring-up:** finish and validate the existing NXVK/Vulkan backend, including the complete PES renderer and physical-console presentation. Consider another API only after real-game measurements show a material NXVK limitation.
 4. **Audio bring-up:** implement and compile an Audren sink, then verify real mixer playback on hardware.
 5. **Runtime shell and storage:** adapt entry/exit, settings, logs, file discovery and installation to the SD layout.
 6. **Generated PPC integration:** provide a reproducible private build step for generated guest code and matching XEX hash; do not put proprietary output in Git.
