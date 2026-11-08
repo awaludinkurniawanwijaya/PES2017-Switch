@@ -6,6 +6,7 @@ on:
     branches:
       - feature/switch-native-port
       - work/switch-platform-seam
+      - work/switch-libnx-platform
     paths:
       - "switch/**"
       - "runtime/switch/**"
