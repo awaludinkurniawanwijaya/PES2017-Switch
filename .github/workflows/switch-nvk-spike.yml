@@ -69,7 +69,7 @@ jobs:
             bash -lc '
               set -Eeuo pipefail
               mkdir -p /project/artifacts/nxvk
-              trap "rc=\$?; trap - ERR; echo '[PES17-CI][FAIL] Build container stopped at exit code $rc'; echo exit_code=\$rc > /project/artifacts/nxvk/container-exit.txt; exit \$rc" ERR
+              trap "rc=\$?; echo [PES17-CI]-container-failed; echo exit_code=\$rc > /project/artifacts/nxvk/container-exit.txt" ERR
 
               run_stage() {
                 stage="$1"
