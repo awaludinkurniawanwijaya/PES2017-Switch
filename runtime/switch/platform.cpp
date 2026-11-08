@@ -1,5 +1,7 @@
 #include "../platform.h"
 
+#include "../../switch/source/input.h"
+
 #include <switch.h>
 
 #include <algorithm>
@@ -46,6 +48,7 @@ namespace
 void platform::Initialise()
 {
     g_mainThreadId = CurrentThreadId();
+    switch_input::Initialize();
 }
 
 uint32_t platform::ThreadId()
