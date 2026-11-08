@@ -795,6 +795,14 @@ PPC_FUNC(__imp__XamInputSetState)
     if (user >= 4) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
     auto* v = GuestPtr<XInputVibration>(ctx.r5.u32);
     if (!v) { ctx.r3.u64 = X_ERROR_BAD_ARGUMENTS; return; }
+#ifdef __SWITCH__
+    // The guest-facing capabilities currently advertise no motors. Treat a
+    // stale/optional rumble request as a successful no-op rather than failing
+    // an otherwise connected controller; native HD-rumble is a separate task.
+    ctx.r3.u64 = (user == 0 && switch_input::Poll().connected)
+                     ? X_ERROR_SUCCESS : X_ERROR_DEVICE_NOT_CONNECTED;
+    return;
+#endif
 #ifdef PES17_ANDROID
     // The phone's vibrator, or a pad that has motors of its own: the app
     // decides which, and whether the player wanted either.
