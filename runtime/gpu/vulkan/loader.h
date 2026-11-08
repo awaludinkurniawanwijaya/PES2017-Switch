@@ -29,6 +29,9 @@
 #if (defined(__ANDROID__) || defined(PES17_ANDROID)) && !defined(VK_USE_PLATFORM_ANDROID_KHR)
 #   define VK_USE_PLATFORM_ANDROID_KHR 1
 #endif
+#if defined(__SWITCH__) && !defined(VK_USE_PLATFORM_VI_NN)
+#   define VK_USE_PLATFORM_VI_NN 1
+#endif
 
 #include <vulkan/vulkan.h>
 
