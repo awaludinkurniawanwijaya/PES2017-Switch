@@ -28,6 +28,8 @@ echo "==> Link static NXVK driver and PES loader"
 $GXX -specs="$DKP/libnx/switch.specs" -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft \
   -L"$DKP/portlibs/switch/lib" -L"$DKP/libnx/lib" \
   -o "$OBJ/pes_loader_smoke.elf" -Wl,--gc-sections -Wl,-u,vk_icdGetInstanceProcAddr \
+  # NXVK static objects contain AArch64 read-only-section relocations; NRO startup applies relocations before execution. \\
+  -Wl,-z,notext \\
   "$OBJ/pes_loader_smoke.o" "$OBJ/loader.o" "$OBJ/nvk_compat.o" \
   "$DKP/portlibs/switch/lib/libnvk.a" \
   -Wl,--start-group "$DKP/portlibs/switch/lib/libnvk_support.a" \
