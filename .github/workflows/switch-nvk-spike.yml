@@ -49,13 +49,7 @@ jobs:
 
       - name: Build pinned NXVK toolchain image
         run: |
-          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker > /tmp/nxvk-image-build.log 2>&1 &
-          build_pid=$!
-          while kill -0 "$build_pid" 2>/dev/null; do
-            sleep 30
-            if kill -0 "$build_pid" 2>/dev/null; then echo "Sedang melakukan proses pengujian..."; fi
-          done
-          wait "$build_pid" || { tail -n 40 /tmp/nxvk-image-build.log; exit 1; }
+          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker
 
       - name: Build NVK archives and smoke NROs
         id: nxvk-build
@@ -74,18 +68,8 @@ jobs:
               run_stage() {
                 stage="$1"
                 shift
-                "$@" > /tmp/pes17-stage.log 2>&1 &
-                stage_pid=$!
-                while kill -0 "$stage_pid" 2>/dev/null; do
-                  sleep 30
-                  if kill -0 "$stage_pid" 2>/dev/null; then
-                    echo "Sedang melakukan proses pengujian..."
-                  fi
-                done
-                if ! wait "$stage_pid"; then
-                  tail -n 40 /tmp/pes17-stage.log
-                  return 1
-                fi
+                echo "==> $stage"
+                "$@"
               }
 
               run_stage "Build NXVK driver archives" make CONTAINER= driver
@@ -108,8 +92,9 @@ jobs:
               run_stage "Verify installed NXVK archives and pkg-config metadata" \
                 bash -lc "test -s '$NVK_LIB' && test -s '$NVK_SUPPORT_LIB' && test -s '$NVK_PC'"
 
-              nm -g --defined-only "$NVK_LIB" | grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" || true
-              nm -g --defined-only "$NVK_LIB" | grep -q "vk_icdGetInstanceProcAddr"
+              nm -g --defined-only "$NVK_LIB" > /tmp/nvk-symbols.txt
+              grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" /tmp/nvk-symbols.txt || true
+              grep -q "vk_icdGetInstanceProcAddr" /tmp/nvk-symbols.txt
 
               cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
               cd /work
@@ -121,7 +106,8 @@ jobs:
                   -I/opt/devkitpro/libnx/include -include cstdint \
                   -c /project/runtime/gpu/vulkan/loader.cpp \
                   -o switch/build/loader-switch.o
-              nm -u switch/build/loader-switch.o | grep -q "vk_icdGetInstanceProcAddr"
+              nm -u switch/build/loader-switch.o > /tmp/loader-undefined-symbols.txt
+              grep -q "vk_icdGetInstanceProcAddr" /tmp/loader-undefined-symbols.txt
 
               run_stage "Compile PES Vulkan presenter adapter for Switch" \
                 /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
@@ -154,8 +140,6 @@ jobs:
             echo "- PES 2017 runtime link: **NOT RUN** — game-specific PPC output and verified XEX hash are not inputs to this feasibility job."
             echo "- Playable PES 2017 NRO: **NOT RUN** — outputs here are upstream NXVK smoke applications, not the game."
             echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
-            echo ""
-            echo "Long-running stages periodically print: Sedang melakukan proses pengujian..."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Hasil proses pengujian: ${BUILD_OUTCOME:-NOT RUN}"
 
