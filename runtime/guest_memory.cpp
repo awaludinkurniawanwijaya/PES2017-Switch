@@ -289,7 +289,11 @@ namespace
 
 uint8_t* guest::Initialise()
 {
-#ifndef _WIN32
+#if defined(__SWITCH__)
+    // Horizon's guest mappings and svcMapPhysicalMemory are page-granular at
+    // 4 KiB. Do not route this native path through the POSIX sysconf API.
+    LOGI("host pages are %u bytes", 0x1000u);
+#elif !defined(_WIN32)
     // Worth a line: an Android 15 device has 16 KB pages, everything else
     // has 4 KB, and the difference decides whether memory protection can
     // work at the granularity the renderer wants (gpu/memory_watch.h).
