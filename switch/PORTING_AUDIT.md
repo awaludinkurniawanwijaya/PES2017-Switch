@@ -31,7 +31,9 @@ The top-level `CMakeLists.txt` currently selects Android, Windows, or the deskto
 
 ### 4. Audio
 
-`runtime/apu/audio.cpp` has Android AAudio and SDL output paths. A Switch output backend must feed the existing 48 kHz, six-channel float mixer frames to libnx audren (or another supported Switch audio service), including channel layout conversion, buffer lifetime, pacing, and clean shutdown. Until this exists, audio must be explicitly disabled rather than pretending it is implemented.
+A first libnx `audout` sink now exists in `runtime/switch/audio.cpp` and is called by the Switch branch in `runtime/apu/audio.cpp`. It converts the existing 48 kHz planar big-endian 5.1 float frames to interleaved 48 kHz stereo signed 16-bit PCM, using an eight-buffer aligned pool. The Switch Makefile compiles the sink as part of the bootstrap and has a dedicated syntax-only audio gate.
+
+This is not an Audren renderer graph and is not hardware-validated. Actual output device selection, channel-order/mix-level verification, queue stability, suspend/resume and service shutdown remain open.
 
 ### 5. Graphics (largest runtime blocker)
 
