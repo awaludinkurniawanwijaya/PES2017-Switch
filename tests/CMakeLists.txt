@@ -139,3 +139,12 @@ add_test(NAME dynamic-scale COMMAND dynamic-scale-test)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME xex-version
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/xex_version_test.py")
+
+# ---- independent Nintendo Switch face-button mapping --------------------
+# Keep this pure mapping test host-buildable: it checks the exact helper used
+# by the libnx HID adapter without requiring devkitPro or a physical console.
+add_executable(switch-input-mapping-test
+    "${CMAKE_CURRENT_SOURCE_DIR}/switch_input_mapping_test.cpp")
+target_include_directories(switch-input-mapping-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/..")
+add_test(NAME switch-input-mapping COMMAND switch-input-mapping-test)
