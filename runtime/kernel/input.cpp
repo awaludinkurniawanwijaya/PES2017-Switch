@@ -715,6 +715,25 @@ PPC_FUNC(__imp__XamInputGetCapabilities)
     uint32_t user = ctx.r3.u32;
     auto* caps = GuestPtr<XInputCapabilities>(ctx.r5.u32);
     if (!caps) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
+
+#ifdef __SWITCH__
+    if (user == 0 && switch_input::Poll().connected)
+    {
+        *caps = XInputCapabilities{};
+        caps->type = 1;
+        caps->subType = 1;
+        caps->gamepad.buttons = 0xF3FF;
+        caps->gamepad.leftTrigger = caps->gamepad.rightTrigger = 0xFF;
+        caps->gamepad.thumbLX = caps->gamepad.thumbLY = uint16_t(0xFFFF);
+        caps->gamepad.thumbRX = caps->gamepad.thumbRY = uint16_t(0xFFFF);
+        // Joy-Con vibration is not advertised until the rumble path is wired.
+        ctx.r3.u64 = X_ERROR_SUCCESS;
+        return;
+    }
+    *caps = XInputCapabilities{};
+    ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+    return;
+#endif
 #ifdef PES17_ANDROID
     // A controller listed in files/pad (the virtual pad in XamInputGetState).
     bool listed = false;
