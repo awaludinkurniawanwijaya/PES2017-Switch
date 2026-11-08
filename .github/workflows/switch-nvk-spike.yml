@@ -11,6 +11,8 @@ on:
       - "runtime/gpu/vulkan/loader.h"
       - "runtime/gpu/vulkan/vulkan_functions.inc"
       - "runtime/gpu/vulkan/presenter.cpp"
+      - "CMakeLists.txt"
+      - "cmake/switch-toolchain.cmake"
 
 permissions:
   contents: read
@@ -70,6 +72,20 @@ jobs:
               # Stage the same static portlib package the final runtime will link:
               # libnvk.a, the support archive, and pkg-config metadata.
               make CONTAINER= package
+              make CONTAINER= install
+              # Configure the real PES runtime/NRO target against the staged NXVK
+              # portlib. Temporary empty PPC translation units allow CMake wiring
+              # to be checked without redistributing or generating game-specific code.
+              mkdir -p /project/ppc
+              : > /project/ppc/ppc_func_mapping.cpp
+              : > /project/ppc/stubs_generated.cpp
+              cd /project
+              PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig \
+                cmake -S . -B switch/build/cmake-configure \
+                  -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
+                  -DPES17_SWITCH=ON \
+                  -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
+              cd /work
               # Compile the project's loader against the exact pinned NXVK headers.
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
