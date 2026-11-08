@@ -389,7 +389,9 @@ endif()
 # the disc's executables and is in no repository, so a CI runner has none of it
 # (.github/workflows/tests.yml). Including it here is what keeps a local `ctest`
 # running exactly what CI runs.
-add_subdirectory(tests)
+if(NOT PES17_SWITCH)
+    add_subdirectory(tests)
+endif()
 endif()
 
 # ---- launcher --------------------------------------------------------------
