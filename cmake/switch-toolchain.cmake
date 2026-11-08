@@ -12,7 +12,6 @@ set(CMAKE_C_COMPILER   "${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-gcc")
 set(CMAKE_CXX_COMPILER "${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-g++")
 set(CMAKE_AR           "${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-ar")
 set(CMAKE_RANLIB       "${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-ranlib")
-set(CMAKE_NM           "${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-nm")
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
