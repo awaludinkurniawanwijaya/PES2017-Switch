@@ -68,6 +68,12 @@ jobs:
                 -o switch/build/loader-switch.o
               /opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm -u switch/build/loader-switch.o | \
                 grep -q 'vk_icdGetInstanceProcAddr'
+              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                -I/project/runtime -I"$PWD/include" \
+                -I/opt/devkitpro/libnx/include -include cstdint \
+                -c "/project/runtime/gpu/vulkan/presenter.cpp" \
+                -o switch/build/presenter-switch.o
               # The upstream smoke shader headers are generated build products,
               # intentionally not committed. Generate them inside the pinned image
               # before compiling the validation NROs.
