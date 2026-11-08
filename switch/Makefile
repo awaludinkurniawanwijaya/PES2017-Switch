@@ -87,7 +87,7 @@ check-runtime-crash:
 .PHONY: check-runtime-guest-memory
 check-runtime-guest-memory:
 	@mkdir -p $(BUILD)/probe
-	@printf '#pragma once\\n#define PPC_IMAGE_BASE 0x82000000u\\n#define PPC_IMAGE_SIZE 0x00100000u\\n#define PPC_CODE_SIZE 0x00100000u\\n' > $(BUILD)/probe/ppc_config.h
+	@printf '#pragma once\n#define PPC_IMAGE_BASE 0x82000000u\n#define PPC_IMAGE_SIZE 0x00100000u\n#define PPC_CODE_SIZE 0x00100000u\n' > $(BUILD)/probe/ppc_config.h
 	$(CXX) -std=gnu++20 -D__SWITCH__ -I$(BUILD)/probe -I$(TOPDIR)/../runtime -I$(CURDIR)/include -I$(LIBNX)/include -include cstdint -fsyntax-only $(TOPDIR)/../runtime/guest_memory.cpp
 
 .PHONY: check-runtime-input
