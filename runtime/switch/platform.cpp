@@ -159,6 +159,41 @@ bool platform::StartThread(void (*body)(void*), void* argument, size_t stackByte
     return true;
 }
 
+platform::ThreadHandle platform::StartJoinableThread(void (*body)(void*), void* argument,
+                                                      size_t stackBytes, const char* name)
+{
+    if (!body) return nullptr;
+    auto* control = new (std::nothrow) ThreadControl{};
+    if (!control) return nullptr;
+    control->body = body;
+    control->argument = argument;
+    if (name) std::snprintf(control->name, sizeof(control->name), "%s", name);
+
+    constexpr size_t kPageSize = 0x1000;
+    stackBytes = std::max(stackBytes, size_t(0x4000));
+    stackBytes = (stackBytes + kPageSize - 1) & ~(kPageSize - 1);
+    Result rc = threadCreate(&control->thread, ThreadEntry, control, nullptr,
+                             stackBytes, 0x3B, -2);
+    if (R_FAILED(rc)) { delete control; return nullptr; }
+    rc = threadStart(&control->thread);
+    if (R_FAILED(rc))
+    {
+        threadClose(&control->thread);
+        delete control;
+        return nullptr;
+    }
+    return control;
+}
+
+void platform::JoinThread(ThreadHandle handle)
+{
+    auto* control = static_cast<ThreadControl*>(handle);
+    if (!control) return;
+    threadWaitForExit(&control->thread, UINT64_MAX);
+    threadClose(&control->thread);
+    delete control;
+}
+
 void* platform::OpenLibrary(const char* path)
 {
     (void)path;
