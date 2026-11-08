@@ -14,6 +14,8 @@ namespace switch_input
 
     // Initializes the primary controller (handheld or paired Joy-Cons).
     bool Initialize();
+    // Process libnx applet events on the main thread; false means exit requested.
+    bool MainLoop();
     // Poll once per frame, after appletMainLoop() succeeds.
     State Poll();
 }
