@@ -8,6 +8,8 @@ This note records the source-level blockers found while preparing the native Swi
 
 - `switch/Makefile` builds `pes2017-switch-bootstrap.nro` with devkitA64/libnx.
 - `switch/source/main.cpp` initializes the libnx console and polls the + button.
+- The install start contract now treats `argc == 0` or `argc == 1` as a Homebrew Menu player launch on Switch; explicit arguments remain development launches. Host tests and a Switch compiler static-assert gate cover the distinction.
+- The full runtime selects `sdmc:/switch/PES2017/pes2017-switch.log` by default when no `PES17_LOG_FILE` is supplied, so hardware startup and GPU errors have a persistent SD destination. This source path still awaits a full game-runtime build and physical validation.
 - The existing runtime is a separate CMake target. Its desktop entry point is `runtime/main.cpp`; Android starts `pes17::Run` from JNI.
 - The Switch bootstrap does not currently compile or link `runtime/`, `ppc/`, or any generated guest code.
 

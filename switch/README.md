@@ -18,6 +18,8 @@ complete game-data launch path.
   units;
 - Switch-specific crash/hang-monitor and stutter-watcher paths, using the
   platform thread API rather than POSIX signal/pthread code;
+- Switch player-start argument handling accepts both `argc == 0` and `argc == 1` as a normal Homebrew Menu launch; explicit image arguments remain development launches. The shared contract is host-tested and compile-checked with the Switch toolchain.
+- The full runtime now defaults its diagnostic log to `sdmc:/switch/PES2017/pes2017-switch.log` when `PES17_LOG_FILE` is not set. This source change still needs a full runtime build and hardware confirmation.
 - a bootstrap probe that links and exercises the managed joinable-thread API,
   `std::mutex`, `std::condition_variable`, `std::shared_mutex`, and
   `std::call_once`.
@@ -43,7 +45,7 @@ complete game-data launch path.
   `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
   diagnostic app, not the PES game.
 
-Host tests passed (8/8), and the bootstrap NRO was packaged successfully.
+Host tests passed (11/11), and the bootstrap NRO was packaged successfully (about 759 KiB before compression).
 The runtime XInput translation unit still needs generated PPC headers for its
 full syntax check. These results do **not** prove that NVK presents to the
 screen or that PES 2017 can boot.
