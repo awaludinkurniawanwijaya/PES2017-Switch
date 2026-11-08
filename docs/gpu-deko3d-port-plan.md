@@ -40,11 +40,25 @@ References:
 
 **Preferred decision gate (updated 2026-11-08):** the dedicated GitHub Actions job now successfully builds the pinned NXVK static archives and both upstream smoke NROs (`nvk_tri` and `nvk_vi_swapchain`), and compiles the PES Vulkan loader and presenter adapters for Switch. This proves toolchain/build compatibility and adapter compilation only. It does not prove the smoke NROs run on retail hardware, nor that the PES presenter can create a VI surface, create a device, or present a frame. Next gate: run the two smoke NROs on a Switch, then produce a small PES-owned adapter/presenter integration NRO and validate it on hardware. Only after those gates pass should NVK be selected as the production Switch GPU backend. If this path fails, return to the deko3d shader-feasibility work below.
 
-### Concrete loader mismatch found in source inspection
+### Loaderless ICD adapter status
 
-The upstream NXVK Switch build produces `libnvk.a` plus support archives. Its smoke harness resolves functions from `vk_icdGetInstanceProcAddr` directly. In contrast, this runtime's `runtime/gpu/vulkan/loader.cpp` expects a normal `vkGetInstanceProcAddr` entry and later resolves `vkGetDeviceProcAddr` through it. The separate `jhuz0/nvk-switch` packaging project documents that a loaderless ICD needs explicit glue for `vkGetInstanceProcAddr`, `vkGetDeviceProcAddr`, and loader-only instance-layer enumeration.
+The source mismatch described in the original feasibility study has been addressed in
+`runtime/gpu/vulkan/loader.cpp` and `loader.h`:
 
-Therefore, simply adding `libnvk.a` to the NRO link line is insufficient. The Switch integration spike must either adopt a tested loaderless wrapper (with its source and license audited) or add a small local adapter that forwards the runtime's expected entry points to NXVK's ICD entry point. It must also ensure the correct static support archives and link order are present. This is a bounded, testable integration task and should be completed before touching renderer resource code.
+- On Switch, `vk::loader::Open()` uses the statically linked
+  `vk_icdGetInstanceProcAddr` symbol directly; it does not attempt
+  `dlopen("libvulkan.so")`.
+- The resulting dispatch function populates the runtime's existing Vulkan
+  function-pointer table. Instance functions are loaded after instance creation,
+  and device functions are refreshed through `vkGetDeviceProcAddr`.
+- The Switch NVK feasibility workflow links the pinned NXVK archives and
+  compiles both the PES loader and presenter translation units.
+
+This resolves the *source-level entry-point adaptation* and compile gate. It
+does not yet prove that the PES loader can initialize NXVK at runtime, that the
+PES presenter can create and own its VI surface/swapchain, or that the complete
+renderer can link and run. The next gate is a PES-owned Switch integration NRO
+that calls this actual loader path and exercises the PES present lifecycle.
 
 ## Existing backend boundary
 
@@ -137,4 +151,20 @@ The pinned NXVK revision used by the feasibility workflow is `c3abea1efde44027b7
 - The upstream `nvk_tri` test is an offscreen render/readback test. The separate `nvk_vi_swapchain` test enables `VK_KHR_surface`, `VK_NN_vi_surface`, and `VK_KHR_swapchain`, creates a surface from `nwindowGetDefault()`, and presents up to 300 frames. The second test is the relevant gate for PES presentation, but it only proves the NXVK WSI path, not the PES renderer's surface ownership or frame lifecycle.
 - The app must compile with `-D__SWITCH__ -DVK_USE_PLATFORM_VI_NN`, Mesa's vendored Vulkan headers, devkitPro libnx headers, `-ffunction-sections -fdata-sections`, and link with libnx's Switch specs. NXVK's compatibility shim also supplies newlib gaps such as `getrandom`, `posix_memalign`, `sysconf`, identity helpers and regex functions; its source/license must remain part of any combined distribution audit.
 
-**Next gate after the smoke artifacts exist:** add a separate Switch-only loader adapter and a minimal app owned by this repository that obtains the ICD entry point, creates an instance/device, creates the VI surface from the app's `NWindow`, clears/presents several frames, and records driver/API/extension diagnostics. Only then should the existing Vulkan renderer be added to that link. Keep this adapter isolated from Android and desktop loader paths.
+**Current gate (updated 2026-11-08):** the user's physical Switch logs now
+confirm both upstream samples pass: `nvk_tri` successfully creates a graphics
+pipeline, submits work and reads back the expected center/corner pixels;
+`nvk_vi_swapchain` creates a VI surface and swapchain and presents all 300
+frames. The PES loader and presenter also compile against the pinned NXVK
+headers in CI, and the loaderless ICD entry-point adaptation exists in
+`loader.cpp`. These results close the upstream sample and adapter-compilation
+gates only.
+
+**Next gate:** produce a PES-owned Switch integration NRO that calls the
+project's actual `vk::loader::Open()` path, loads instance dispatch, creates a
+VI surface from libnx's `NWindow`, checks graphics/present queue support, and
+presents a deterministic clear workload. Then test that NRO on the user's
+console. This is still narrower than the full `presenter.cpp` lifecycle; once
+the loader-owned integration test passes, make the existing PES presenter
+start against the same NXVK ICD and verify its frame queue/swapchain lifecycle.
+Keep this Switch-only path isolated from Android and desktop loader paths.
