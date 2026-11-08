@@ -17,6 +17,29 @@ Primary references:
 - deko3d shader workflow / DKSH / UAM: https://github.com/devkitPro/deko3d/blob/master/Primer.md
 - UAM compiler purpose and host-side usage: https://github.com/devkitPro/uam
 
+## Newly identified alternative: reuse a Switch Vulkan implementation (preferred spike)
+
+A more direct route than replacing Vulkan with deko3d has now been identified. The public [NXVK project](https://github.com/PalindromicBreadLoaf/nxvk) ports Mesa NVK to the Switch GM20B and exposes a Vulkan implementation over libnx. Its Switch build targets Maxwell and includes the NAK shader compiler, so the existing Xenos-to-SPIR-V translator could remain unchanged if the runtime can link and initialize this Vulkan implementation.
+
+This is materially different from deko3d: NVK accepts Vulkan SPIR-V through the Vulkan API, then its NAK backend compiles it to Maxwell machine code. It therefore potentially removes the need to write an Xenos-to-SM53 compiler. The upstream NXVK README documents a Mesa 26.2.2-based Switch build and static archives (`libnvk.a`, `libnvk_support.a`); a separate public packaging project documents a prebuilt static `libvulkan.a` approach. These are promising engineering references, not proof that this repository can link or run them.
+
+References:
+- NXVK Switch port and build/licensing notes: https://github.com/PalindromicBreadLoaf/nxvk/blob/switch/switch/README.md
+- NXVK Switch build scripts: https://github.com/PalindromicBreadLoaf/nxvk/tree/switch/switch/build
+- Public packaged NVK archive and integration notes: https://github.com/jhuz0/nvk-switch
+- NVK/NAK Maxwell shader compiler background: https://docs.mesa3d.org/drivers/nvk.html
+
+### Constraints and risks to prove
+
+1. **License compatibility:** NXVK states its newly added files are GPL-2.0-or-later while upstream Mesa files retain their original licenses. This project declares GPL-3.0-only; GPL-2.0-or-later code may be compatible via its GPL-3.0 option, but the exact source set, notices, and redistribution obligations must be audited before vendoring or distributing binaries. Do not copy code from the separate `HayatoG/switch-nvk` fork: it adds its own GPL-2.0-or-later fork policy and should not be treated as a clean dependency.
+2. **Vulkan integration:** verify whether NXVK's static archives expose a usable loader/ICD entry point compatible with the current renderer's loader assumptions. Determine required dispatch glue, link order, dependencies, and symbols.
+3. **Surface and presentation:** verify `VK_NN_vi_surface`/libnx `nwindow` integration against this app's lifecycle. The current bootstrap console path is not a Vulkan surface.
+4. **Runtime footprint:** measure NRO size, static memory, heap use, shader compile time, cache behavior, and available applet memory on real Switch hardware.
+5. **Hardware status:** NVK on GM20B is experimental and not considered conformant by Mesa; smoke-test results from another project do not validate PES 2017 rendering.
+6. **Version pinning:** pin an exact NXVK/Mesa revision and preserve upstream notices and build provenance. Avoid downloading an unpinned prebuilt archive in the production workflow.
+
+**Preferred decision gate:** first build a tiny Vulkan triangle/compute smoke NRO using the exact NXVK revision in a dedicated GitHub Actions job. Then link the existing renderer with a minimal surface/present test. Only if both pass should the project choose NVK as the Switch graphics backend. If this path fails, return to the deko3d shader-feasibility work below.
+
 ## Existing backend boundary
 
 `runtime/gpu/backend.h` already defines a useful backend-neutral command interface:
@@ -93,7 +116,7 @@ Only after the previous gates:
 
 ## Immediate next engineering task
 
-Do not start by creating a large empty `backend.cpp`. First build a small shader feasibility spike that consumes a real, legally obtained guest shader dump and answers whether an Xenos-to-SM53 translator can be built with acceptable correctness and runtime cost. The current Xenos analysis and instruction decoder are reusable inputs; the current SPIR-V writer is not a deko3d output path.
+Do not start by creating a large empty deko3d `backend.cpp`. First run the preferred NVK feasibility spike: pin and audit the NXVK source/license set, reproduce its build in GitHub Actions, and produce a small Vulkan smoke NRO using its own test shaders. Then test whether the current Vulkan renderer can link against that implementation and present through libnx WSI. This would preserve the existing Xenos-to-SPIR-V translator and avoid a new Xenos-to-SM53 compiler. Keep the deko3d plan as a fallback; if NVK cannot be integrated or its runtime footprint is unacceptable, resume the real-shader Xenos-to-SM53 spike. The current Xenos analysis and instruction decoder remain reusable inputs.
 
 ## Acceptance rule
 
