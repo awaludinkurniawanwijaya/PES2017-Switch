@@ -224,10 +224,13 @@ namespace
     bool InstanceHasExtension(const char* name)
     {
         uint32_t count = 0;
-        if (vkEnumerateInstanceExtensionProperties(name, &count, nullptr) != VK_SUCCESS || !count)
+        // The first parameter is a layer name, not an extension name.
+        // Pass nullptr to enumerate extensions exposed by the Vulkan
+        // implementation itself (including the platform surface extensions).
+        if (vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) != VK_SUCCESS || !count)
             return false;
         std::vector<VkExtensionProperties> offered(count);
-        if (vkEnumerateInstanceExtensionProperties(name, &count, offered.data()) != VK_SUCCESS)
+        if (vkEnumerateInstanceExtensionProperties(nullptr, &count, offered.data()) != VK_SUCCESS)
             return false;
         for (const auto& e : offered)
             if (std::strcmp(e.extensionName, name) == 0) return true;
