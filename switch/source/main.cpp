@@ -73,8 +73,8 @@ int main(int argc, char* argv[]) {
     std::printf("Joy-Con / Pro Controller input test\n");
     std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
     std::printf("Sticks: left and right analog\n");
-    std::printf("Settings: %s\\n", loadedSettings.empty() ? "defaults" : loadedSettings.c_str());
-    std::printf("Config: sdmc:/switch/PES2017/.env\\n");
+    std::printf("Settings: %s\n", loadedSettings.empty() ? "defaults" : loadedSettings.c_str());
+    std::printf("Config: sdmc:/switch/PES2017/.env\n");
     std::printf("Press + to exit.\n\n");
 
     while (switch_input::MainLoop()) {
