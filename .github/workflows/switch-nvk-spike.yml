@@ -40,100 +40,147 @@ jobs:
 
       - name: Record source revisions and license notices
         run: |
+          echo "[PES17-CI][START] Source and license audit"
           git -C nxvk rev-parse HEAD
           git -C nxvk status --short
           test -s nxvk/LICENSE || true
           test -s nxvk/licenses/GPL-2.0-or-later
           sed -n '1,80p' nxvk/switch/README.md
           find nxvk/licenses -maxdepth 2 -type f -print | sort
+          echo "[PES17-CI][PASS] Source and license audit"
 
       - name: Build pinned NXVK toolchain image
-        run: docker build --pull -t pes17-nxvk nxvk/switch/docker
+        run: |
+          echo "[PES17-CI][START] Building pinned NXVK toolchain image"
+          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker
+          echo "[PES17-CI][PASS] NXVK toolchain image built"
 
       - name: Build NVK archives and smoke NROs
+        id: nxvk-build
         run: |
+          mkdir -p artifacts/nxvk
+          echo "[PES17-CI][START] Launching isolated NXVK build container"
           docker run --rm \
             -v "$GITHUB_WORKSPACE/nxvk:/work" \
             -v "$GITHUB_WORKSPACE:/project" \
             -w /work \
             pes17-nxvk \
             bash -lc '
-              set -euxo pipefail
-              make CONTAINER= driver
-              # Stage the same static portlib package the final runtime will link:
-              # libnvk.a, the support archive, and pkg-config metadata.
-              make CONTAINER= package
-              make CONTAINER= install
-              # Configure the real PES runtime/NRO target against the staged NXVK
-              # portlib. Temporary empty PPC translation units allow CMake wiring
-              # to be checked without redistributing or generating game-specific code.
+              set -Eeuo pipefail
+              mkdir -p /project/artifacts/nxvk
+              trap '''rc=$?; echo "[PES17-CI][FAIL] Build container stopped at exit code $rc"; echo "exit_code=$rc" > /project/artifacts/nxvk/container-exit.txt; exit "$rc"''' ERR
+
+              run_stage() {
+                stage="$1"
+                shift
+                echo "[PES17-CI][START] $stage"
+                "$@" &
+                stage_pid=$!
+                while kill -0 "$stage_pid" 2>/dev/null; do
+                  sleep 30
+                  if kill -0 "$stage_pid" 2>/dev/null; then
+                    echo "[PES17-CI][HEARTBEAT] $stage is still running; runner has not stopped"
+                  fi
+                done
+                wait "$stage_pid"
+                echo "[PES17-CI][PASS] $stage"
+              }
+
+              run_stage "Build NXVK driver archives" make CONTAINER= driver
+              run_stage "Package NXVK static portlib" make CONTAINER= package
+              run_stage "Install NXVK portlib into devkitPro" make CONTAINER= install
+
               mkdir -p /project/ppc
               : > /project/ppc/ppc_func_mapping.cpp
               : > /project/ppc/stubs_generated.cpp
-              cd /project
-              PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig \
-                cmake -S . -B switch/build/cmake-configure \
-                  -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
+              run_stage "Configure PES Switch CMake target against NXVK" \
+                env PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig \
+                cmake -S /project -B /project/switch/build/cmake-configure \
+                  -DCMAKE_TOOLCHAIN_FILE=/project/cmake/switch-toolchain.cmake \
                   -DPES17_SWITCH=ON \
                   -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
-              # Use the checkout's path under the project mount. The separate
-              # /work bind mount can become unavailable after the upstream
-              # package/install targets; fail with a useful diagnostic if the
-              # checkout itself is missing.
-              test -d /project/nxvk/include
-              cd /project/nxvk
-              # Compile the project's loader against the exact pinned NXVK headers.
-              # This proves the loaderless ICD entry-point adapter is type-correct
-              # with the same Vulkan ABI used by the smoke NROs.
+
               NVK_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk.a
               NVK_SUPPORT_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk_support.a
               NVK_PC=/opt/devkitpro/portlibs/switch/lib/pkgconfig/nxvk.pc
-              test -s "$NVK_LIB"
-              test -s "$NVK_SUPPORT_LIB"
-              test -s "$NVK_PC"
-              echo ">> exported Vulkan/ICD symbols from libnvk.a"
+              run_stage "Verify installed NXVK archives and pkg-config metadata" \
+                bash -lc "test -s '$NVK_LIB' && test -s '$NVK_SUPPORT_LIB' && test -s '$NVK_PC'"
+
+              echo "[PES17-CI][START] Checking static Vulkan ICD entry point"
               nm -g --defined-only "$NVK_LIB" | grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" || true
-              if ! nm -g --defined-only "$NVK_LIB" | grep -q "vk_icdGetInstanceProcAddr"; then
-                echo "::error::libnvk.a does not export vk_icdGetInstanceProcAddr; inspect the symbol list above and update the static ICD adapter to the pinned NXVK ABI."
-                exit 1
-              fi
-              # Preserve the installed portlib outputs outside the ephemeral
-              # container so Actions can publish the exact archives used to link.
-              mkdir -p /project/artifacts/nxvk
+              nm -g --defined-only "$NVK_LIB" | grep -q "vk_icdGetInstanceProcAddr"
+              echo "[PES17-CI][PASS] NXVK exports vk_icdGetInstanceProcAddr"
+
               cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
-              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
-                -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
-                -I/project/runtime -I"$PWD/include" \
-                -I/opt/devkitpro/libnx/include -include cstdint \
-                -c "/project/runtime/gpu/vulkan/loader.cpp" \
-                -o switch/build/loader-switch.o
-              nm -u switch/build/loader-switch.o | \
-                grep -q "vk_icdGetInstanceProcAddr"
-              /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
-                -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
-                -I/project/runtime -I"$PWD/include" \
-                -I/opt/devkitpro/libnx/include -include cstdint \
-                -c "/project/runtime/gpu/vulkan/presenter.cpp" \
-                -o switch/build/presenter-switch.o
-              # The upstream smoke shader headers are generated build products,
-              # intentionally not committed. Generate them inside the pinned image
-              # before compiling the validation NROs.
-              bash switch/smoke/shaders/gen-shaders.sh
-              make CONTAINER= nro APP=nvk_tri
-              make CONTAINER= nro APP=nvk_vi_swapchain
-              test -s switch/smoke/out/nvk_tri.nro
-              test -s switch/smoke/out/nvk_vi_swapchain.nro
+              cd /work
+
+              run_stage "Compile PES Vulkan loader adapter for Switch" \
+                /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                  -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                  -I/project/runtime -I/work/include \
+                  -I/opt/devkitpro/libnx/include -include cstdint \
+                  -c /project/runtime/gpu/vulkan/loader.cpp \
+                  -o switch/build/loader-switch.o
+              nm -u switch/build/loader-switch.o | grep -q "vk_icdGetInstanceProcAddr"
+              echo "[PES17-CI][PASS] Loader object references the NXVK ICD entry point"
+
+              run_stage "Compile PES Vulkan presenter adapter for Switch" \
+                /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                  -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                  -I/project/runtime -I/work/include \
+                  -I/opt/devkitpro/libnx/include -include cstdint \
+                  -c /project/runtime/gpu/vulkan/presenter.cpp \
+                  -o switch/build/presenter-switch.o
+
+              run_stage "Generate upstream NXVK smoke-test shader headers" bash switch/smoke/shaders/gen-shaders.sh
+              run_stage "Build upstream nvk_tri smoke NRO" make CONTAINER= nro APP=nvk_tri
+              run_stage "Build upstream nvk_vi_swapchain smoke NRO" make CONTAINER= nro APP=nvk_vi_swapchain
+
+              run_stage "Verify both smoke NRO output files" \
+                bash -lc "test -s /work/switch/smoke/out/nvk_tri.nro && test -s /work/switch/smoke/out/nvk_vi_swapchain.nro"
               ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro
+              cp switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/
+              echo "[PES17-CI][PASS] All configured NXVK smoke build stages completed"
+              echo "[PES17-CI][NOT RUN] PES17 runtime link: generated game-specific PPC output and verified XEX hash are not supplied to this CI job"
+              echo "[PES17-CI][NOT RUN] Playable PES 2017 NRO: this workflow builds upstream NXVK diagnostic smoke apps only"
+              echo "[PES17-CI][BLOCKED] Nintendo Switch hardware test: requires physical console execution"
+              echo "completed=true" > /project/artifacts/nxvk/container-exit.txt
             '
 
-      - name: Upload NXVK smoke NROs and build metadata
+      - name: Summarize live build and test scope
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.nxvk-build.outcome }}
+        run: |
+          {
+            echo "## NXVK Switch CI progress and test scope"
+            echo ""
+            echo "- NXVK build/container step: **${BUILD_OUTCOME:-NOT RUN}**"
+            echo "- PES 2017 runtime link: **NOT RUN** — game-specific PPC output and verified XEX hash are not inputs to this feasibility job."
+            echo "- Playable PES 2017 NRO: **NOT RUN** — outputs here are upstream NXVK smoke applications, not the game."
+            echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
+            echo ""
+            echo "The build log emits `[PES17-CI][START]`, periodic `[PES17-CI][HEARTBEAT]`, and `[PES17-CI][PASS/FAIL]` markers so long-running work remains visibly active."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "[PES17-CI][SUMMARY] Build outcome: ${BUILD_OUTCOME:-NOT RUN}"
+
+      - name: Upload NXVK build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxvk-switch-build-diagnostics
+          path: artifacts/nxvk/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload successful NXVK smoke NROs and build metadata
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: nxvk-switch-smoke-nros-c3abea1
           path: |
-            nxvk/switch/smoke/out/nvk_tri.nro
-            nxvk/switch/smoke/out/nvk_vi_swapchain.nro
-            nxvk/switch/build/cross/src/nouveau/vulkan/libnvk.a
+            artifacts/nxvk/nvk_tri.nro
+            artifacts/nxvk/nvk_vi_swapchain.nro
             artifacts/nxvk/libnvk.a
             artifacts/nxvk/libnvk_support.a
             artifacts/nxvk/nxvk.pc
