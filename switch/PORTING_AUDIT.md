@@ -10,6 +10,7 @@ This note records the source-level blockers found while preparing the native Swi
 - `switch/source/main.cpp` initializes the libnx console and polls the + button.
 - The install start contract now treats `argc == 0` or `argc == 1` as a Homebrew Menu player launch on Switch; explicit arguments remain development launches. Host tests and a Switch compiler static-assert gate cover the distinction.
 - The full runtime selects `sdmc:/switch/PES2017/pes2017-switch.log` by default when no `PES17_LOG_FILE` is supplied, so hardware startup and GPU errors have a persistent SD destination. This source path still awaits a full game-runtime build and physical validation.
+- A first Horizon guest-memory backend now reserves a 4 GiB address range through libnx `virtmem`, maps one 512 MiB shared-memory object at the cached/physical/aperture windows, and maps non-bank committed pages with `svcMapPhysicalMemory`. The devkitA64 syntax gate passes; SVC permissions, full-size allocation, and address placement still need physical Switch validation.
 - The existing runtime is a separate CMake target. Its desktop entry point is `runtime/main.cpp`; Android starts `pes17::Run` from JNI.
 - The Switch bootstrap compiles selected runtime units as syntax/link probes, but does not link the complete `runtime/`, generated `ppc/`, or any guest code.
 
@@ -23,11 +24,11 @@ The top-level CMake now has a `PES17_SWITCH` target and the devkitA64 toolchain 
 
 ### 2. Guest memory model (critical blocker)
 
-`runtime/guest_memory.cpp` currently has only Windows and generic POSIX paths. The POSIX path reserves a 4 GiB guest address range with `mmap`, then uses `memfd_create` plus three shared mappings for the same 512 MiB physical bank at the cached, physical, and aperture windows. There is no Switch-specific implementation yet; the generic POSIX implementation must not be assumed to work on Horizon.
+`runtime/guest_memory.cpp` now has a first Horizon-specific candidate: it reserves a contiguous 4 GiB range using libnx `virtmem`, creates one 512 MiB shared-memory object, maps it into the cached/physical/aperture windows, and uses `svcMapPhysicalMemory` for committed regions outside those windows. The devkitA64 syntax-only gate passes. The previous generic POSIX `mmap`/`memfd_create` path remains for Linux/Android and is not used for Switch.
 
-libnx exposes shared-memory mapping APIs, but documents shared-memory creation as a privileged operation. A small bootstrap probe now attempts to create one 4 KiB shared-memory object, map it at three addresses, and verify that writes are coherent across all three mappings. This only checks whether the primitive is available to the running homebrew process. It does not prove that a 512 MiB bank can be created, that fixed guest address windows can be reserved, or that the full runtime's memory model is satisfied.
+libnx documents shared-memory creation as privileged. A bootstrap probe attempts to create one 4 KiB object, map it at three addresses, and verify write coherence. This only tests whether the primitive is available to the running homebrew process. It does not prove that a 512 MiB bank can be created, that the 4 GiB reservation and fixed guest windows are accepted, or that `svcMapPhysicalMemory` can commit the full runtime's additional pages.
 
-The Switch port must solve all three requirements before the guest PPC runtime can safely start. If the homebrew process cannot create/map shared memory, a different memory-layout or guest-address translation design is required; do not silently fall back to three independent copies.
+Treat this as an unvalidated backend until the probe and full-size mapping succeed on the physical Switch. If the homebrew process cannot create/map shared memory or commit pages at the chosen addresses, a different memory-layout or guest-address translation design is required; do not silently fall back to three independent copies.
 
 ### 3. Host platform services
 

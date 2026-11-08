@@ -18,6 +18,10 @@ complete game-data launch path.
   units;
 - Switch-specific crash/hang-monitor and stutter-watcher paths, using the
   platform thread API rather than POSIX signal/pthread code;
+- A first Horizon guest-memory backend (4 GiB virtual reservation, one 512 MiB
+  shared bank mapped into three guest windows, explicit page commits). Its
+  devkitA64 syntax gate passes; shared-memory SVC permissions and full-size
+  address mapping remain unverified on hardware;
 - Switch player-start argument handling accepts both `argc == 0` and `argc == 1` as a normal Homebrew Menu launch; explicit image arguments remain development launches. The shared contract is host-tested and compile-checked with the Switch toolchain.
 - The full runtime now defaults its diagnostic log to `sdmc:/switch/PES2017/pes2017-switch.log` when `PES17_LOG_FILE` is not set. This source change still needs a full runtime build and hardware confirmation.
 - a bootstrap probe that links and exercises the managed joinable-thread API,
@@ -143,7 +147,7 @@ PPC output.
    or display presentation.
 3. **Link a PES-specific presenter test.** Exercise the project's static ICD
    loader, VI surface, swapchain, and frame-present path together in an NRO.
-4. **Implement the Switch guest-memory model.** Prove a 512 MiB shared physical bank can be mapped at the cached, physical, and aperture windows inside the 4 GiB guest reservation. The current bootstrap probe only tests a 4 KiB shared-memory primitive, not the full bank.
+4. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
 5. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
    install, and generated PPC sources with the correct libnx/NXVK dependencies.
    The current bootstrap target is not this executable.

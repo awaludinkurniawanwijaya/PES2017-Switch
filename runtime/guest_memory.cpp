@@ -4,7 +4,7 @@
 #include <ppc_config.h>
 
 #ifdef _WIN32
-#  error "the shared-bank memory model (one bank at 0x80000000/0xA0000000/0xC0000000) is POSIX-only so far"
+#  error "the shared-bank memory model is not implemented for Windows"
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 // The placeholder flags, for headers that predate them.
