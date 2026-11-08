@@ -105,6 +105,93 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s)
           print("Horizon NVK initialization tracepoints installed")
+
+          # Trace the next layer after nvkmd pdev creation. This isolates
+          # physical-device object setup from the Horizon GPU initialization.
+          p = Path("nxvk/src/nouveau/vulkan/nvk_physical_device.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "nvk_physical_device.h"',
+                            '#include "nvk_physical_device.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   struct nvk_physical_device *pdev =\n      vk_zalloc(&instance->vk.alloc, sizeof(*pdev),\n                8, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);",
+               """   fprintf(stderr, "[NVK-TRACE] physical_device_create: before pdev allocation\\n"); fflush(stderr);
+             struct nvk_physical_device *pdev =
+                vk_zalloc(&instance->vk.alloc, sizeof(*pdev),
+                          8, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+             fprintf(stderr, "[NVK-TRACE] physical_device_create: after pdev allocation ptr=%p\\n", (void *)pdev); fflush(stderr);"""),
+              ("   nvk_get_device_extensions(instance, &nvkmd->dev_info,\n                             nvkmd->kmd_info.has_alloc_tiled,\n                             &supported_extensions);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_extensions\\n"); fflush(stderr);
+             nvk_get_device_extensions(instance, &nvkmd->dev_info,
+                                       nvkmd->kmd_info.has_alloc_tiled,
+                                       &supported_extensions);
+             fprintf(stderr, "[NVK-TRACE] after get_device_extensions\\n"); fflush(stderr);"""),
+              ("   nvk_get_device_features(&nvkmd->dev_info, &supported_extensions,\n                           nvkmd->kmd_info.has_sparse, &supported_features);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_features\\n"); fflush(stderr);
+             nvk_get_device_features(&nvkmd->dev_info, &supported_extensions,
+                                    nvkmd->kmd_info.has_sparse, &supported_features);
+             fprintf(stderr, "[NVK-TRACE] after get_device_features\\n"); fflush(stderr);"""),
+              ("   nvk_get_device_properties(instance, &nvkmd->dev_info, &properties);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_properties\\n"); fflush(stderr);
+             nvk_get_device_properties(instance, &nvkmd->dev_info, &properties);
+             fprintf(stderr, "[NVK-TRACE] after get_device_properties\\n"); fflush(stderr);"""),
+              ("   result = vk_physical_device_init(&pdev->vk, &instance->vk,",
+               """   fprintf(stderr, "[NVK-TRACE] before vk_physical_device_init\\n"); fflush(stderr);
+             result = vk_physical_device_init(&pdev->vk, &instance->vk,"""),
+              ("   if (result != VK_SUCCESS)\n      goto fail_alloc;\n\n   pdev->nvkmd = nvkmd;",
+               """   fprintf(stderr, "[NVK-TRACE] after vk_physical_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);
+             if (result != VK_SUCCESS)
+                goto fail_alloc;
+
+             pdev->nvkmd = nvkmd;"""),
+              ("   pdev->nak = nak_compiler_create(&pdev->info);",
+               """   fprintf(stderr, "[NVK-TRACE] before nak_compiler_create\\n"); fflush(stderr);
+             pdev->nak = nak_compiler_create(&pdev->info);
+             fprintf(stderr, "[NVK-TRACE] after nak_compiler_create ptr=%p\\n", (void *)pdev->nak); fflush(stderr);"""),
+              ("   nvk_physical_device_init_pipeline_cache(pdev);",
+               """   fprintf(stderr, "[NVK-TRACE] before init_pipeline_cache\\n"); fflush(stderr);
+             nvk_physical_device_init_pipeline_cache(pdev);
+             fprintf(stderr, "[NVK-TRACE] after init_pipeline_cache\\n"); fflush(stderr);"""),
+              ("   uint64_t heap_size =\n      os_get_gpu_heap_size(instance->drirc.misc.heap_memory_percent,\n                           &instance->drirc.misc.heap_memory_percent);",
+               """   fprintf(stderr, "[NVK-TRACE] before os_get_gpu_heap_size\\n"); fflush(stderr);
+             uint64_t heap_size =
+                os_get_gpu_heap_size(instance->drirc.misc.heap_memory_percent,
+                                     &instance->drirc.misc.heap_memory_percent);
+             fprintf(stderr, "[NVK-TRACE] after os_get_gpu_heap_size heap_size=%llu\\n",
+                     (unsigned long long)heap_size); fflush(stderr);"""),
+              ("#ifdef NVK_USE_WSI_PLATFORM\n   result = nvk_init_wsi(pdev);",
+               """#ifdef NVK_USE_WSI_PLATFORM
+             fprintf(stderr, "[NVK-TRACE] before nvk_init_wsi\\n"); fflush(stderr);
+             result = nvk_init_wsi(pdev);
+             fprintf(stderr, "[NVK-TRACE] after nvk_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   *pdev_out = &pdev->vk;\n\n   return VK_SUCCESS;",
+               """   *pdev_out = &pdev->vk;
+             fprintf(stderr, "[NVK-TRACE] physical_device_create returning VK_SUCCESS pdev=%p\\n", (void *)*pdev_out); fflush(stderr);
+
+             return VK_SUCCESS;"""),
+              ("   VkResult result = nvkmd_try_create_pdev(&instance->vk.base,\n                                           instance->debug_flags, &nvkmd);",
+               """   fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: before nvkmd_try_create_pdev\\n"); fflush(stderr);
+             VkResult result = nvkmd_try_create_pdev(&instance->vk.base,
+                                                    instance->debug_flags, &nvkmd);
+             fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: after nvkmd_try_create_pdev result=0x%x pdev=%p\\n",
+                     (unsigned)result, result == VK_SUCCESS ? (void *)nvkmd : NULL); fflush(stderr);"""),
+              ("   result = nvk_physical_device_create(instance, nvkmd, &pdev);\n   if (result != VK_SUCCESS)",
+               """   fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: before nvk_physical_device_create\\n"); fflush(stderr);
+             result = nvk_physical_device_create(instance, nvkmd, &pdev);
+             fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: after nvk_physical_device_create result=0x%x pdev=%p\\n",
+                     (unsigned)result, result == VK_SUCCESS ? (void *)pdev : NULL);
+             if (result != VK_SUCCESS)"""),
+              ("   list_addtail(&pdev->link, &instance->vk.physical_devices.list);",
+               """   fprintf(stderr, "[NVK-TRACE] before physical device list_addtail\\n"); fflush(stderr);
+             list_addtail(&pdev->link, &instance->vk.physical_devices.list);
+             fprintf(stderr, "[NVK-TRACE] after physical device list_addtail\\n"); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing expected physical-device trace anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Physical-device enumeration tracepoints installed")
           PY
 
       - name: Build pinned NXVK toolchain image
