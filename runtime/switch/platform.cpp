@@ -12,6 +12,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// NXVK requires a full Application applet (not the Album applet) so Horizon
+// grants the process the GPU/memory budget needed to create its device.
+// Keep the default libnx heap sizing policy: it sizes the heap from the
+// process memory budget rather than reserving an arbitrary fixed amount.
+extern "C"
+{
+    u32 __nx_applet_type = AppletType_Application;
+    size_t __nx_heap_size = 0;
+}
+
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
 // process services. Keep those operations explicit rather than importing the
 // desktop implementation's Linux headers into the Switch target.
