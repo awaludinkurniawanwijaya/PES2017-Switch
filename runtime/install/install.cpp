@@ -73,7 +73,11 @@ namespace
 
     fs::path ExecutableFolder()
     {
-#ifdef _WIN32
+#ifdef __SWITCH__
+        // The NRO is launched from the Switch Home Menu, not from a POSIX
+        // executable path. platform::Initialise mounts SDMC before this runs.
+        return fs::path("sdmc:/switch/PES2017");
+#elif defined(_WIN32)
         wchar_t path[MAX_PATH * 4];
         const DWORD length = GetModuleFileNameW(nullptr, path, DWORD(std::size(path)));
         return fs::path(std::wstring(path, length)).parent_path();
