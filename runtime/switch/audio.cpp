@@ -76,10 +76,13 @@ uint32_t switch_audio::QueuedFrames()
 {
     if (!g_initialised) return 0;
     uint32_t count = 0;
-    if (R_SUCCEEDED(audoutGetAudioOutBufferCount(&count))) return count;
-    // Older system versions do not expose the queue count. Conservatively
-    // report a full queue so the producer drops rather than overruns it.
-    return kPoolSize;
+    for (uint32_t i = 0; i < kPoolSize; ++i)
+    {
+        bool queued = false;
+        if (R_SUCCEEDED(audoutContainsAudioOutBuffer(&g_buffers[i], &queued)) && queued)
+            ++count;
+    }
+    return count;
 }
 
 bool switch_audio::Submit(const float* input, uint32_t samples)
