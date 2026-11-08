@@ -1,61 +1,68 @@
 # Nintendo Switch platform layer: implementation plan
 
-This document defines the first runtime-platform seam for the libnx target. It is intentionally separate from the existing `switch/` homebrew bootstrap: the bootstrap is not the PES runtime.
+This document tracks the boundary between the libnx homebrew bootstrap and a real PES 2017 runtime port. The bootstrap is not the PES runtime.
 
 ## CI toolchain status
 
-The repository already has a GitHub Actions workflow at `.github/workflows/switch-nro.yml`. It runs the project build inside the `devkitpro/devkita64:latest` container, which supplies devkitA64 and libnx, then verifies and uploads `switch/pes2017-switch-bootstrap.nro`.
+GitHub Actions builds `switch/pes2017-switch-bootstrap.nro` inside `devkitpro/devkita64:latest`. The workflow compiles the Switch platform adapter, HID input adapter, and selected runtime syntax checks. It does **not** link the guest runtime or generated PPC code.
 
-This proves that GitHub Actions can provide the Switch toolchain without installing devkitPro on the developer's Android/Termux device. It currently builds only `switch/source/main.cpp`, not `runtime/` or generated `ppc/` code.
+The latest recorded NRO workflow for this branch completed successfully. This validates the current bootstrap and its selected compile checks only.
 
-## Existing platform contract
+## Implemented Switch pieces
 
-The interface in `runtime/platform.h` requires:
-
-- `Initialise`, `ThreadId`, `IsMainThread`, and `SetThreadName`
-- thread priority and affinity controls
-- `PrintBacktrace`
-- detached worker creation with a caller-selected stack size
-- dynamic library lookup
-
-The desktop implementation is split between Win32 and POSIX. The POSIX half is not directly portable to Switch: it includes Android system properties and Linux scheduler/affinity interfaces.
-
-## libnx API mapping
-
-The libnx headers expose native thread primitives in `switch/kernel/thread.h` and kernel services in `switch/kernel/svc.h`:
-
-| Runtime contract | Switch direction | Status / constraint |
+| Area | Current state | What is still missing |
 |---|---|---|
-| Thread identity | `svcGetThreadId` with `CUR_THREAD_HANDLE` | Native API exists; handle errors must be handled |
-| Thread creation | `threadCreate`, `threadStart` | Native API exists; wrapper owns a `Thread` object |
-| Thread cleanup | `threadWaitForExit`, `threadClose` | Must not free the thread object/stack while it is running |
-| Priority | `svcGetThreadPriority`, `svcSetThreadPriority` | Native API exists; runtime roles need measured priority mapping |
-| Core affinity | `svcGetThreadCoreMask`, `svcSetThreadCoreMask` | Native API exists; Switch exposes four application cores, not Android-style CPU topology |
-| Sleep | `svcSleepThread` | Native API exists |
-| Thread naming | no portable equivalent assumed | Safe no-op initially unless a supported debug naming API is verified |
-| Backtrace | no desktop `execinfo` equivalent assumed | Diagnostic fallback required |
-| Dynamic libraries | no general desktop `dlopen` contract assumed | Must audit call sites; return unsupported only if unused on Switch |
+| libnx platform adapter | `runtime/switch/platform.cpp` compiles in the NRO workflow | Managed thread cleanup/join; verified affinity policy; full runtime source selection |
+| SD card | Mounts SDMC and enters `sdmc:/switch/PES2017` | Game import/verification, saves and content discovery in the real runtime |
+| Controller | HID polling maps primary Npad buttons and sticks to XInput-style state | Rumble, analog trigger values, multiple-user policy and real game-path test |
+| XInput bridge | Switch branch exists in `runtime/kernel/input.cpp` | Its syntax gate is skipped when generated `ppc/ppc_recomp_shared.h` is absent |
+| Bootstrap UI | Shows controller diagnostics and can exit | Does not load XEX, PPC code, renderer or audio |
+
+## Runtime blockers confirmed by source inspection
+
+### 1. Thread lifecycle is not ready for the full runtime
+
+The current platform API exposes only detached `StartThread`. That is enough for the guest-thread launcher and audio worker, but it is not a replacement for every `std::thread` use.
+
+In particular, `runtime/gpu/gpu.cpp` owns two joinable threads (ring consumer and vblank worker) and joins both in `gpu::Shutdown()`. Replacing those with detached threads would make shutdown unsafe. The platform contract needs a managed/joinable thread abstraction, or the GPU subsystem needs a carefully designed Switch-specific lifecycle. The current Switch adapter also retains libnx thread controls for process lifetime; that is a temporary safety measure, not an acceptable final reaper strategy.
+
+### 2. GPU backend is still Vulkan-only
+
+`runtime/gpu/backend.h` is already a useful backend-neutral interface. The only implementation is `runtime/gpu/vulkan/backend.cpp`, which delegates drawing, resolve, swap, queries and guest-memory synchronization to the Vulkan renderer.
+
+The top-level CMake configuration currently rejects every backend except `vulkan`. A Switch port therefore needs all of the following before it can render:
+- a real Switch backend (deko3d is the candidate to investigate, not an implemented backend);
+- shader translation and pipeline creation for that backend;
+- guest texture/EDRAM surface handling, resolve, synchronization and occlusion-query semantics;
+- a Switch presentation path and display timing;
+- a build target that compiles and links the selected backend with the actual runtime.
+
+A stub backend that merely returns success would conceal the missing renderer and is not an acceptable milestone.
+
+### 3. Audio has no Switch output device
+
+`runtime/apu/audio.cpp` currently sends output to Android AAudio or SDL. Other builds discard mixed frames. Switch needs an Audren-backed sink, including correct 5.1-to-device channel mapping, buffering/queue limits, sample format conversion and lifecycle handling. The guest mixer cadence must continue even when output is disabled or unavailable.
+
+### 4. The runtime entry point is desktop-shaped
+
+`runtime/main.cpp` uses `unistd.h`, `_exit`, `std::thread`, filesystem paths and a desktop-style argument/launcher flow. The Switch application needs an explicit libnx applet loop, exit path, logging destination, settings path and game launch/install flow. The bootstrap's `main.cpp` is not a substitute for this integration.
+
+### 5. Generated guest code and game data are separate prerequisites
+
+The CMake runtime requires generated files in `ppc/` and a verified `default.xex` hash. Those are produced from the user's legally obtained game files and must not be committed to the public repository or CI artifacts. The current NRO job deliberately avoids those proprietary inputs. A later private/local build path must supply them without publishing them.
 
 ## Required implementation order
 
-1. Add a Switch-only source file and select it explicitly in CMake. Do not compile the POSIX branch on Switch.
-2. Implement thread identity, priority, affinity, and sleep using libnx SVCs.
-3. Implement detached worker lifetime safely. A worker's `Thread` control block and stack must outlive execution; a reaper or managed worker registry is required. Do not detach by leaking arbitrary thread objects.
-4. Make unsupported naming/backtrace/dynamic-library operations explicit and audit all call sites before allowing the runtime to link.
-5. Add a CI compile target for the platform translation unit using the same devkitPro container.
-6. Only after this translation unit compiles, begin switching the main runtime target and resolving non-platform dependencies.
-
-## Important non-goals
-
-- This platform layer does not provide a GPU renderer. The current Vulkan renderer is not a libnx/deko3d backend.
-- It does not provide controller mapping, Audren audio, SD-card game-data loading, or the Switch runtime entry point.
-- A successful bootstrap NRO or platform-object compile is not evidence that PES 2017 boots.
+1. **Thread contract:** introduce a managed thread handle with start, wait/join and cleanup semantics; migrate GPU-owned workers without changing desktop behavior; make the Switch reaper release libnx resources only after exit.
+2. **Runtime source selection:** add a devkitA64 CMake/toolchain or equivalent Make target for the actual runtime, excluding desktop POSIX and Vulkan-only sources while retaining the existing Linux/Android builds.
+3. **GPU bring-up:** select and prototype the Switch graphics API, then implement the complete backend contract rather than a success-only stub.
+4. **Audio bring-up:** implement and compile an Audren sink, then verify real mixer playback on hardware.
+5. **Runtime shell and storage:** adapt entry/exit, settings, logs, file discovery and installation to the SD layout.
+6. **Generated PPC integration:** provide a reproducible private build step for generated guest code and matching XEX hash; do not put proprietary output in Git.
+7. **Runtime CI and hardware gates:** compile/link the complete runtime in CI with non-proprietary test fixtures where possible, then test on an actual Switch with user-supplied game data.
 
 ## Acceptance criteria
 
-The first platform-layer change is accepted only when:
+A successful bootstrap NRO is only a toolchain milestone. The next meaningful gates are: (a) full runtime translation units compile for devkitA64, (b) the full runtime links with a real Switch backend and audio sink, (c) the app loads verified user-supplied game data, (d) the title reaches its first rendered menu, and (e) controller/audio/gameplay pass on hardware.
 
-- Linux/Android source selection remains unchanged.
-- The Switch-specific source compiles in GitHub Actions with devkitA64/libnx.
-- Thread creation/cleanup has a documented lifetime model and no detached-thread resource leak.
-- Unsupported platform services are either proven unused or cause an explicit, actionable build/runtime diagnostic.
+Do not describe the project as playable until those hardware gates pass.
