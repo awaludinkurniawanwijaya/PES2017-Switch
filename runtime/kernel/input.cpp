@@ -12,6 +12,8 @@
 #include "../log.h"
 #include "../diagnostics.h"
 #include "../console.h"
+#include "../crash.h"
+#include "../platform.h"
 #include "../online/service.h"
 #include "../player.h"
 #include "../signin.h"
@@ -378,6 +380,16 @@ PPC_FUNC(__imp__XamInputGetState)
     // is implemented; never report phantom pads for them.
     if (user != 0)
     {
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    // The guest polls user zero once per frame on its main thread. Use that
+    // point to service Horizon applet events and honor an exit request before
+    // polling HID or submitting another frame.
+    if (platform::IsMainThread() && !switch_input::MainLoop())
+    {
+        crash::RequestExit("Nintendo Switch applet requested exit");
         *out = XInputState{};
         ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
         return;
