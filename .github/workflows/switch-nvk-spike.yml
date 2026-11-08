@@ -76,9 +76,12 @@ jobs:
                   -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
                   -DPES17_SWITCH=ON \
                   -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
-              # The NXVK checkout is mounted explicitly at /work. Return to that
-              # stable mount rather than relying on its nested /project/nxvk path.
-              cd /work
+              # Use the checkout's path under the project mount. The separate
+              # /work bind mount can become unavailable after the upstream
+              # package/install targets; fail with a useful diagnostic if the
+              # checkout itself is missing.
+              test -d /project/nxvk/include
+              cd /project/nxvk
               # Compile the project's loader against the exact pinned NXVK headers.
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
