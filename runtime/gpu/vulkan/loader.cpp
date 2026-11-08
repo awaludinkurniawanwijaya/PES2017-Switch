@@ -83,8 +83,16 @@ bool vk::loader::Open(std::string& error)
     }
     if (!entry) error = "libvulkan could not be loaded";
 #endif
-    if (!entry) return false;
+    if (!entry)
+    {
+        if (error.empty()) error = "Vulkan implementation entry point is unavailable";
+        LOGE("vulkan: %s", error.c_str());
+        return false;
+    }
 
+    // A failed first attempt may be retried after the platform has made the
+    // driver available. Do not carry missing-symbol counts from that attempt.
+    g_missing = 0;
     vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(entry);
 
     // What can be had without an instance. vkEnumerateInstanceVersion is
@@ -100,6 +108,13 @@ bool vk::loader::Open(std::string& error)
 #undef PES17_VK_INSTANCE
 #undef PES17_VK_DEVICE
 
+    if (g_missing)
+    {
+        error = "the Vulkan implementation is missing " + std::to_string(g_missing) +
+                " required global entry point(s)";
+        LOGE("vulkan: %s (%s)", error.c_str(), g_description.c_str());
+        return false;
+    }
     if (!vkCreateInstance)
     {
         error = "the Vulkan library has no vkCreateInstance";
