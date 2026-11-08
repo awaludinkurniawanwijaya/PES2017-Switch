@@ -33,6 +33,7 @@ namespace
 
 bool switch_input::Initialize()
 {
+    if (g_initialized) return true;
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&g_pad);
     g_initialized = true;
