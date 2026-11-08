@@ -1,5 +1,6 @@
 // XamInput* -- gamepad state. Backed by SDL3 when available; otherwise reports
 // "no controller connected", which is a truthful answer the title handles.
+#include <cstring>
 #if __has_include(<ppc_recomp_shared.h>)
 #include <sys/stat.h>
 #include <ppc_recomp_shared.h>
