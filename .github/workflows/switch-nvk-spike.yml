@@ -81,7 +81,7 @@ jobs:
               # This proves the loaderless ICD entry-point adapter is type-correct
               # with the same Vulkan ABI used by the smoke NROs.
               nm -g --defined-only \
-                /opt/devkitpro/portlibs/switch/lib/libnvk.a | \
+                /work/switch/build/pkg/lib/libnvk.a | \
                 grep -q 'vk_icdGetInstanceProcAddr'
               /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
                 -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
