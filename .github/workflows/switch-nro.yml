@@ -13,6 +13,8 @@ on:
       - "runtime/platform.*"
       - "runtime/kernel/input.cpp"
       - "runtime/install/install.cpp"
+      - "runtime/guest_memory.cpp"
+      - "runtime/guest_memory.h"
       - "runtime/crash.cpp"
       - "runtime/main.cpp"
       - "runtime/player.cpp"
