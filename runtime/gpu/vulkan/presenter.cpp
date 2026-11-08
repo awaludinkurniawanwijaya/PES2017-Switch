@@ -420,7 +420,16 @@ namespace
     bool CreateSwapchain()
     {
         VkSurfaceCapabilitiesKHR caps{};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.physical, g.surface, &caps);
+        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.physical, g.surface, &caps),
+                   "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+            return false;
+        // The renderer copies its completed image into the presentation image.
+        // Do not create a swapchain with usage flags the VI surface did not grant.
+        if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+        {
+            LOGW("vulkan: VI surface does not support transfer-destination swapchain images");
+            return false;
+        }
         // The surface says what size it is, except where the window system
         // leaves it to the application (both dimensions at the maximum), and
         // then the window's own size in pixels is the answer, held within
@@ -460,7 +469,9 @@ namespace
 
         VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
         info.surface = g.surface;
-        info.minImageCount = std::max(caps.minImageCount, 2u);
+        const uint32_t preferredImages = caps.maxImageCount
+                                            ? std::min(2u, caps.maxImageCount) : 2u;
+        info.minImageCount = std::max(caps.minImageCount, preferredImages);
         info.imageFormat = chosen.format;
         info.imageColorSpace = chosen.colorSpace;
         info.imageExtent = g.extent;
