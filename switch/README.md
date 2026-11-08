@@ -82,6 +82,30 @@ output, or other proprietary game data to this repository. The current
 bootstrap does not load or launch these files, and the desktop installer
 (`pes17-launcher`) is not available on Switch.
 
+## Native runtime CMake target
+
+A native `PES17_SWITCH` target and devkitA64 toolchain are now present:
+
+```sh
+cmake -S . -B build-switch \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/switch-toolchain.cmake \
+  -DPES17_SWITCH=ON
+cmake --build build-switch --target pes17
+```
+
+The toolchain defaults to an optimized Release build and packages
+`build-switch/pes17.nro`. This full target requires:
+
+- devkitPro devkitA64, libnx, and switch-tools;
+- the pinned NXVK portlib installed so `pkg-config nxvk` resolves;
+- the user's legally obtained `pes/default.xex` and the title-specific
+  generated PPC sources in `ppc/`.
+
+The CI CMake gate configures this target against the staged NXVK portlib using
+temporary empty PPC translation units. It validates the build-system wiring
+only; it does not compile or link the game runtime without the real generated
+PPC output.
+
 ## Remaining gates, in dependency order
 
 1. **Complete the NXVK feasibility workflow.** It must produce the NVK archive,
