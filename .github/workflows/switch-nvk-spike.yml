@@ -40,26 +40,27 @@ jobs:
 
       - name: Record source revisions and license notices
         run: |
-          echo "[PES17-CI][START] Source and license audit"
           git -C nxvk rev-parse HEAD
           git -C nxvk status --short
           test -s nxvk/LICENSE || true
           test -s nxvk/licenses/GPL-2.0-or-later
           sed -n '1,80p' nxvk/switch/README.md
           find nxvk/licenses -maxdepth 2 -type f -print | sort
-          echo "[PES17-CI][PASS] Source and license audit"
 
       - name: Build pinned NXVK toolchain image
         run: |
-          echo "[PES17-CI][START] Building pinned NXVK toolchain image"
-          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker
-          echo "[PES17-CI][PASS] NXVK toolchain image built"
+          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker > /tmp/nxvk-image-build.log 2>&1 &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            sleep 30
+            if kill -0 "$build_pid" 2>/dev/null; then echo "Sedang melakukan proses pengujian..."; fi
+          done
+          wait "$build_pid" || { tail -n 40 /tmp/nxvk-image-build.log; exit 1; }
 
       - name: Build NVK archives and smoke NROs
         id: nxvk-build
         run: |
           mkdir -p artifacts/nxvk
-          echo "[PES17-CI][START] Launching isolated NXVK build container"
           docker run --rm \
             -v "$GITHUB_WORKSPACE/nxvk:/work" \
             -v "$GITHUB_WORKSPACE:/project" \
@@ -73,17 +74,18 @@ jobs:
               run_stage() {
                 stage="$1"
                 shift
-                echo "[PES17-CI][START] $stage"
-                "$@" &
+                "$@" > /tmp/pes17-stage.log 2>&1 &
                 stage_pid=$!
                 while kill -0 "$stage_pid" 2>/dev/null; do
                   sleep 30
                   if kill -0 "$stage_pid" 2>/dev/null; then
-                    echo "[PES17-CI][HEARTBEAT] $stage is still running; runner has not stopped"
+                    echo "Sedang melakukan proses pengujian..."
                   fi
                 done
-                wait "$stage_pid"
-                echo "[PES17-CI][PASS] $stage"
+                if ! wait "$stage_pid"; then
+                  tail -n 40 /tmp/pes17-stage.log
+                  return 1
+                fi
               }
 
               run_stage "Build NXVK driver archives" make CONTAINER= driver
@@ -106,10 +108,8 @@ jobs:
               run_stage "Verify installed NXVK archives and pkg-config metadata" \
                 bash -lc "test -s '$NVK_LIB' && test -s '$NVK_SUPPORT_LIB' && test -s '$NVK_PC'"
 
-              echo "[PES17-CI][START] Checking static Vulkan ICD entry point"
               nm -g --defined-only "$NVK_LIB" | grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" || true
               nm -g --defined-only "$NVK_LIB" | grep -q "vk_icdGetInstanceProcAddr"
-              echo "[PES17-CI][PASS] NXVK exports vk_icdGetInstanceProcAddr"
 
               cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
               cd /work
@@ -122,7 +122,6 @@ jobs:
                   -c /project/runtime/gpu/vulkan/loader.cpp \
                   -o switch/build/loader-switch.o
               nm -u switch/build/loader-switch.o | grep -q "vk_icdGetInstanceProcAddr"
-              echo "[PES17-CI][PASS] Loader object references the NXVK ICD entry point"
 
               run_stage "Compile PES Vulkan presenter adapter for Switch" \
                 /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
@@ -140,10 +139,6 @@ jobs:
                 bash -lc "test -s /work/switch/smoke/out/nvk_tri.nro && test -s /work/switch/smoke/out/nvk_vi_swapchain.nro"
               ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro
               cp switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/
-              echo "[PES17-CI][PASS] All configured NXVK smoke build stages completed"
-              echo "[PES17-CI][NOT RUN] PES17 runtime link: generated game-specific PPC output and verified XEX hash are not supplied to this CI job"
-              echo "[PES17-CI][NOT RUN] Playable PES 2017 NRO: this workflow builds upstream NXVK diagnostic smoke apps only"
-              echo "[PES17-CI][BLOCKED] Nintendo Switch hardware test: requires physical console execution"
               echo "completed=true" > /project/artifacts/nxvk/container-exit.txt
             '
 
@@ -160,9 +155,9 @@ jobs:
             echo "- Playable PES 2017 NRO: **NOT RUN** — outputs here are upstream NXVK smoke applications, not the game."
             echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
             echo ""
-            echo "The build log emits `[PES17-CI][START]`, periodic `[PES17-CI][HEARTBEAT]`, and `[PES17-CI][PASS/FAIL]` markers so long-running work remains visibly active."
+            echo "Long-running stages periodically print: Sedang melakukan proses pengujian..."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "[PES17-CI][SUMMARY] Build outcome: ${BUILD_OUTCOME:-NOT RUN}"
+          echo "Hasil proses pengujian: ${BUILD_OUTCOME:-NOT RUN}"
 
       - name: Upload NXVK build diagnostics
         if: always()
