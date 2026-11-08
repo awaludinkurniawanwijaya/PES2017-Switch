@@ -197,23 +197,27 @@ jobs:
           s = p.read_text()
           if '#include <stdio.h>' not in s:
               s = s.replace('#include "nvk_wsi.h"', '#include "nvk_wsi.h"' + chr(10) + '#include <stdio.h>', 1)
-          old = """   result = wsi_device_init(&pdev->wsi_device,
-                            nvk_physical_device_to_handle(pdev),
-                            nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
-                            nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd),
-                            &nvk_physical_device_instance(pdev)->drirc.options,
-                            &wsi_options);"""
-          new = """   int display_fd = nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd);
-           fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: display_fd=%d before wsi_device_init\\n", display_fd); fflush(stderr);
-           result = wsi_device_init(&pdev->wsi_device,
-                                    nvk_physical_device_to_handle(pdev),
-                                    nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
-                                    display_fd,
-                                    &nvk_physical_device_instance(pdev)->drirc.options,
-                                    &wsi_options);
-           fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: after wsi_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""
-          if old not in s: raise SystemExit("Missing nvk_wsi wsi_device_init anchor")
-          s = s.replace(old, new, 1)
+          import re
+          pattern = re.compile(r"(?P<indent>\\s*)result = wsi_device_init\\(&pdev->wsi_device,\\s*"
+                               r"nvk_physical_device_to_handle\\(pdev\\),\\s*"
+                               r"nvk_wsi_proc_addr, &pdev->vk\\.instance->alloc,\\s*"
+                               r"nvkmd_pdev_get_drm_primary_fd\\(pdev->nvkmd\\),\\s*"
+                               r"&nvk_physical_device_instance\\(pdev\\)->drirc\\.options,\\s*"
+                               r"&wsi_options\\);")
+          match = pattern.search(s)
+          if not match: raise SystemExit("Missing nvk_wsi wsi_device_init call (regex)")
+          indent = match.group("indent")
+          replacement = """int display_fd = nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd);
+          fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: display_fd=%d before wsi_device_init\\n", display_fd); fflush(stderr);
+          result = wsi_device_init(&pdev->wsi_device,
+                                   nvk_physical_device_to_handle(pdev),
+                                   nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
+                                   display_fd,
+                                   &nvk_physical_device_instance(pdev)->drirc.options,
+                                   &wsi_options);
+          fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: after wsi_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""
+          replacement = "\\n".join(indent + line if line else line for line in replacement.splitlines())
+          s = s[:match.start()] + replacement + s[match.end():]
           p.write_text(s)
 
           p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
