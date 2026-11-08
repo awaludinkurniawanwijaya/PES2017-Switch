@@ -22,7 +22,7 @@ runtime is produced by the root CMake target `pes17` and packaged as
 
 ## Build
 
-Run `./build-switch.sh` from the repository root in an environment with the
+Run `bash build-switch.sh` from the repository root in an environment with the
 prerequisites above. It configures `PES17_SWITCH=ON`, compiles the generated
 PPC and runtime, and packages `build-switch/pes17.nro`. Set `JOBS`,
 `BUILD_DIR`, or `BUILD_TYPE` to override the defaults.
