@@ -217,6 +217,26 @@ if(PES17_SWITCH)
     target_link_libraries(pes17 PRIVATE PkgConfig::NXVK nx)
 endif()
 # The runtime checks the disc's executable against this hash before installing.
+# The selected local executable is PES 2017 Europe XEX v0x12. Validate its
+# execution-info metadata whenever the private input is present; the SHA-256
+# below then binds installation to the exact same bytes used for recompilation.
+set(PES17_EXPECTED_XEX_VERSION "0x00000012" CACHE STRING "Expected PES 2017 XEX execution-info version")
+set(PES17_EXPECTED_TITLE_ID "0x4A3007D1" CACHE STRING "Expected PES 2017 Xbox 360 title ID")
+if(EXISTS "${CMAKE_SOURCE_DIR}/pes/default.xex")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/verify_xex.py"
+            "${CMAKE_SOURCE_DIR}/pes/default.xex"
+            --title-id "${PES17_EXPECTED_TITLE_ID}"
+            --version "${PES17_EXPECTED_XEX_VERSION}"
+        RESULT_VARIABLE PES17_XEX_VERIFY_RESULT
+        OUTPUT_VARIABLE PES17_XEX_VERIFY_OUTPUT
+        ERROR_VARIABLE PES17_XEX_VERIFY_ERROR)
+    if(NOT PES17_XEX_VERIFY_RESULT EQUAL 0)
+        message(FATAL_ERROR "PES 2017 XEX target validation failed:\n${PES17_XEX_VERIFY_OUTPUT}\n${PES17_XEX_VERIFY_ERROR}")
+    endif()
+    message(STATUS "${PES17_XEX_VERIFY_OUTPUT}")
+endif()
 if(NOT PES17_XEX_SHA256_SP)
     if(EXISTS "${CMAKE_SOURCE_DIR}/pes/default.xex")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/pes/default.xex")
