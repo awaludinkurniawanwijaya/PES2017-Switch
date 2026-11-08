@@ -1323,6 +1323,12 @@ namespace
         android::SetStatus((std::string("Running on ") + vk::pipeline::DeviceName()).c_str());
         return true;
 #elif defined(__SWITCH__)
+        // NXVK deliberately requires an explicit opt-in because this NVK
+        // port is experimental and not Vulkan-conformant. Keep the opt-in
+        // local to the Switch process and make the risk visible in logs.
+        if (setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1) != 0)
+            LOGW("vulkan: could not set NXVK experimental-driver opt-in");
+        LOGW("vulkan: using experimental NXVK/NVK; compatibility and stability are not guaranteed");
         std::string error;
         if (!vk::loader::Opened() && !vk::loader::Open(error))
         {
