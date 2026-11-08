@@ -47,6 +47,9 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #include <SDL3/SDL_vulkan.h>
 #endif
 #ifdef __SWITCH__
+#ifndef VK_USE_PLATFORM_VI_NN
+#define VK_USE_PLATFORM_VI_NN 1
+#endif
 #include <switch.h>
 #endif
 #ifdef PES17_ANDROID
@@ -234,10 +237,13 @@ namespace
     bool CreateInstance()
     {
         std::vector<const char*> extensions;
-#ifdef PES17_ANDROID
+#if defined(PES17_ANDROID)
         // Android has one window system and it is always there.
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back("VK_KHR_android_surface");
+#elif defined(__SWITCH__)
+        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+        extensions.push_back("VK_NN_vi_surface");
 #else
         uint32_t extensionCount = 0;
         const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
