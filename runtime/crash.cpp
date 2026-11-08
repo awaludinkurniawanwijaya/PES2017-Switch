@@ -13,8 +13,6 @@
 #include "gpu/internal.h"
 #include "gpu/gpu.h"
 #include "gpu/debug_watch.h"
-#include <ppc_config.h>
-#include <ppc_recomp_shared.h>
 
 #if defined(__SWITCH__)
 #include <atomic>
@@ -129,6 +127,8 @@ extern "C" void PES17ReportBadIndirectCall(unsigned int guestAddress, const void
 }
 
 #else
+#include <ppc_config.h>
+#include <ppc_recomp_shared.h>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
