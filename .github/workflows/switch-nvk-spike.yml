@@ -310,11 +310,10 @@ jobs:
              fprintf(stderr, "[SWITCH-WSI] after init_images result=0x%x zero_copy=%u\\n",
                      (unsigned)result, chain->zero_copy); fflush(stderr);
              if (result != VK_SUCCESS)"""),
-              ("      VkResult result =\\n         wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
-               """         fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
-         VkResult result =
-            wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
-         fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
+             result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
               ("   return wsi_switch_init_cpu_copy(chain, pCreateInfo);",
                """   fprintf(stderr, "[SWITCH-WSI] before init_cpu_copy\\n"); fflush(stderr);
              VkResult cpu_result = wsi_switch_init_cpu_copy(chain, pCreateInfo);
@@ -346,6 +345,27 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s)
           print("Horizon Switch WSI swapchain tracepoints installed")
+
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          old = """   VkResult result = iface->create_swapchain(surface, _device, wsi_device,
+                                             &info, alloc,
+                                             &swapchain);"""
+          new = """   fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
+           (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
+           (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
+          VkResult result = iface->create_swapchain(surface, _device, wsi_device,
+                                                    &info, alloc,
+                                                    &swapchain);
+          fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",
+                  (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);"""
+          if old not in s:
+              print("Skipping unavailable wsi_common create_swapchain anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI common create_swapchain tracepoints installed")
 
           # Trace the generic WSI image lifecycle used by the Switch CPU-copy
           # fallback. This isolates Vulkan image creation, memory allocation,
@@ -426,11 +446,6 @@ jobs:
           s = s.replace(old, new, 1)
           p.write_text(s)
           print("Generic WSI image and CPU-copy memory tracepoints installed")
-
-          # Swapchain call-site instrumentation is intentionally omitted here.
-          # Keep the Switch-specific image/fallback tracepoints above; they are
-          # less brittle than rewriting a multiline common C call.
-
 
 
           # Instrument the generated common Properties2 callback at its template
