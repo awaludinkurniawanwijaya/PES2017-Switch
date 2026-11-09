@@ -1,0 +1,185 @@
+name: Cleanup old GitHub Actions runs
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-actions.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Simulasi saja; tidak menghapus apa pun"
+        type: boolean
+        required: true
+        default: true
+      keep_latest:
+        description: "Jumlah run terbaru yang dipertahankan untuk setiap workflow"
+        type: number
+        required: true
+        default: 10
+      confirmation:
+        description: 'Wajib isi DELETE_OLD_RUNS jika dry_run dimatikan'
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Audit and selectively delete old workflow runs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Preview and optionally delete obsolete runs
+        uses: actions/github-script@v7
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          KEEP_LATEST: ${{ inputs.keep_latest }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        with:
+          script: |
+            const dryRun = String(process.env.DRY_RUN).toLowerCase() !== "false";
+            const keepLatest = Number(process.env.KEEP_LATEST || 10);
+            const confirmation = process.env.CONFIRMATION || "";
+            const protectedRunIds = new Set([
+              42585458230, // NVK #102: retained historical checkpoint
+              42596406918, // NVK #112: retained diagnostic build
+              42598302665, // NVK #115: instrumentation checkpoint
+              42599827000, // NVK #116: verified trace instrumentation
+              42604872518, // NVK #118: finish_create tracing build
+            ]);
+            const targetBranch = "work/switch-libnx-platform";
+
+            if (!Number.isInteger(keepLatest) || keepLatest < 1 || keepLatest > 100) {
+              core.setFailed("keep_latest must be an integer from 1 to 100.");
+              return;
+            }
+            if (!dryRun && confirmation !== "DELETE_OLD_RUNS") {
+              core.setFailed("Deletion blocked: set confirmation exactly to DELETE_OLD_RUNS.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, per_page: 100 }
+            );
+            const branchRuns = runs.filter(run =>
+              run.head_branch === targetBranch && run.status === "completed"
+            );
+
+            const byWorkflow = new Map();
+            for (const run of branchRuns) {
+              const key = String(run.workflow_id);
+              if (!byWorkflow.has(key)) byWorkflow.set(key, []);
+              byWorkflow.get(key).push(run);
+            }
+
+            const keepIds = new Set(protectedRunIds);
+            for (const workflowRuns of byWorkflow.values()) {
+              workflowRuns.sort((a, b) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              );
+              for (const run of workflowRuns.slice(0, keepLatest)) keepIds.add(run.id);
+            }
+
+            // Fail closed: preserve any run with an unexpired artifact, and preserve
+            // a run if artifact inspection itself fails. This prevents accidental loss
+            // of diagnostic NROs, build outputs, and other useful artifacts.
+            const artifactProtected = new Set();
+            const artifactAuditErrors = [];
+            const pending = branchRuns.filter(run => !keepIds.has(run.id));
+            let cursor = 0;
+            const workers = Array.from({ length: 6 }, async () => {
+              while (cursor < pending.length) {
+                const run = pending[cursor++];
+                try {
+                  const artifacts = await github.paginate(
+                    github.rest.actions.listWorkflowRunArtifacts,
+                    { owner, repo, run_id: run.id, per_page: 100 }
+                  );
+                  if (artifacts.some(artifact => !artifact.expired)) {
+                    artifactProtected.add(run.id);
+                  }
+                } catch (error) {
+                  artifactProtected.add(run.id);
+                  artifactAuditErrors.push({ id: run.id, run: run.run_number, message: error.message });
+                  core.warning(`Artifact audit failed for run #${run.run_number}; preserving it: ${error.message}`);
+                }
+              }
+            });
+            await Promise.all(workers);
+
+            const candidates = pending.filter(run => !artifactProtected.has(run.id));
+            const keptWithArtifacts = pending.filter(run => artifactProtected.has(run.id));
+            const decision = run => {
+              if (protectedRunIds.has(run.id)) return "KEEP — milestone";
+              if (keepIds.has(run.id)) return "KEEP — latest retention";
+              if (artifactProtected.has(run.id)) return "KEEP — artifact or audit error";
+              return "DELETE CANDIDATE";
+            };
+
+            const sortedRuns = [...branchRuns].sort(
+              (a, b) => new Date(b.created_at) - new Date(a.created_at)
+            );
+            const summary = [
+              "# GitHub Actions cleanup",
+              "",
+              `- Mode: **${dryRun ? "DRY RUN — no deletion" : "DELETE"}**`,
+              `- Scanned repository runs: **${runs.length}** (all pages)`,
+              `- Completed runs on ${targetBranch}: **${branchRuns.length}**`,
+              `- Retention: latest **${keepLatest}** per workflow ID`,
+              `- Explicitly protected milestones: **${protectedRunIds.size}**`,
+              `- Preserved because of unexpired artifacts or artifact-audit errors: **${keptWithArtifacts.length}**`,
+              `- Artifact audit errors (fail-closed): **${artifactAuditErrors.length}**`,
+              `- Deletion candidates after artifact protection: **${candidates.length}**`,
+              "",
+              "| Run | Workflow | Conclusion | Created | Decision |",
+              "|---:|---|---|---|---|",
+              ...sortedRuns.map(run =>
+                `| [#${run.run_number}](${run.html_url}) | ${run.name} | ${run.conclusion} | ${run.created_at} | ${decision(run)} |`
+              )
+            ];
+            core.summary.addRaw(summary.join("\n")).addEOL();
+            await core.summary.write();
+
+            core.info(
+              `Scanned ${runs.length} runs; ${branchRuns.length} completed target-branch runs; ${keptWithArtifacts.length} preserved for artifacts; ${candidates.length} deletion candidates.`
+            );
+
+            if (dryRun) {
+              core.notice("Dry run only. No workflow runs were deleted. Review KEEP/DELETE CANDIDATE decisions before any deletion.");
+              return;
+            }
+
+            let deleted = 0;
+            let skippedForArtifacts = 0;
+            const errors = [];
+            for (const run of candidates) {
+              try {
+                // Recheck immediately before deletion to fail closed if an artifact
+                // appeared after the initial audit.
+                const latestArtifacts = await github.paginate(
+                  github.rest.actions.listWorkflowRunArtifacts,
+                  { owner, repo, run_id: run.id, per_page: 100 }
+                );
+                if (latestArtifacts.some(artifact => !artifact.expired)) {
+                  skippedForArtifacts++;
+                  core.warning(`Skipped run #${run.run_number}: an unexpired artifact appeared after audit.`);
+                  continue;
+                }
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                deleted++;
+                core.info(`Deleted run #${run.run_number} (${run.id}) — ${run.name}`);
+              } catch (error) {
+                errors.push({ id: run.id, run: run.run_number, message: error.message });
+                core.warning(`Could not safely delete run #${run.run_number} (${run.id}): ${error.message}`);
+              }
+            }
+
+            core.summary.addHeading("Deletion result");
+            core.summary.addRaw(
+              `- Deleted: **${deleted}**\n- Skipped for newly detected artifacts: **${skippedForArtifacts}**\n- Failed or unsafe: **${errors.length}**`
+            ).addEOL();
+            if (errors.length) core.setFailed(`${errors.length} runs could not be safely processed.`);
