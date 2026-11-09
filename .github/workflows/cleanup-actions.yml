@@ -130,7 +130,7 @@ jobs:
               `- Preserved because commit lookup failed: **${keptForCommitAudit.length}**`,
               `- Commit audit errors (fail-closed): **${commitAuditErrors.length}**`,
               "- Artifact retention: **disabled by explicit request**; artifacts do not block deletion",
-              `- Deletion candidates after artifact protection: **${candidates.length}**`,
+              `- Deletion candidates after commit audit: **${candidates.length}**`,
               "",
               "| Run | Workflow | Conclusion | Created | Decision |",
               "|---:|---|---|---|---|",
@@ -142,7 +142,7 @@ jobs:
             await core.summary.write();
 
             core.info(
-              `Scanned ${runs.length} runs; ${branchRuns.length} completed target-branch runs; ${keptWithArtifacts.length} preserved for artifacts; ${candidates.length} deletion candidates.`
+              `Scanned ${runs.length} runs; ${branchRuns.length} completed target-branch runs; ${keptForCommitAudit.length} preserved after commit audit; ${candidates.length} deletion candidates.`
             );
 
             if (dryRun) {
@@ -155,28 +155,20 @@ jobs:
             const errors = [];
             for (const run of candidates) {
               try {
-                // Recheck immediately before deletion to fail closed if an artifact
-                // appeared after the initial audit.
-                const latestArtifacts = await github.paginate(
-                  github.rest.actions.listWorkflowRunArtifacts,
-                  { owner, repo, run_id: run.id, per_page: 100 }
-                );
-                if (latestArtifacts.some(artifact => !artifact.expired)) {
-                  skippedForArtifacts++;
-                  core.warning(`Skipped run #${run.run_number}: an unexpired artifact appeared after audit.`);
-                  continue;
-                }
+                // Recheck the source commit immediately before deleting the run.
+                await github.rest.repos.getCommit({ owner, repo, ref: run.head_sha });
                 await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
                 deleted++;
                 core.info(`Deleted run #${run.run_number} (${run.id}) — ${run.name}`);
               } catch (error) {
-                skippedForCommit++;\n                errors.push({ id: run.id, run: run.run_number, message: error.message });
+                skippedForCommit++;
+                errors.push({ id: run.id, run: run.run_number, message: error.message });
                 core.warning(`Could not safely delete run #${run.run_number} (${run.id}): ${error.message}`);
               }
             }
 
             core.summary.addHeading("Deletion result");
             core.summary.addRaw(
-              `- Deleted: **${deleted}**\n- Skipped for newly detected artifacts: **${skippedForArtifacts}**\n- Failed or unsafe: **${errors.length}**`
+              `- Deleted: **${deleted}**\\n- Skipped because commit recheck failed: **${skippedForCommit}**\\n- Failed or unsafe: **${errors.length}**`
             ).addEOL();
             if (errors.length) core.setFailed(`${errors.length} runs could not be safely processed.`);
