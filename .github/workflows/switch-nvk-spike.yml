@@ -263,6 +263,114 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s)
           print("WSI initialization tracepoints installed")
+          # Instrument the actual Horizon swapchain path. The previous diagnostic
+          # only traced the call site; these markers isolate image setup/fallback.
+          p = Path("nxvk/src/vulkan/wsi/wsi_switch.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include <malloc.h>', '#include <malloc.h>' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   result = wsi_configure_cpu_image(&chain->base, pCreateInfo, &cpu_params,\n                                    &chain->base.image_info);",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy: before wsi_configure_cpu_image\\n"); fflush(stderr);
+             result = wsi_configure_cpu_image(&chain->base, pCreateInfo, &cpu_params,
+                                              &chain->base.image_info);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy: after wsi_configure_cpu_image result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   chain->fb_size = chain->pitch_b * chain->height_aligned;",
+               """   chain->fb_size = chain->pitch_b * chain->height_aligned;
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy layout pitch=%u width_aligned=%u height_aligned=%u fb_size=%u images=%u\\n",
+                     chain->pitch_b, chain->width_aligned_px, chain->height_aligned,
+                     chain->fb_size, chain->base.image_count); fflush(stderr);"""),
+              ("   chain->scanout_cpu = memalign(0x20000, total);",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy before memalign total=%u\\n", total); fflush(stderr);
+             chain->scanout_cpu = memalign(0x20000, total);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after memalign ptr=%p\\n", (void *)chain->scanout_cpu); fflush(stderr);"""),
+              ("   if (R_FAILED(nvMapCreate(&chain->scanout_map, chain->scanout_cpu, total,\n                            0x20000, NvKind_Pitch, true)))",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy before nvMapCreate\\n"); fflush(stderr);
+             Result map_rc = nvMapCreate(&chain->scanout_map, chain->scanout_cpu, total,
+                                         0x20000, NvKind_Pitch, true);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after nvMapCreate rc=0x%x id=%u handle=%u\\n",
+                     (unsigned)map_rc, chain->scanout_map.id, chain->scanout_map.handle); fflush(stderr);
+             if (R_FAILED(map_rc))"""),
+              ("      if (R_FAILED(nwindowConfigureBuffer(chain->window, i, &gb)))\n         return VK_ERROR_INITIALIZATION_FAILED;",
+               """      fprintf(stderr, "[SWITCH-WSI] cpu_copy before nwindowConfigureBuffer image=%u\\n", i); fflush(stderr);
+             Result configure_rc = nwindowConfigureBuffer(chain->window, i, &gb);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after nwindowConfigureBuffer image=%u rc=0x%x\\n", i, (unsigned)configure_rc); fflush(stderr);
+             if (R_FAILED(configure_rc))
+                return VK_ERROR_INITIALIZATION_FAILED;"""),
+              ("      result = wsi_switch_create_image(chain, &chain->images[i]);\n      if (result != VK_SUCCESS)\n         return result;",
+               """      fprintf(stderr, "[SWITCH-WSI] cpu_copy before create_image image=%u\\n", i); fflush(stderr);
+             result = wsi_switch_create_image(chain, &chain->images[i]);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after create_image image=%u result=0x%x\\n", i, (unsigned)result); fflush(stderr);
+             if (result != VK_SUCCESS)
+                return result;"""),
+              ("   result = wsi_create_image(&chain->base, &chain->base.image_info,\n                              &img->base);",
+               """   fprintf(stderr, "[SWITCH-WSI] create_image before wsi_create_image\\n"); fflush(stderr);
+             result = wsi_create_image(&chain->base, &chain->base.image_info,
+                                       &img->base);
+             fprintf(stderr, "[SWITCH-WSI] create_image after wsi_create_image result=0x%x image=%p\\n",
+                     (unsigned)result, (void *)img->base.image); fflush(stderr);"""),
+              ("   result = wsi_switch_init_images(chain, wsi_device, device, pCreateInfo);\n   if (result != VK_SUCCESS)",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_images\\n"); fflush(stderr);
+             result = wsi_switch_init_images(chain, wsi_device, device, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_images result=0x%x zero_copy=%u\\n",
+                     (unsigned)result, chain->zero_copy); fflush(stderr);
+             if (result != VK_SUCCESS)"""),
+              ("   result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
+             result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   return wsi_switch_init_cpu_copy(chain, pCreateInfo);",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_cpu_copy\\n"); fflush(stderr);
+             VkResult cpu_result = wsi_switch_init_cpu_copy(chain, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_cpu_copy result=0x%x\\n", (unsigned)cpu_result); fflush(stderr);
+             return cpu_result;"""),
+              ("   result = wsi_swapchain_init(wsi_device, &chain->base, device,\n                               pCreateInfo, &cpu_params.base, pAllocator);",
+               """   fprintf(stderr, "[SWITCH-WSI] before wsi_swapchain_init images=%u extent=%ux%u format=%u usage=0x%x\\n",
+                   pCreateInfo->minImageCount, pCreateInfo->imageExtent.width,
+                   pCreateInfo->imageExtent.height, (unsigned)pCreateInfo->imageFormat,
+                   pCreateInfo->imageUsage); fflush(stderr);
+             result = wsi_swapchain_init(wsi_device, &chain->base, device,
+                                         pCreateInfo, &cpu_params.base, pAllocator);
+             fprintf(stderr, "[SWITCH-WSI] after wsi_swapchain_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   nvMapInit();\n   nvFenceInit();",
+               """   fprintf(stderr, "[SWITCH-WSI] before nvMapInit\\n"); fflush(stderr);
+             nvMapInit();
+             fprintf(stderr, "[SWITCH-WSI] after nvMapInit; before nvFenceInit\\n"); fflush(stderr);
+             nvFenceInit();
+             fprintf(stderr, "[SWITCH-WSI] after nvFenceInit\\n"); fflush(stderr);"""),
+              ("   nwindowSetSwapInterval(chain->window, swap_interval);",
+               """   fprintf(stderr, "[SWITCH-WSI] before nwindowSetSwapInterval interval=%u\\n", swap_interval); fflush(stderr);
+             nwindowSetSwapInterval(chain->window, swap_interval);
+             fprintf(stderr, "[SWITCH-WSI] after nwindowSetSwapInterval\\n"); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing Switch WSI trace anchor: " + old[:110])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Horizon Switch WSI swapchain tracepoints installed")
+
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          old = """   VkResult result = iface->create_swapchain(surface, _device, wsi_device,
+                                             &info, alloc,
+                                             &swapchain);"""
+          new = """   fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
+           (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
+           (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
+          VkResult result = iface->create_swapchain(surface, _device, wsi_device,
+                                                    &info, alloc,
+                                                    &swapchain);
+          fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",
+                  (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);"""
+          if old not in s:
+              raise SystemExit("Missing wsi_common create_swapchain anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI common create_swapchain tracepoints installed")
+
 
           # Instrument the generated common Properties2 callback at its template
           # source, so the trace is present in the generated C compiled by Meson.
