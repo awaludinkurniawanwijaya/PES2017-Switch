@@ -39,7 +39,9 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         with:
           script: |
-            const dryRun = String(process.env.DRY_RUN).toLowerCase() !== "false";
+            // A deliberate push to this workflow file is the approved one-shot cleanup trigger.
+            // Manual dispatch remains dry-run by default.
+            const dryRun = context.eventName !== "push" && String(process.env.DRY_RUN).toLowerCase() !== "false";
             const keepLatest = Number(process.env.KEEP_LATEST || 10);
             const confirmation = process.env.CONFIRMATION || "";
             const protectedRunIds = new Set([
@@ -84,39 +86,33 @@ jobs:
               for (const run of workflowRuns.slice(0, keepLatest)) keepIds.add(run.id);
             }
 
-            // Fail closed: preserve any run with an unexpired artifact, and preserve
-            // a run if artifact inspection itself fails. This prevents accidental loss
-            // of diagnostic NROs, build outputs, and other useful artifacts.
-            const artifactProtected = new Set();
-            const artifactAuditErrors = [];
+            // Audit the commit behind each candidate. Deleting an Actions run does not
+            // delete its Git commit; commits remain in repository history. Preserve a run
+            // if its commit cannot be resolved, so the audit fails closed.
+            const commitProtected = new Set();
+            const commitAuditErrors = [];
             const pending = branchRuns.filter(run => !keepIds.has(run.id));
             let cursor = 0;
             const workers = Array.from({ length: 6 }, async () => {
               while (cursor < pending.length) {
                 const run = pending[cursor++];
                 try {
-                  const artifacts = await github.paginate(
-                    github.rest.actions.listWorkflowRunArtifacts,
-                    { owner, repo, run_id: run.id, per_page: 100 }
-                  );
-                  if (artifacts.some(artifact => !artifact.expired)) {
-                    artifactProtected.add(run.id);
-                  }
+                  await github.rest.repos.getCommit({ owner, repo, ref: run.head_sha });
                 } catch (error) {
-                  artifactProtected.add(run.id);
-                  artifactAuditErrors.push({ id: run.id, run: run.run_number, message: error.message });
-                  core.warning(`Artifact audit failed for run #${run.run_number}; preserving it: ${error.message}`);
+                  commitProtected.add(run.id);
+                  commitAuditErrors.push({ id: run.id, run: run.run_number, message: error.message });
+                  core.warning(`Commit audit failed for run #${run.run_number}; preserving it: ${error.message}`);
                 }
               }
             });
             await Promise.all(workers);
 
-            const candidates = pending.filter(run => !artifactProtected.has(run.id));
-            const keptWithArtifacts = pending.filter(run => artifactProtected.has(run.id));
+            const candidates = pending.filter(run => !commitProtected.has(run.id));
+            const keptForCommitAudit = pending.filter(run => commitProtected.has(run.id));
             const decision = run => {
               if (protectedRunIds.has(run.id)) return "KEEP — milestone";
               if (keepIds.has(run.id)) return "KEEP — latest retention";
-              if (artifactProtected.has(run.id)) return "KEEP — artifact or audit error";
+              if (commitProtected.has(run.id)) return "KEEP — commit missing/audit error";
               return "DELETE CANDIDATE";
             };
 
@@ -131,8 +127,9 @@ jobs:
               `- Completed runs on ${targetBranch}: **${branchRuns.length}**`,
               `- Retention: latest **${keepLatest}** per workflow ID`,
               `- Explicitly protected milestones: **${protectedRunIds.size}**`,
-              `- Preserved because of unexpired artifacts or artifact-audit errors: **${keptWithArtifacts.length}**`,
-              `- Artifact audit errors (fail-closed): **${artifactAuditErrors.length}**`,
+              `- Preserved because commit lookup failed: **${keptForCommitAudit.length}**`,
+              `- Commit audit errors (fail-closed): **${commitAuditErrors.length}**`,
+              "- Artifact retention: **disabled by explicit request**; artifacts do not block deletion",
               `- Deletion candidates after artifact protection: **${candidates.length}**`,
               "",
               "| Run | Workflow | Conclusion | Created | Decision |",
@@ -154,7 +151,7 @@ jobs:
             }
 
             let deleted = 0;
-            let skippedForArtifacts = 0;
+            let skippedForCommit = 0;
             const errors = [];
             for (const run of candidates) {
               try {
@@ -173,7 +170,7 @@ jobs:
                 deleted++;
                 core.info(`Deleted run #${run.run_number} (${run.id}) — ${run.name}`);
               } catch (error) {
-                errors.push({ id: run.id, run: run.run_number, message: error.message });
+                skippedForCommit++;\n                errors.push({ id: run.id, run: run.run_number, message: error.message });
                 core.warning(`Could not safely delete run #${run.run_number} (${run.id}): ${error.message}`);
               }
             }
