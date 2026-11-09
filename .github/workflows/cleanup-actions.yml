@@ -138,7 +138,7 @@ jobs:
                 `| [#${run.run_number}](${run.html_url}) | ${run.name} | ${run.conclusion} | ${run.created_at} | ${decision(run)} |`
               )
             ];
-            core.summary.addRaw(summary.join("\\n")).addEOL();
+            core.summary.addRaw(summary.join("\n")).addEOL();
             await core.summary.write();
 
             core.info(
@@ -177,6 +177,6 @@ jobs:
 
             core.summary.addHeading("Deletion result");
             core.summary.addRaw(
-              `- Deleted: **${deleted}**\\n- Skipped for newly detected artifacts: **${skippedForArtifacts}**\\n- Failed or unsafe: **${errors.length}**`
+              `- Deleted: **${deleted}**\n- Skipped for newly detected artifacts: **${skippedForArtifacts}**\n- Failed or unsafe: **${errors.length}**`
             ).addEOL();
             if (errors.length) core.setFailed(`${errors.length} runs could not be safely processed.`);
