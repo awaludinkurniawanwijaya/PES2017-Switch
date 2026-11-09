@@ -357,3 +357,14 @@ Buka [Cleanup old GitHub Actions runs](https://github.com/awaludinkurniawanwijay
 
 
 **Kegagalan build diagnostik (run [42658774603](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42658774603)):** kompilasi `wsi_common.c` gagal pada `wsi_cmd_blit_image_to_buffer`. Pemeriksaan terhadap sumber NXVK pinned dan skrip workflow menemukan akar masalah: patch marker final barrier mengganti dua baris awal pemanggilan `CmdPipelineBarrier`, tetapi sekaligus menyisipkan ulang seluruh daftar argumen dan penutup panggilan. Sisa argumen asli menjadi ekspresi koma C yang tidak valid. Diperbaiki pada commit `f406a528e5292a9badbd1a407c15a3c5adc62b69`: marker hanya disisipkan sebelum dua baris awal, sedangkan pemanggilan fungsi dan argumen asli tetap utuh. Build ulang otomatis dipicu; belum ada NRO baru dari run gagal ini.
+
+
+**Hasil pengujian fisik terbaru — log diterima 10 November 2026 (pes_loader_smoke.nro):**
+- NXVK ICD berhasil dimuat tanpa entry point hilang; instance, VI surface, enumerasi GPU Tegra X1/NVK gm20b, device, dan seluruh query surface berhasil.
+- `vkCreateSwapchainKHR` belum kembali. Zero-copy gagal dan fallback CPU-copy berjalan. Pembuatan image, alokasi/map memory, bind image, pembuatan command buffer, serta initial image barrier berhasil.
+- Log terakhir adalah `[WSI-BLIT] before copy_image_to_buffer`. Tidak ada marker sesudahnya. Ini mempersempit titik berhenti ke dispatch `CmdCopyImageToBuffer` di dalam helper WSI CPU-copy, tetapi belum membuktikan apakah masalah berada pada parameter WSI, dispatch entrypoint, atau implementasi NVK copy.
+- `nvk_mesa.log` hanya mencatat shader cache dan `nvk wsi: zero-copy FAILED`; pesan zero-copy bukan penyebab tunggal karena CPU-copy fallback memang berjalan.
+- Belum ada bukti swapchain dibuat, swapchain images dienumerasi, queue submit, atau present. Keberhasilan tampilan warna dari NRO upstream `nvk_vi_swapchain.nro` tidak boleh disamakan dengan keberhasilan loader PES.
+- **Langkah teknis berikutnya:** instrumentasikan nilai handle image/buffer, extent, row pitch, dan pointer dispatch tepat sebelum `CmdCopyImageToBuffer`; tambahkan trace entry/branch pada implementasi NVK `nvk_CmdCopyImageToBuffer2`/copy-engine untuk membedakan crash di dispatch dari kegagalan internal driver. Setelah itu bangun NRO diagnostik baru dan uji ulang.
+
+**Status tahap 2 tetap belum lulus.** Kriteria tetap mensyaratkan swapchain creation, image enumeration, queue submit, dan present sukses pada perangkat fisik.
