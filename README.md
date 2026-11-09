@@ -272,6 +272,15 @@ Status CI yang terakhir diperiksa pada 9 November 2026:
 
 Log job terbaru memastikan file NRO diagnostik PES berhasil di-link dan diunggah. Namun step summary tetap menyatakan PES runtime link tidak dijalankan, full-game NRO tidak dibangun, dan tes fisik masih menunggu. Peringatan compiler terkait initializer Vulkan dan deprecation Node tidak menggagalkan build. Perubahan logging juga belum membuktikan hasil Vulkan runtime; tahap 2 tetap menunggu hasil menjalankan NRO diagnostik di Switch.
 
+**Hasil pengujian perangkat fisik (log yang diterima 9 November 2026):**
+- NXVK static ICD, `vkCreateInstance`, VI surface, enumerasi GPU/physical device, dan `vkCreateDevice` berhasil.
+- GPU terdeteksi sebagai NVIDIA Tegra X1 (NVK gm20b); surface mengiklankan 3 image, extent 1280×720, format 37, dan FIFO.
+- `vkCreateSwapchainKHR` belum kembali. Trace WSI menunjukkan jalur zero-copy gagal lalu fallback CPU-copy berjalan; pembuatan image, alokasi/map memory, bind image, dan awal perekaman command buffer berhasil.
+- Log berhenti setelah marker `[WSI-FINISH] before blit_image_to_buffer`. Karena itu belum ada bukti swapchain berhasil dibuat, enumerasi swapchain image, queue submit, atau present.
+- `nvk_mesa.log` mencatat `nvk wsi: zero-copy FAILED`; pesan ini sendiri bukan diagnosis akhir karena fallback CPU-copy juga dijalankan.
+- Commit diagnostik berikutnya `77d4b2cbc29eb9c717703da1632e43c09a73cdb7` menambahkan marker sebelum/sesudah setiap dispatch Vulkan dalam helper CPU-copy (`CmdPipelineBarrier` dan `CmdCopyImageToBuffer`) untuk mengisolasi titik berhenti pada pengujian ulang.
+- **Status tahap 2: belum lulus; menunggu build diagnostik terbaru dan log pengujian ulang.**
+
 **Kriteria lulus tahap 2:** jalankan `pes_loader_smoke.nro` pada Switch; pastikan log menunjukkan pembuatan swapchain sukses, jumlah dan enumerasi image, submit sukses, present sukses, serta tidak ada error NVK/WSI. Simpan log yang dihasilkan NRO dan kirimkan untuk dianalisis. Jika gagal, gunakan trace WSI/NVK dan marker tahap terakhir untuk mengisolasi operasi yang gagal. Setelah runtime present terbukti, baru lanjut ke integrasi backend grafis PES.
 
 ### 8.2 Kebijakan pemilihan renderer
