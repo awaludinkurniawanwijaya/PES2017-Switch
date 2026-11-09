@@ -532,7 +532,7 @@ jobs:
                '                             1, &buffer_image_copy);\n'
                '   fprintf(stderr, "[WSI-BLIT] after copy_image_to_buffer\\n"); fflush(stderr);\n\n'
                "   img_mem_barrier.srcAccessMask"),
-              ("                           1, &buf_mem_barrier,\n                           1, &img_mem_barrier);",
+              ("   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,",
                '   fprintf(stderr, "[WSI-BLIT] before final_barrier\\n"); fflush(stderr);\n'
                "   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,\n"
                "                           image->blit.to_foreign_queue\n"
