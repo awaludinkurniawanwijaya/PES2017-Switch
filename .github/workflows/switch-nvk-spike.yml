@@ -359,35 +359,35 @@ jobs:
                   "   result = wsi->CreateImage(chain->device, &info->create,",
                   "                             &chain->alloc, &image->image);",
               ]),
-               """   fprintf(stderr, "[WSI-IMAGE] before CreateImage extent=%ux%u format=%u tiling=%u usage=0x%x\n",
+               """   fprintf(stderr, "[WSI-IMAGE] before CreateImage extent=%ux%u format=%u tiling=%u usage=0x%x\\n",
                    info->create.extent.width, info->create.extent.height,
                    (unsigned)info->create.format, (unsigned)info->create.tiling,
                    info->create.usage); fflush(stderr);
              result = wsi->CreateImage(chain->device, &info->create,
                                        &chain->alloc, &image->image);
-             fprintf(stderr, "[WSI-IMAGE] after CreateImage result=0x%x image=%p\n",
+             fprintf(stderr, "[WSI-IMAGE] after CreateImage result=0x%x image=%p\\n",
                      (unsigned)result, (void *)image->image); fflush(stderr);"""),
               ("   result = info->create_mem(chain, info, image);",
-               """   fprintf(stderr, "[WSI-IMAGE] before create_mem image=%p callback=%p\n",
+               """   fprintf(stderr, "[WSI-IMAGE] before create_mem image=%p callback=%p\\n",
                    (void *)image->image, (void *)info->create_mem); fflush(stderr);
              result = info->create_mem(chain, info, image);
-             fprintf(stderr, "[WSI-IMAGE] after create_mem result=0x%x memory=%p cpu_map=%p\n",
+             fprintf(stderr, "[WSI-IMAGE] after create_mem result=0x%x memory=%p cpu_map=%p\\n",
                      (unsigned)result, (void *)image->memory, image->cpu_map); fflush(stderr);"""),
               ("\n".join([
                   "   result = wsi->BindImageMemory(chain->device, image->image,",
                   "                                 image->memory, 0);",
               ]),
-               """   fprintf(stderr, "[WSI-IMAGE] before BindImageMemory image=%p memory=%p\n",
+               """   fprintf(stderr, "[WSI-IMAGE] before BindImageMemory image=%p memory=%p\\n",
                    (void *)image->image, (void *)image->memory); fflush(stderr);
              result = wsi->BindImageMemory(chain->device, image->image,
                                            image->memory, 0);
-             fprintf(stderr, "[WSI-IMAGE] after BindImageMemory result=0x%x\n",
+             fprintf(stderr, "[WSI-IMAGE] after BindImageMemory result=0x%x\\n",
                      (unsigned)result); fflush(stderr);"""),
               ("      result = info->finish_create(chain, info, image);",
-               """      fprintf(stderr, "[WSI-IMAGE] before finish_create callback=%p\n",
+               """      fprintf(stderr, "[WSI-IMAGE] before finish_create callback=%p\\n",
                    (void *)info->finish_create); fflush(stderr);
                 result = info->finish_create(chain, info, image);
-                fprintf(stderr, "[WSI-IMAGE] after finish_create result=0x%x\n",
+                fprintf(stderr, "[WSI-IMAGE] after finish_create result=0x%x\\n",
                         (unsigned)result); fflush(stderr);"""),
           ]
           for old, new in pairs:
