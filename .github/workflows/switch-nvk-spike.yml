@@ -514,6 +514,37 @@ jobs:
           p.write_text(s)
           print("WSI finish_create blit-context tracepoints installed")
 
+          # Split the CPU-copy blit helper into individual Vulkan dispatch markers.
+          # The hardware log stopped inside this helper, after command-buffer begin.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          start = s.find("static void\\nwsi_cmd_blit_image_to_buffer(")
+          end = s.find("\\nstatic void\\nwsi_cmd_blit_image_to_image(", start)
+          if start < 0 or end < 0:
+              raise SystemExit("Missing WSI image-to-buffer helper boundaries")
+          body = s[start:end]
+          first_barrier = body.find("wsi->CmdPipelineBarrier(cmd_buffer,")
+          copy_call = body.find("wsi->CmdCopyImageToBuffer(cmd_buffer,")
+          if first_barrier < 0 or copy_call < 0:
+              raise SystemExit("Missing WSI CPU-copy Vulkan dispatch anchors")
+          def wrap_dispatch(source, anchor, label):
+              pos = source.find(anchor)
+              if pos < 0:
+                  raise SystemExit("Missing WSI dispatch: " + label)
+              source = source[:pos] + 'fprintf(stderr, "[WSI-BLIT] before ' + label + '\\\\n"); fflush(stderr);\\n   ' + source[pos:]
+              pos = source.find(anchor, pos)
+              semi = source.find(";", pos)
+              if semi < 0:
+                  raise SystemExit("Unterminated WSI dispatch: " + label)
+              return source[:semi+1] + '\\n   fprintf(stderr, "[WSI-BLIT] after ' + label + '\\\\n"); fflush(stderr);' + source[semi+1:]
+          body = wrap_dispatch(body, "wsi->CmdPipelineBarrier(cmd_buffer,", "initial_barrier")
+          body = wrap_dispatch(body, "wsi->CmdCopyImageToBuffer(cmd_buffer,", "copy_image_to_buffer")
+          # The helper has a second barrier after the image-to-buffer copy.
+          body = wrap_dispatch(body, "wsi->CmdPipelineBarrier(cmd_buffer,", "final_barrier")
+          s = s[:start] + body + s[end:]
+          p.write_text(s)
+          print("WSI CPU-copy blit dispatch tracepoints installed")
+
           # Instrument the generated common Properties2 callback at its template
           # source, so the trace is present in the generated C compiled by Meson.
           p = Path("nxvk/src/vulkan/util/vk_physical_device_properties_gen.py")
