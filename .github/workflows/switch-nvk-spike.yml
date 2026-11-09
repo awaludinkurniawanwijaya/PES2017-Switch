@@ -347,29 +347,10 @@ jobs:
           p.write_text(s)
           print("Horizon Switch WSI swapchain tracepoints installed")
 
-          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
-          s = p.read_text()
-          if '#include <stdio.h>' not in s:
-              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
-          needle = "VkResult result = iface->create_swapchain(surface, _device, wsi_device,"
-          pos = s.find(needle)
-          if pos < 0:
-              raise SystemExit("Missing wsi_common create_swapchain declaration")
-          line_start = s.rfind("\n", 0, pos) + 1
-          line_end = s.find(";", pos) + 1
-          if line_end <= pos:
-              raise SystemExit("Unterminated wsi_common create_swapchain call")
-          original = s[line_start:line_end]
-          indent = original[:len(original) - len(original.lstrip())]
-          traced = (
-              indent + 'fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n", (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height, (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);' + chr(10)
-              + original + chr(10)
-              + indent + 'fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n", (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);'
-          )
-          s = s[:line_start] + traced + s[line_end:]
+          # Swapchain call-site instrumentation is intentionally omitted here.
+          # Keep the Switch-specific image/fallback tracepoints above; they are
+          # less brittle than rewriting a multiline common C call.
 
-          p.write_text(s)
-          print("WSI common create_swapchain tracepoints installed")
 
 
           # Instrument the generated common Properties2 callback at its template
