@@ -494,11 +494,11 @@ jobs:
                """      fprintf(stderr, "[WSI-FINISH] before BeginCommandBuffer cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
              wsi->BeginCommandBuffer(cmd_buffer, &begin_info);
              fprintf(stderr, "[WSI-FINISH] after BeginCommandBuffer\\n"); fflush(stderr);""") ,
-              ("       case WSI_SWAPCHAIN_BUFFER_BLIT: {\n          wsi_cmd_blit_image_to_buffer(",
+              ("      case WSI_SWAPCHAIN_BUFFER_BLIT: {\n         wsi_cmd_blit_image_to_buffer(",
                """       case WSI_SWAPCHAIN_BUFFER_BLIT: {
           fprintf(stderr, "[WSI-FINISH] before blit_image_to_buffer slot=%u family=%d\\n", i, chain->blit.queue ? chain->blit.queue->queue_family_index : (int)i); fflush(stderr);
           wsi_cmd_blit_image_to_buffer(""") ,
-              ("             chain->blit.queue ? chain->blit.queue->queue_family_index : i);\n          break;",
+              ("            chain->blit.queue ? chain->blit.queue->queue_family_index : i);\n         break;",
                """             chain->blit.queue ? chain->blit.queue->queue_family_index : i);
           fprintf(stderr, "[WSI-FINISH] after blit_image_to_buffer slot=%u\\n", i); fflush(stderr);
           break;""") ,
