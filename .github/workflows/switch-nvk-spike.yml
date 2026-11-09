@@ -424,12 +424,14 @@ jobs:
           old = "\n".join([
               "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
               "   if (result != VK_SUCCESS)",
+                 "      return result;",
           ])
           new = "\n".join([
               '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer before blit_context image=%p\\n", (void *)image->image); fflush(stderr);',
               "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
               '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer after blit_context result=0x%x memory=%p\\n", (unsigned)result, (void *)image->blit.memory); fflush(stderr);',
               "   if (result != VK_SUCCESS)",
+                 "      return result;",
           ])
           if old not in s:
               raise SystemExit("Missing WSI CPU buffer blit anchor")
