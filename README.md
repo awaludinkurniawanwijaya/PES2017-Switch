@@ -250,9 +250,12 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 Perbaikan diagnostik terbaru menutup celah pada pengujian sebelumnya: marker `stage 9` dahulu tidak diikuti pemanggilan `vkCreateSwapchainKHR`. Kode sekarang benar-benar memanggil fungsi tersebut, memeriksa `VK_SUCCESS`, mencatat handle, lalu melanjutkan enumerasi swapchain images. NRO hasil build #97 telah diperiksa dan binary memuat pemanggilan create, enumerate images, serta present. Karena itu, log lama yang berhenti pada marker stage 9 tidak boleh ditafsirkan sebagai bukti bahwa fungsi pembuatan swapchain macet.
 
 Status CI yang terakhir diperiksa pada 9 November 2026:
-- Tests #243: berhasil.
-- Nintendo Switch NRO #156: berhasil membuat **bootstrap NRO saja**; bukan NRO diagnostik Vulkan dan bukan game.
-- Switch NVK feasibility #97: masih berjalan pada pemeriksaan terakhir. Tunggu workflow ini selesai, lalu periksa job, log, dan artefak. Jangan menguji bootstrap NRO sebagai pengganti NRO diagnostik.
+- Tests #244: berhasil.
+- Nintendo Switch NRO #156: berhasil membuat bootstrap NRO; artefak ini bukan NRO diagnostik Vulkan dan bukan game.
+- Switch NVK feasibility #97: berhasil. Semua langkah build dan upload berhasil, termasuk pembuatan satu NRO diagnostik PES-owned.
+- Artefak `pes-nxvk-properties2-diagnostic-nro` (artifact ID `13657741873`) telah diperiksa: ZIP berisi tepat satu file, `pes_loader_smoke.nro`. Binary memuat pemanggilan `vkCreateSwapchainKHR`, `vkGetSwapchainImagesKHR`, dan `vkQueuePresentKHR`.
+
+**Status bukti:** pemanggilan API tersebut sudah terverifikasi masuk ke binary hasil build. Keberhasilan fungsi-fungsi itu pada runtime Horizon/NVK belum terbukti; hasilnya menunggu log dari NRO yang dijalankan pada Switch. Jangan menganggap status CI sebagai bukti swapchain atau present berhasil pada perangkat.
 
 **Kriteria lulus tahap 2:** NRO diagnostik yang benar-benar menjalankan `vkCreateSwapchainKHR` berhasil pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Build CI #97 sudah memenuhi kesiapan artefak, tetapi kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan log untuk menentukan batas kegagalan sebelum memilih langkah berikutnya.
 
