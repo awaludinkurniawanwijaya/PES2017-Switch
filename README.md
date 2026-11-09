@@ -247,20 +247,23 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 
 ### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
 
-NRO diagnostik PES memanggil vkCreateSwapchainKHR secara nyata, memeriksa hasilnya, mencatat handle, dan mengenumerasi swapchain images. Instrumentasi terbaru pada sumber NXVK mencakup jalur WSI umum dan jalur image CPU-copy yang dipakai ketika zero-copy tidak tersedia. Instrumentasi ini merekam tahap pembuatan image, alokasi/binding memory, penyelesaian image, pembuatan blit context, dan pemetaan memory CPU.
+NRO diagnostik PES memanggil `vkCreateSwapchainKHR` secara nyata, memeriksa hasilnya, mencatat handle, dan mengenumerasi swapchain images. Setelah image diperoleh, smoke test kini juga merekam command buffer dengan image barrier dari `VK_IMAGE_LAYOUT_UNDEFINED` ke `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`, mengirimkannya melalui `vkQueueSubmit` dengan acquire semaphore, memberi sinyal semaphore render-complete, lalu memanggil `vkQueuePresentKHR` dengan semaphore tersebut. Semaphore render-complete dibuat per swapchain image agar tidak digunakan ulang sebelum operasi present mengonsumsinya. Ini memperbaiki urutan sinkronisasi yang sebelumnya belum menguji alur submit/present Vulkan yang benar.
 
 Status CI yang terakhir diperiksa pada 9 November 2026:
-- **Switch NVK Build #116: berhasil.** Semua langkah job selesai dengan sukses, termasuk instrumentasi, build NXVK, pembuatan NRO diagnostik PES, dan upload artefak.
-- Commit yang diuji: 91be320d6e1ae3b6a6230e0334013b79673fa892.
-- [Lihat GitHub Actions Build #116](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42599827000).
-- Artefak NRO diagnostik tunggal: [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42599827000/artifacts/13666270811), berisi tepat satu file pes_loader_smoke.nro (14.112.965 bytes).
-- Artefak build diagnostics dan kumpulan smoke NRO upstream diunggah terpisah; keduanya bukan NRO diagnostik tunggal untuk pengujian PES.
+- **Switch NVK feasibility spike #121: berhasil.** Semua langkah job selesai dengan sukses: checkout sumber NXVK yang dipatok, instrumentasi NVK, build toolchain, build library NVK, build smoke NRO, dan upload tiga artefak.
+- Commit proyek yang diuji: `656ba14217254343a4ba66577ff704549db3270d`.
+- Revisi NXVK yang digunakan: `c3abea1efde44027b7e3e20b48eb55beeecd5ab4`.
+- [Lihat GitHub Actions Build #121](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047).
+- Artefak NRO diagnostik tunggal: [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670921124). Arsip artefak berukuran 2.836.635 bytes; berisi `pes_loader_smoke.nro`.
+- Artefak kumpulan smoke NRO dan library: [nxvk-switch-smoke-nros-c3abea1](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670288907). Berisi NRO diagnostik PES, NRO smoke upstream, library NVK/support, metadata pkg-config, header Vulkan, dan lisensi.
+- Artefak log/diagnostik build: [nxvk-switch-build-diagnostics](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670372644).
 
-**Pemeriksaan isi NRO #116:** binary final memuat marker [WSI-COMMON], [WSI-IMAGE], vkCreateSwapchainKHR, argv[0], tracepoint CPU buffer sebelum blit_context dan MapMemory, serta tracepoint sebelum BindImageMemory dan finish_create. Log build mengonfirmasi pemasangan instrumentasi WSI umum dan image/CPU-copy selesai. Dengan demikian, masalah anchor instrumentasi yang menghalangi build sebelumnya telah diperbaiki.
+**Pemeriksaan hasil #121:** log build mengonfirmasi toolchain NXVK selesai, `libnvk.a` dan `libnvk_support.a` dihasilkan, dua NRO smoke upstream dibangun, dan NRO diagnostik PES berhasil di-link. Step summary secara eksplisit menyatakan PES runtime link tidak dijalankan, full-game NRO tidak dibangun, dan tes perangkat Switch fisik belum dilakukan. Peringatan compiler tentang aggregate initializer tidak menggagalkan build.
 
-**Batas bukti:** Build #116 hanya membuktikan source dan NRO diagnostik berhasil dibangun serta tracepoint tertanam dalam binary. Ini belum membuktikan vkCreateSwapchainKHR, pembuatan image, enumerasi image, atau present berhasil pada runtime Horizon/NVK. Belum ada bukti full-game boot atau gameplay.
+**Batas bukti:** status success hanya membuktikan kompilasi dan pengemasan. Kode kini memiliki urutan acquire → command buffer/image layout transition → queue submit → render-complete semaphore → present, tetapi keberhasilan pemanggilan API tersebut pada Horizon/NVK belum terbukti sampai NRO dijalankan di Switch dan log runtime diperiksa. Belum ada bukti full-game boot atau gameplay.
 
-**Kriteria lulus tahap 2:** NRO diagnostik berhasil menjalankan vkCreateSwapchainKHR pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan jejak WSI image/CPU-copy terbaru untuk mengisolasi operasi terakhir yang tercapai sebelum menentukan perbaikan berikutnya.
+**Kriteria lulus tahap 2:** jalankan `pes_loader_smoke.nro` pada Switch; pastikan log menunjukkan pembuatan swapchain sukses, jumlah dan enumerasi image, submit sukses, present sukses, serta tidak ada error NVK/WSI. Simpan log yang dihasilkan NRO dan kirimkan untuk dianalisis. Jika gagal, gunakan trace WSI/NVK dan marker tahap terakhir untuk mengisolasi operasi yang gagal. Setelah runtime present terbukti, baru lanjut ke integrasi backend grafis PES.
+
 ### 8.2 Kebijakan pemilihan renderer
 
 NXVK tetap merupakan jalur feasibility yang sedang diukur, bukan keputusan final. Arsitektur Vulkan pada referensi BO2-360-NX dapat dipelajari untuk desain dan pola integrasi, tetapi tidak boleh diasumsikan langsung kompatibel dengan PES atau otomatis lebih cepat. Vulkan adalah API; implementasi driver Vulkan untuk Switch tetap diperlukan. Tidak ada migrasi permanen sampai hasil perbandingan teknis cukup kuat dan keputusan tersebut disetujui.
