@@ -5,7 +5,7 @@
 Repositori ini mengembangkan jalur recompilation PowerPC, runtime kompatibilitas Xbox 360, lapisan platform libnx, serta backend grafis Vulkan melalui NXVK. Target akhirnya adalah menjalankan PES 2017 sebagai aplikasi homebrew Nintendo Switch (NRO), bukan menjalankan emulator Xbox 360.
 
 > [!WARNING]
-> **Status per 8 November 2026: belum playable.** Yang sudah terbukti saat ini adalah proses recompilation lokal, bootstrap libnx, pemeriksaan kompilasi beberapa subsistem Switch, serta build CI untuk eksperimen NXVK. Belum ada bukti bahwa keseluruhan game berhasil boot, masuk menu, atau menjalankan pertandingan di perangkat Switch.
+> **Status per 9 November 2026: belum playable.** Yang sudah terbukti saat ini adalah proses recompilation lokal, bootstrap libnx, pemeriksaan kompilasi beberapa subsistem Switch, serta build CI untuk eksperimen NXVK. Belum ada bukti bahwa keseluruhan game berhasil boot, masuk menu, atau menjalankan pertandingan di perangkat Switch.
 
 ---
 
@@ -229,42 +229,48 @@ Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang 
 
 Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-## 8. Pekerjaan yang masih harus diselesaikan
+## 8. Tahapan proyek dan posisi saat ini
 
-Urutan berikut mengelompokkan pekerjaan berdasarkan subsistem dan ketergantungannya.
+Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerjaan. Status mengacu pada bukti yang benar-benar tersedia; keberhasilan build tidak otomatis berarti runtime atau game sudah berjalan.
 
-### A. Recompiler dan kode game
-- Menelusuri 44 word yang belum ter-decode.
-- Menganalisis dua dispatch jump table yang terlewat.
-- Memastikan semua batas fungsi dan target branch hasil recompilation benar.
-- Menguji perilaku kode hasil recompilation pada runtime.
+| Tahap | Sasaran | Status |
+|---|---|---|
+| 0. Validasi sumber dan recompilation | Mengunci identitas XEX, menghasilkan PPC, mencatat gap analisis | **Sebagian selesai** — XEX tervalidasi dan 1.413 file PPC pernah dihasilkan lokal; 44 word dan 2 dispatch masih perlu ditinjau |
+| 1. Fondasi Switch | Bootstrap libnx, toolchain, input/platform probe, test mandiri CI | **Build CI berhasil** — bukan game dan belum membuktikan runtime game |
+| 2. Kelayakan Vulkan/NVK + VI | Memastikan loader, instance, GPU, device, surface, swapchain, image, dan present | **Sedang dikerjakan** — jalur sampai device dan surface sudah pernah berhasil pada Switch; smoke upstream NVK/VI pernah lulus. NRO diagnostik PES kini benar-benar memanggil `vkCreateSwapchainKHR`; hasil pemanggilan aktual itulah checkpoint berikutnya |
+| 3. Keputusan arsitektur renderer | Menilai jalur NXVK yang ada dan referensi renderer Vulkan dari proyek BO2-360-NX; menentukan apakah tetap, diadaptasi, atau diganti | **Belum diputuskan** — referensi BO2 adalah bahan evaluasi, bukan bukti kompatibilitas/performa PES dan bukan migrasi yang sudah disetujui |
+| 4. Integrasi backend grafis PES | Menghubungkan resource, shader, texture, render target, command submission, sinkronisasi, dan present dengan backend terpilih | **Belum dimulai sebagai integrasi game yang tervalidasi** |
+| 5. Runtime kompatibilitas dan loader | Menuntaskan kernel imports prioritas, guest memory/thread, dynamic library/symbol loading, filesystem dan startup path | **Belum lengkap** — 69 kernel import masih tercatat sebagai stub; jumlah dan prioritas perlu diperbarui berdasarkan audit terbaru |
+| 6. Audio, input, dan penyimpanan | Menghubungkan XMA/audio, controller, save dan data persisten | **Belum tervalidasi sebagai satu alur game** |
+| 7. Integrasi full-game | Menggabungkan runtime, backend, dan PPC privat yang cocok menjadi satu full-game NRO | **Belum tersedia** — bootstrap NRO bukan full-game NRO |
+| 8. Validasi akhir di Switch | Membuktikan boot, menu, pertandingan, audio, kontrol, save, stabilitas dan performa | **Belum dilakukan** — ini satu-satunya tahap yang dapat membuktikan status playable pada perangkat sasaran |
 
-### B. Kernel dan system services
-- Mengganti 69 kernel import stub dengan implementasi yang sesuai.
-- Memprioritaskan import yang dipanggil saat startup.
-- Memvalidasi thread, event, synchronization, memory, file I/O, dan layanan lain yang digunakan game.
+### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
 
-### C. Loader dan data game
-- Menyelesaikan dynamic library loading dan symbol resolution.
-- Memastikan executable, update, dan file game ditemukan dari struktur SD yang disepakati.
-- Memvalidasi hash executable saat instalasi/pemuatan.
-- Memeriksa alur save dan data persisten.
+Perbaikan diagnostik terbaru menutup celah pada pengujian sebelumnya: marker `stage 9` dahulu tidak diikuti pemanggilan `vkCreateSwapchainKHR`. Kode sekarang benar-benar memanggil fungsi tersebut, memeriksa `VK_SUCCESS`, mencatat handle, lalu melanjutkan enumerasi swapchain images. Karena itu, log lama yang berhenti pada marker stage 9 tidak boleh ditafsirkan sebagai bukti bahwa fungsi pembuatan swapchain macet.
 
-### D. Grafis
-- Menyelesaikan integrasi runtime Vulkan dengan NXVK.
-- Menguji shader, texture, render target, depth/stencil, format, synchronization, dan present.
-- Mengukur penggunaan memori serta performa GPU pada Switch fisik.
+Status CI yang terakhir diperiksa pada 9 November 2026:
+- Tests #243: berhasil.
+- Nintendo Switch NRO #156: berhasil membuat **bootstrap NRO saja**; bukan NRO diagnostik Vulkan dan bukan game.
+- Switch NVK feasibility #97: masih berjalan pada pemeriksaan terakhir. Tunggu workflow ini selesai, lalu periksa job, log, dan artefak. Jangan menguji bootstrap NRO sebagai pengganti NRO diagnostik.
 
-### E. Audio dan input
-- Menghubungkan jalur audio game/XMA ke output audio Switch.
-- Memvalidasi sample rate, buffer, latency, dan stabilitas audio.
-- Menyelesaikan pemetaan controller dan perilaku input selama permainan.
+**Kriteria lulus tahap 2:** NRO diagnostik yang benar-benar menjalankan `vkCreateSwapchainKHR` berhasil pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Jika gagal, gunakan log untuk menentukan batas kegagalan sebelum memilih langkah berikutnya.
 
-### F. Integrasi dan validasi perangkat
-- Menghasilkan full-game NRO dari PPC privat dan runtime.
-- Menguji startup, menu, pertandingan, audio, kontrol, dan penyimpanan di Switch.
-- Memperbaiki crash, hang, visual glitch, dan bottleneck performa.
-- Menyediakan hasil pengujian yang dapat direproduksi sebelum menyatakan status playable.
+### 8.2 Kebijakan pemilihan renderer
+
+NXVK tetap merupakan jalur feasibility yang sedang diukur, bukan keputusan final. Arsitektur Vulkan pada referensi BO2-360-NX dapat dipelajari untuk desain dan pola integrasi, tetapi tidak boleh diasumsikan langsung kompatibel dengan PES atau otomatis lebih cepat. Vulkan adalah API; implementasi driver Vulkan untuk Switch tetap diperlukan. Tidak ada migrasi permanen sampai hasil perbandingan teknis cukup kuat dan keputusan tersebut disetujui.
+
+### 8.3 Cara mengurangi pengujian perangkat
+
+Maksimalkan CI, code review, pemeriksaan statis, build, dan smoke test yang dapat direproduksi. Gabungkan pemeriksaan hardware yang memang tidak dapat dibuktikan CI ke checkpoint NRO diagnostik yang terencana; hindari NRO uji berulang tanpa pertanyaan teknis baru. Pengujian akhir pada Switch tetap diperlukan untuk membuktikan Horizon runtime, driver, VI/present, dan gameplay. Jangan mengklaim playable sebelum tahap 8 selesai.
+
+### 8.4 Pekerjaan subsistem yang berjalan paralel
+
+- **Recompiler:** telusuri 44 word yang belum ter-decode dan dua dispatch jump table; verifikasi batas fungsi serta target branch.
+- **Kernel/services:** audit 69 import stub, prioritaskan jalur startup, lalu implementasikan dan uji thread, event, synchronization, memory, dan file I/O.
+- **Loader/data:** tuntaskan dynamic library loading dan symbol resolution; pastikan struktur SD, validasi executable, update, save dan data persisten.
+- **Grafis:** setelah checkpoint renderer dipilih, uji shader, texture, render target, depth/stencil, format, synchronization, memory, dan present.
+- **Audio/input:** hubungkan XMA/audio, validasi sample rate/buffer/latency, serta controller selama permainan.
 
 ## 9. Privasi file game dan aturan artefak
 
