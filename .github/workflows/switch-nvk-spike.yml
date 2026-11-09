@@ -262,6 +262,69 @@ jobs:
               s = s.replace(old, new, 1)
           p.write_text(s)
           print("WSI initialization tracepoints installed")
+
+          # Instrument the generated common Properties2 callback at its template
+          # source, so the trace is present in the generated C compiled by Meson.
+          p = Path("nxvk/src/vulkan/util/vk_physical_device_properties_gen.py")
+          s = p.read_text()
+          old = '''#include "vk_common_entrypoints.h"
+#include "vk_log.h"'''
+          new = '''#include "vk_common_entrypoints.h"
+#include <stdio.h>
+#include "vk_log.h"'''
+          if old not in s:
+              raise SystemExit("Missing Properties2 template include anchor")
+          s = s.replace(old, new, 1)
+          old = '''{
+   VK_FROM_HANDLE(vk_physical_device, pdevice, physicalDevice);
+
+% for prop in pdev_properties:'''
+          new = '''{
+   fprintf(stderr, "[PROP2-TRACE] entered physicalDevice=%p pProperties=%p pNext=%p\\n",
+           (void *)physicalDevice, (void *)pProperties,
+           pProperties ? (void *)pProperties->pNext : NULL);
+   fflush(stderr);
+   VK_FROM_HANDLE(vk_physical_device, pdevice, physicalDevice);
+   fprintf(stderr, "[PROP2-TRACE] handle resolved pdevice=%p\\n", (void *)pdevice);
+   fflush(stderr);
+
+% for prop in pdev_properties:'''
+          if old not in s:
+              raise SystemExit("Missing Properties2 callback entry anchor")
+          s = s.replace(old, new, 1)
+          old = '''   vk_foreach_struct(ext, pProperties->pNext) {
+      switch ((int32_t)ext->sType) {'''
+          new = '''   fprintf(stderr, "[PROP2-TRACE] base properties copied; entering pNext chain\\n");
+   fflush(stderr);
+   vk_foreach_struct(ext, pProperties->pNext) {
+      fprintf(stderr, "[PROP2-TRACE] pNext sType=%d node=%p\\n",
+              (int)ext->sType, (void *)ext);
+      fflush(stderr);
+      switch ((int32_t)ext->sType) {'''
+          if old not in s:
+              raise SystemExit("Missing Properties2 pNext iteration anchor")
+          s = s.replace(old, new, 1)
+          old = '''      }
+   }
+}
+
+void
+vk_set_physical_device_properties_struct'''
+          new = '''      }
+      fprintf(stderr, "[PROP2-TRACE] finished pNext sType=%d\\n", (int)ext->sType);
+      fflush(stderr);
+   }
+   fprintf(stderr, "[PROP2-TRACE] callback returning\\n");
+   fflush(stderr);
+}
+
+void
+vk_set_physical_device_properties_struct'''
+          if old not in s:
+              raise SystemExit("Missing Properties2 callback exit anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Generated vk_common_GetPhysicalDeviceProperties2 callback tracepoints installed")
           PY
 
       - name: Build pinned NXVK toolchain image
