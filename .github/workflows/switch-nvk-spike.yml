@@ -350,9 +350,14 @@ jobs:
           s = p.read_text()
           if '#include <stdio.h>' not in s:
               s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
-          old = """   VkResult result = iface->create_swapchain(surface, _device, wsi_device,
-                                             &info, alloc,
-                                             &swapchain);"""
+          old = """    fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
+            (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
+            (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
+    VkResult result = iface->create_swapchain(surface, _device, wsi_device,
+                                              &info, alloc,
+                                              &swapchain);
+    fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",
+            (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);"""
           new = """   fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
            (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
            (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
