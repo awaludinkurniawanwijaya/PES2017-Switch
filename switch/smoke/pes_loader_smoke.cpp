@@ -203,6 +203,9 @@ int main(int argc, char** argv)
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
+    VkSemaphore renderComplete = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
     do {
@@ -385,15 +388,68 @@ int main(int argc, char** argv)
     Log("vkCreateSwapchainKHR returned VK_SUCCESS swapchain=%p",reinterpret_cast<void*>(swapchain));
     uint32_t actualImages=0;
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,nullptr));
+    if (!actualImages) { Log("FAIL swapchain returned zero images"); result=6; break; }
+    std::vector<VkImage> swapchainImages(actualImages);
+    CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,swapchainImages.data()));
     Log("swapchain=%ux%u images=%u format=%u",extent.width,extent.height,actualImages,unsigned(format.format));
+
     VkSemaphoreCreateInfo semci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&acquired));
+    CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&renderComplete));
+    VkCommandPoolCreateInfo cpci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    cpci.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    cpci.queueFamilyIndex=qFamily;
+    CHECK_VK(vkCreateCommandPool(device,&cpci,nullptr,&commandPool));
+    VkCommandBufferAllocateInfo cbai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    cbai.commandPool=commandPool;
+    cbai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount=1;
+    CHECK_VK(vkAllocateCommandBuffers(device,&cbai,&commandBuffer));
+
     for (uint32_t frame=0; frame<120; ++frame) {
         uint32_t imageIndex=0;
         VkResult ar=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,acquired,VK_NULL_HANDLE,&imageIndex);
         if (ar!=VK_SUCCESS && ar!=VK_SUBOPTIMAL_KHR) { Log("FAIL acquire frame=%u result=%d",frame,int(ar)); result=7; break; }
+        if (imageIndex>=swapchainImages.size()) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,swapchainImages.size()); result=7; break; }
+
+        // A presentable image must be transitioned to PRESENT_SRC_KHR by a
+        // queue operation. The acquire semaphore is consumed by this submit;
+        // presentation waits on the semaphore signalled after the barrier.
+        CHECK_VK(vkResetCommandBuffer(commandBuffer,0));
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        CHECK_VK(vkBeginCommandBuffer(commandBuffer,&begin));
+        VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        toPresent.srcAccessMask=0;
+        toPresent.dstAccessMask=0;
+        toPresent.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        toPresent.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toPresent.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        toPresent.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        toPresent.image=swapchainImages[imageIndex];
+        toPresent.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        toPresent.subresourceRange.baseMipLevel=0;
+        toPresent.subresourceRange.levelCount=1;
+        toPresent.subresourceRange.baseArrayLayer=0;
+        toPresent.subresourceRange.layerCount=1;
+        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,
+                             0,nullptr,0,nullptr,1,&toPresent);
+        CHECK_VK(vkEndCommandBuffer(commandBuffer));
+
+        const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.waitSemaphoreCount=1;
+        submit.pWaitSemaphores=&acquired;
+        submit.pWaitDstStageMask=&waitStage;
+        submit.commandBufferCount=1;
+        submit.pCommandBuffers=&commandBuffer;
+        submit.signalSemaphoreCount=1;
+        submit.pSignalSemaphores=&renderComplete;
+        CHECK_VK(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE));
+
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-        pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&acquired;
+        pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&renderComplete;
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
         VkResult pr=vkQueuePresentKHR(queue,&pi);
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
@@ -406,6 +462,8 @@ int main(int argc, char** argv)
 
     if (device) {
         vkDeviceWaitIdle(device);
+        if (commandPool) vkDestroyCommandPool(device,commandPool,nullptr);
+        if (renderComplete) vkDestroySemaphore(device,renderComplete,nullptr);
         if (acquired) vkDestroySemaphore(device,acquired,nullptr);
         if (swapchain) vkDestroySwapchainKHR(device,swapchain,nullptr);
         vk::loader::ForgetDevice();
