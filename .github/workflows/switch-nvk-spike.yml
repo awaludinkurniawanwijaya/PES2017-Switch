@@ -514,34 +514,40 @@ jobs:
           p.write_text(s)
           print("WSI finish_create blit-context tracepoints installed")
 
-          # Split the CPU-copy blit helper into individual Vulkan dispatch markers.
-          # The hardware log stopped inside this helper, after command-buffer begin.
+          # Add precise markers around the CPU-copy blit's Vulkan dispatches.
           p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
           s = p.read_text()
-          start = s.find("static void\\nwsi_cmd_blit_image_to_buffer(")
-          end = s.find("\\nstatic void\\nwsi_cmd_blit_image_to_image(", start)
-          if start < 0 or end < 0:
-              raise SystemExit("Missing WSI image-to-buffer helper boundaries")
-          body = s[start:end]
-          first_barrier = body.find("wsi->CmdPipelineBarrier(cmd_buffer,")
-          copy_call = body.find("wsi->CmdCopyImageToBuffer(cmd_buffer,")
-          if first_barrier < 0 or copy_call < 0:
-              raise SystemExit("Missing WSI CPU-copy Vulkan dispatch anchors")
-          def wrap_dispatch(source, anchor, label):
-              pos = source.find(anchor)
-              if pos < 0:
-                  raise SystemExit("Missing WSI dispatch: " + label)
-              source = source[:pos] + 'fprintf(stderr, "[WSI-BLIT] before ' + label + '\\\\n"); fflush(stderr);\\n   ' + source[pos:]
-              pos = source.find(anchor, pos)
-              semi = source.find(";", pos)
-              if semi < 0:
-                  raise SystemExit("Unterminated WSI dispatch: " + label)
-              return source[:semi+1] + '\\n   fprintf(stderr, "[WSI-BLIT] after ' + label + '\\\\n"); fflush(stderr);' + source[semi+1:]
-          body = wrap_dispatch(body, "wsi->CmdPipelineBarrier(cmd_buffer,", "initial_barrier")
-          body = wrap_dispatch(body, "wsi->CmdCopyImageToBuffer(cmd_buffer,", "copy_image_to_buffer")
-          # The helper has a second barrier after the image-to-buffer copy.
-          body = wrap_dispatch(body, "wsi->CmdPipelineBarrier(cmd_buffer,", "final_barrier")
-          s = s[:start] + body + s[end:]
+          replacements = [
+              ("   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,",
+               '   fprintf(stderr, "[WSI-BLIT] before initial_barrier\\n"); fflush(stderr);\n'
+               "   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,"),
+              ("                           1, &img_mem_barrier);\n\n   struct VkBufferImageCopy",
+               '                           1, &img_mem_barrier);\n'
+               '   fprintf(stderr, "[WSI-BLIT] after initial_barrier\\n"); fflush(stderr);\n\n'
+               "   struct VkBufferImageCopy"),
+              ("   wsi->CmdCopyImageToBuffer(cmd_buffer,\n                             image->image,",
+               '   fprintf(stderr, "[WSI-BLIT] before copy_image_to_buffer\\n"); fflush(stderr);\n'
+               "   wsi->CmdCopyImageToBuffer(cmd_buffer,\n                             image->image,"),
+              ("                             1, &buffer_image_copy);\n\n   img_mem_barrier.srcAccessMask",
+               '                             1, &buffer_image_copy);\n'
+               '   fprintf(stderr, "[WSI-BLIT] after copy_image_to_buffer\\n"); fflush(stderr);\n\n'
+               "   img_mem_barrier.srcAccessMask"),
+              ("                           1, &buf_mem_barrier,\n                           1, &img_mem_barrier);",
+               '   fprintf(stderr, "[WSI-BLIT] before final_barrier\\n"); fflush(stderr);\n'
+               "   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,\n"
+               "                           image->blit.to_foreign_queue\n"
+               "                              ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT\n"
+               "                              : VK_PIPELINE_STAGE_HOST_BIT,\n"
+               "                           0,\n"
+               "                           0, NULL,\n"
+               "                           1, &buf_mem_barrier,\n"
+               "                           1, &img_mem_barrier);\n"
+               '   fprintf(stderr, "[WSI-BLIT] after final_barrier\\n"); fflush(stderr);'),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit("Missing exact WSI CPU-copy trace anchor: " + old[:90])
+              s = s.replace(old, new, 1)
           p.write_text(s)
           print("WSI CPU-copy blit dispatch tracepoints installed")
 
