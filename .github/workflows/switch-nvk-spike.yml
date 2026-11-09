@@ -304,7 +304,7 @@ jobs:
 
           old = "\n".join([
               '   vk_foreach_struct(ext, pProperties->pNext) {',
-              '       switch ((int32_t)ext->sType) {',
+              '      switch ((int32_t)ext->sType) {',
           ])
           new = "\n".join([
               '   fprintf(stderr, "[PROP2-TRACE] base properties copied; entering pNext chain\\n");',
@@ -325,7 +325,7 @@ jobs:
               '}',
               '',
               'void',
-              'vk_set_physical_device_properties_struct',
+              'vk_set_physical_device_properties_struct(struct vk_properties *all_properties,',
           ])
           new = "\n".join([
               '      }',
