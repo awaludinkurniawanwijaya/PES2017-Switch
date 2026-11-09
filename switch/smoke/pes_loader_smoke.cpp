@@ -381,6 +381,8 @@ int main(int argc, char** argv)
         imageCount,extent.width,extent.height,unsigned(format.format),unsigned(format.colorSpace),
         imageUsage,unsigned(alpha),unsigned(caps.currentTransform));
     Log("stage 9: entering vkCreateSwapchainKHR");
+    CHECK_VK(vkCreateSwapchainKHR(device,&swci,nullptr,&swapchain));
+    Log("vkCreateSwapchainKHR returned VK_SUCCESS swapchain=%p",reinterpret_cast<void*>(swapchain));
     uint32_t actualImages=0;
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,nullptr));
     Log("swapchain=%ux%u images=%u format=%u",extent.width,extent.height,actualImages,unsigned(format.format));
