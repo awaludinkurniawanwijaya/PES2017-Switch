@@ -310,41 +310,16 @@ Lisensi source code repositori mengikuti file [LICENSE](LICENSE), dengan tetap m
 
 ## 12. Retensi riwayat GitHub Actions
 
-Audit pada 9 November 2026 menemukan **539 workflow run** di seluruh repositori. Sebanyak **530 run selesai pada branch `work/switch-libnx-platform`** dan 9 run dari branch lain. Pada branch kerja, rincian yang terlihat di GitHub adalah:
+Workflow `.github/workflows/cleanup-actions.yml` menyediakan audit dan pembersihan selektif melalui `workflow_dispatch`. Kebijakan perlindungannya:
 
-| Workflow / label riwayat | Total | Sukses | Gagal | Dibatalkan |
-|---|---:|---:|---:|---:|
-| `tests` | 263 | 263 | 0 | 0 |
-| `Nintendo Switch NRO` | 149 | 135 | 14 | 0 |
-| `Switch NVK feasibility spike` | 109 | 32 | 41 | 36 |
-| Label historis `.github/workflows/switch-nvk-spike.yml` | 9 | 0 | 9 | 0 |
-| **Total branch kerja** | **530** | **430** | **64** | **36** |
+- Hanya run **completed** pada branch `work/switch-libnx-platform` yang dipertimbangkan; run aktif dan branch lain tidak disentuh.
+- Mempertahankan 10 run terbaru per workflow ID (dapat diatur saat dispatch).
+- Selalu melindungi checkpoint NVK #102, #112, #115, #116, dan #118.
+- **Run dengan artefak yang belum kedaluwarsa selalu dipertahankan**, termasuk artefak NRO/build. Jika pemeriksaan artefak gagal, run juga dipertahankan (fail-closed).
+- Pada mode penghapusan, status artefak diperiksa ulang tepat sebelum setiap run dihapus.
+- Mode awal adalah **dry-run**. Penghapusan memerlukan `dry_run=false` dan konfirmasi persis `DELETE_OLD_RUNS`.
+- Penghapusan run menghilangkan log run; kebijakan baru ini mencegah penghapusan artefak yang masih berlaku, tetapi artefak kedaluwarsa tidak menjadi alasan untuk mempertahankan run.
 
-Label historis di tabel merupakan nama tampilan lama untuk workflow NVK yang sama; kebijakan cleanup mengelompokkan berdasarkan workflow ID, bukan teks nama. Sebagian besar run lama adalah pengulangan build/test dari commit yang berdekatan. Sukses CI tidak membuktikan runtime Switch.
+Audit baca-saja terakhir pada 9 November 2026 menemukan **542 run** di repositori, dengan **532 run selesai** pada branch kerja. Kebijakan lama menghasilkan 501 kandidat sebelum pemeriksaan artefak. Angka kandidat final hanya boleh diambil dari job summary dry-run setelah workflow versi terbaru berjalan; jangan gunakan angka audit lama sebagai instruksi penghapusan.
 
-Workflow `.github/workflows/cleanup-actions.yml` menyediakan pembersihan selektif dengan kebijakan:
-
-- Hanya memproses run **completed** pada branch `work/switch-libnx-platform`; branch lain dan run aktif tidak disentuh.
-- Mempertahankan 10 run terbaru per workflow ID (dapat diatur saat menjalankan).
-- Selalu melindungi run NVK #102, #112, #115, #116, dan #118 sebagai bukti checkpoint.
-- Berdasarkan snapshot audit saat ini, kebijakan tersebut mempertahankan **31 run** dan menandai **499 run** sebagai kandidat penghapusan.
-- Mode awal adalah **dry-run**. Tidak ada penghapusan sebelum hasil pratinjau ditinjau.
-- Penghapusan memerlukan pengaturan `dry_run=false` dan teks konfirmasi persis `DELETE_OLD_RUNS`.
-- Menghapus workflow run juga menghilangkan log dan artefak yang melekat pada run tersebut. Simpan artefak yang diperlukan sebelum menyetujui penghapusan.
-
-Workflow ini hanya berjalan melalui `workflow_dispatch`; tidak ada jadwal penghapusan otomatis. Buka [Cleanup old GitHub Actions runs](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/workflows/cleanup-actions.yml) untuk menjalankan simulasi, memeriksa tabel KEEP/DELETE CANDIDATE pada job summary, lalu menjalankan penghapusan secara sadar.
-
-
-## 12. Pembersihan riwayat GitHub Actions
-
-Workflow `.github/workflows/cleanup-actions.yml` menyediakan audit dan pembersihan riwayat Actions secara selektif melalui **Actions → Cleanup old GitHub Actions runs → Run workflow**.
-
-Kebijakan perlindungan:
-- Mode awal adalah **dry run**; tidak ada run yang dihapus sampai mode penghapusan dipilih secara eksplisit dan konfirmasi `DELETE_OLD_RUNS` diisi.
-- Hanya run berstatus selesai pada branch `work/switch-libnx-platform` yang dipertimbangkan.
-- Sepuluh run terbaru per workflow selalu dipertahankan.
-- Run milestone NVK #102, #112, #115, #116, dan #118 dilindungi secara eksplisit.
-- Run yang sedang berjalan, branch lain, serta run di luar cakupan tidak disentuh.
-- Penghapusan run juga dapat menghapus artefak yang melekat pada run tersebut. Periksa ringkasan dry run sebelum mengaktifkan penghapusan.
-
-Audit API pada 9 November 2026 menemukan 541 run di repositori; 531 run selesai pada branch kerja. Dengan kebijakan sepuluh run terbaru per workflow dan lima ID milestone yang dilindungi, snapshot audit tersebut menghasilkan 500 kandidat penghapusan. Angka dapat berubah saat workflow baru berjalan; hasil dry run saat eksekusi adalah acuan final.
+Buka [Cleanup old GitHub Actions runs](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/workflows/cleanup-actions.yml) untuk meninjau simulasi. Workflow ini tidak memiliki jadwal otomatis.
