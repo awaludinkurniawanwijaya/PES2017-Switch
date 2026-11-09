@@ -333,3 +333,18 @@ Workflow `.github/workflows/cleanup-actions.yml` menyediakan pembersihan selekti
 - Menghapus workflow run juga menghilangkan log dan artefak yang melekat pada run tersebut. Simpan artefak yang diperlukan sebelum menyetujui penghapusan.
 
 Workflow ini hanya berjalan melalui `workflow_dispatch`; tidak ada jadwal penghapusan otomatis. Buka [Cleanup old GitHub Actions runs](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/workflows/cleanup-actions.yml) untuk menjalankan simulasi, memeriksa tabel KEEP/DELETE CANDIDATE pada job summary, lalu menjalankan penghapusan secara sadar.
+
+
+## 12. Pembersihan riwayat GitHub Actions
+
+Workflow `.github/workflows/cleanup-actions.yml` menyediakan audit dan pembersihan riwayat Actions secara selektif melalui **Actions → Cleanup old GitHub Actions runs → Run workflow**.
+
+Kebijakan perlindungan:
+- Mode awal adalah **dry run**; tidak ada run yang dihapus sampai mode penghapusan dipilih secara eksplisit dan konfirmasi `DELETE_OLD_RUNS` diisi.
+- Hanya run berstatus selesai pada branch `work/switch-libnx-platform` yang dipertimbangkan.
+- Sepuluh run terbaru per workflow selalu dipertahankan.
+- Run milestone NVK #102, #112, #115, #116, dan #118 dilindungi secara eksplisit.
+- Run yang sedang berjalan, branch lain, serta run di luar cakupan tidak disentuh.
+- Penghapusan run juga dapat menghapus artefak yang melekat pada run tersebut. Periksa ringkasan dry run sebelum mengaktifkan penghapusan.
+
+Audit API pada 9 November 2026 menemukan 541 run di repositori; 531 run selesai pada branch kerja. Dengan kebijakan sepuluh run terbaru per workflow dan lima ID milestone yang dilindungi, snapshot audit tersebut menghasilkan 500 kandidat penghapusan. Angka dapat berubah saat workflow baru berjalan; hasil dry run saat eksekusi adalah acuan final.
