@@ -307,3 +307,27 @@ Repositori ini merupakan proyek independen untuk riset kompatibilitas dan portin
 PES 2017, merek, executable, dan aset game adalah milik pemegang hak masing-masing. Pengguna bertanggung jawab memastikan kepemilikan dan penggunaan salinan game sesuai hukum yang berlaku.
 
 Lisensi source code repositori mengikuti file [LICENSE](LICENSE), dengan tetap menghormati lisensi komponen pihak ketiga yang disertakan.
+
+## 12. Retensi riwayat GitHub Actions
+
+Audit pada 9 November 2026 menemukan **537 workflow run** pada branch `work/switch-libnx-platform` di tiga workflow:
+
+| Workflow | Total | Sukses | Gagal | Dibatalkan |
+|---|---:|---:|---:|---:|
+| `tests` | 266 | 263 | 3 | 0 |
+| `Nintendo Switch NRO` | 153 | 139 | 14 | 0 |
+| `Switch NVK feasibility spike` | 118 | 32 | 50 | 36 |
+| **Total** | **537** | **434** | **67** | **36** |
+
+Riwayat yang diperiksa mencakup 6–9 November 2026. Banyak run merupakan pengulangan CI pada commit berdekatan; status sukses pada workflow test tidak membuktikan runtime Switch. Run lama yang gagal atau dibatalkan umumnya tidak lagi diperlukan untuk validasi aktif, tetapi milestone dan artefak diagnostik yang masih relevan harus dipertahankan.
+
+Workflow `.github/workflows/cleanup-actions.yml` menyediakan pembersihan selektif dengan kebijakan:
+
+- Hanya memproses run **completed** pada branch `work/switch-libnx-platform`; run aktif, antrean, dan branch lain tidak disentuh.
+- Mempertahankan 10 run terbaru untuk setiap workflow (dapat diatur saat menjalankan).
+- Selalu melindungi run NVK #102, #112, #115, #116, dan #118 sebagai bukti checkpoint.
+- Mode awal adalah **dry-run**. Tidak ada penghapusan sebelum hasil pratinjau ditinjau.
+- Penghapusan memerlukan pengaturan `dry_run=false` dan teks konfirmasi persis `DELETE_OLD_RUNS`.
+- Penghapusan workflow run juga menghilangkan log dan artefak yang melekat pada run tersebut. Karena itu, unduh dan simpan artefak yang diperlukan sebelum menyetujui penghapusan.
+
+Workflow ini hanya berjalan melalui `workflow_dispatch`; tidak ada jadwal penghapusan otomatis. Buka [Cleanup old GitHub Actions runs](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/workflows/cleanup-actions.yml) untuk menjalankan simulasi, memeriksa tabel KEEP/DELETE CANDIDATE pada job summary, lalu menjalankan penghapusan secara sadar.
