@@ -415,10 +415,12 @@ int main(int argc, char** argv)
         // A presentable image must be transitioned to PRESENT_SRC_KHR by a
         // queue operation. The acquire semaphore is consumed by this submit;
         // presentation waits on the semaphore signalled after the barrier.
-        CHECK_VK(vkResetCommandBuffer(commandBuffer,0));
+        VkResult resetResult=vkResetCommandBuffer(commandBuffer,0);
+        if (resetResult!=VK_SUCCESS) { Log("FAIL reset command buffer frame=%u result=%d",frame,int(resetResult)); result=9; break; }
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        CHECK_VK(vkBeginCommandBuffer(commandBuffer,&begin));
+        VkResult beginResult=vkBeginCommandBuffer(commandBuffer,&begin);
+        if (beginResult!=VK_SUCCESS) { Log("FAIL begin command buffer frame=%u result=%d",frame,int(beginResult)); result=9; break; }
         VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         toPresent.srcAccessMask=0;
         toPresent.dstAccessMask=0;
@@ -435,7 +437,8 @@ int main(int argc, char** argv)
         vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,
                              0,nullptr,0,nullptr,1,&toPresent);
-        CHECK_VK(vkEndCommandBuffer(commandBuffer));
+        VkResult endResult=vkEndCommandBuffer(commandBuffer);
+        if (endResult!=VK_SUCCESS) { Log("FAIL end command buffer frame=%u result=%d",frame,int(endResult)); result=9; break; }
 
         const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -446,7 +449,8 @@ int main(int argc, char** argv)
         submit.pCommandBuffers=&commandBuffer;
         submit.signalSemaphoreCount=1;
         submit.pSignalSemaphores=&renderComplete;
-        CHECK_VK(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE));
+        VkResult submitResult=vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE);
+        if (submitResult!=VK_SUCCESS) { Log("FAIL queue submit frame=%u result=%d",frame,int(submitResult)); result=9; break; }
 
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&renderComplete;
