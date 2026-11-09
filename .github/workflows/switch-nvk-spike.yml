@@ -628,7 +628,7 @@ jobs:
           # Trace the WSI copy arguments and the actual NVK entrypoint/branch.
           p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
           s = p.read_text()
-          old = """   fprintf(stderr, "[WSI-BLIT] before copy_image_to_buffer\n"); fflush(stderr);
+          old = """   fprintf(stderr, "[WSI-BLIT] before copy_image_to_buffer\\n"); fflush(stderr);
    wsi->CmdCopyImageToBuffer(cmd_buffer,
                              image->image,
                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -636,7 +636,7 @@ jobs:
                              1, &buffer_image_copy);"""
           new = """   fprintf(stderr, "[WSI-BLIT] dispatch cmd=%p image=0x%llx buffer=0x%llx fn=%p "
                    "extent=%ux%u offset=%d,%d,%d rowLength=%u imageHeight=%u "
-                   "aspect=0x%x mip=%u layer=%u\n",
+                   "aspect=0x%x mip=%u layer=%u\\n",
            (void *)cmd_buffer,
            (unsigned long long)image->image,
            (unsigned long long)image->blit.buffer,
@@ -679,7 +679,7 @@ jobs:
    } else {
       nvk_cmd_copy_image_to_buffer_ce(cmd, pCopyImageToBufferInfo);
    }"""
-          new = """   fprintf(stderr, "[NVK-COPY] entered cmd=%p info=%p srcImage=0x%llx dstBuffer=0x%llx regions=%u\n",
+          new = """   fprintf(stderr, "[NVK-COPY] entered cmd=%p info=%p srcImage=0x%llx dstBuffer=0x%llx regions=%u\\n",
            (void *)commandBuffer, (const void *)pCopyImageToBufferInfo,
            (unsigned long long)pCopyImageToBufferInfo->srcImage,
            (unsigned long long)pCopyImageToBufferInfo->dstBuffer,
@@ -694,7 +694,7 @@ jobs:
    bool use_compute = (queue_flags & VK_QUEUE_COMPUTE_BIT) &&
                       !prefers_copy_engine && compute_supported;
    fprintf(stderr, "[NVK-COPY] resolved cmd=%p src=%p queue_flags=0x%x "
-                   "prefers_copy_engine=%u compute_supported=%u branch=%s\n",
+                   "prefers_copy_engine=%u compute_supported=%u branch=%s\\n",
            (void *)cmd, (void *)src, (unsigned)queue_flags,
            prefers_copy_engine, compute_supported,
            use_compute ? "meta-compute" : "copy-engine");
@@ -704,7 +704,7 @@ jobs:
    } else {
       nvk_cmd_copy_image_to_buffer_ce(cmd, pCopyImageToBufferInfo);
    }
-   fprintf(stderr, "[NVK-COPY] branch returned\n");
+   fprintf(stderr, "[NVK-COPY] branch returned\\n");
    fflush(stderr);"""
           if old not in s:
               raise SystemExit("Missing exact NVK CmdCopyImageToBuffer2 body")
