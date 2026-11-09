@@ -454,6 +454,66 @@ jobs:
           print("Generic WSI image and CPU-copy memory tracepoints installed")
 
 
+          # Trace each operation in the generic WSI blit-context callback. The Switch
+          # CPU-copy fallback currently stops inside finish_create, so isolate the
+          # command-pool, command-buffer, begin, blit-recording, and end stages.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   const struct wsi_device *wsi = chain->wsi;\n   VkResult result;\n\n   int cmd_buffer_count =",
+               """   const struct wsi_device *wsi = chain->wsi;
+             VkResult result;
+             fprintf(stderr, "[WSI-FINISH] entered chain=%p image=%p blit_type=%u queue_families=%u blit_queue=%p cmd_pools=%p\\n",
+                     (const void *)chain, (void *)image->image, (unsigned)chain->blit.type,
+                     wsi->queue_family_count, (void *)chain->blit.queue, (void *)chain->cmd_pools); fflush(stderr);
+
+             int cmd_buffer_count =""") ,
+              ("   image->blit.cmd_buffers =\n      vk_zalloc(&chain->alloc,\n                sizeof(VkCommandBuffer) * cmd_buffer_count, 8,\n                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);",
+               """   fprintf(stderr, "[WSI-FINISH] allocating cmd buffer slots count=%d\\n", cmd_buffer_count); fflush(stderr);
+             image->blit.cmd_buffers =
+                vk_zalloc(&chain->alloc,
+                          sizeof(VkCommandBuffer) * cmd_buffer_count, 8,
+                          VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+             fprintf(stderr, "[WSI-FINISH] cmd buffer slots=%p\\n", (void *)image->blit.cmd_buffers); fflush(stderr);""") ,
+              ("   for (uint32_t i = 0; i < cmd_buffer_count; i++) {\n      if (!chain->cmd_pools[i])",
+               """   for (uint32_t i = 0; i < cmd_buffer_count; i++) {
+             fprintf(stderr, "[WSI-FINISH] slot=%u pool=%p\\n", i, (void *)chain->cmd_pools[i]); fflush(stderr);
+             if (!chain->cmd_pools[i])""") ,
+              ("      result = wsi->AllocateCommandBuffers(chain->device, &cmd_buffer_info,\n                                           &cmd_buffer);",
+               """      fprintf(stderr, "[WSI-FINISH] before AllocateCommandBuffers slot=%u pool=%p\\n", i, (void *)cmd_buffer_info.commandPool); fflush(stderr);
+             result = wsi->AllocateCommandBuffers(chain->device, &cmd_buffer_info,
+                                                  &cmd_buffer);
+             fprintf(stderr, "[WSI-FINISH] after AllocateCommandBuffers result=0x%x cmd=%p\\n", (unsigned)result, (void *)cmd_buffer); fflush(stderr);""") ,
+              ("      wsi_label_cmd_buffer(wsi, chain->device, cmd_buffer, \"wsi blit\");",
+               """      fprintf(stderr, "[WSI-FINISH] before label cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             wsi_label_cmd_buffer(wsi, chain->device, cmd_buffer, "wsi blit");
+             fprintf(stderr, "[WSI-FINISH] after label\\n"); fflush(stderr);""") ,
+              ("      wsi->BeginCommandBuffer(cmd_buffer, &begin_info);",
+               """      fprintf(stderr, "[WSI-FINISH] before BeginCommandBuffer cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             wsi->BeginCommandBuffer(cmd_buffer, &begin_info);
+             fprintf(stderr, "[WSI-FINISH] after BeginCommandBuffer\\n"); fflush(stderr);""") ,
+              ("       case WSI_SWAPCHAIN_BUFFER_BLIT: {\n          wsi_cmd_blit_image_to_buffer(",
+               """       case WSI_SWAPCHAIN_BUFFER_BLIT: {
+          fprintf(stderr, "[WSI-FINISH] before blit_image_to_buffer slot=%u family=%d\\n", i, chain->blit.queue ? chain->blit.queue->queue_family_index : (int)i); fflush(stderr);
+          wsi_cmd_blit_image_to_buffer(""") ,
+              ("             chain->blit.queue ? chain->blit.queue->queue_family_index : i);\n          break;",
+               """             chain->blit.queue ? chain->blit.queue->queue_family_index : i);
+          fprintf(stderr, "[WSI-FINISH] after blit_image_to_buffer slot=%u\\n", i); fflush(stderr);
+          break;""") ,
+              ("      result = wsi->EndCommandBuffer(cmd_buffer);",
+               """      fprintf(stderr, "[WSI-FINISH] before EndCommandBuffer cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             result = wsi->EndCommandBuffer(cmd_buffer);
+             fprintf(stderr, "[WSI-FINISH] after EndCommandBuffer result=0x%x\\n", (unsigned)result); fflush(stderr);""")
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing WSI finish_create trace anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI finish_create blit-context tracepoints installed")
+
           # Instrument the generated common Properties2 callback at its template
           # source, so the trace is present in the generated C compiled by Meson.
           p = Path("nxvk/src/vulkan/util/vk_physical_device_properties_gen.py")
