@@ -1,3 +1,4 @@
+# Rebuild on workflow changes so instrumentation fixes are compiled against the pinned NXVK source.
 name: Switch NVK feasibility spike
 
 on:
