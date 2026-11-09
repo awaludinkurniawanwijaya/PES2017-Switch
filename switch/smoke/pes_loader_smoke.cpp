@@ -203,7 +203,7 @@ int main(int argc, char** argv)
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
-    VkSemaphore renderComplete = VK_NULL_HANDLE;
+    std::vector<VkSemaphore> renderComplete;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
@@ -395,7 +395,9 @@ int main(int argc, char** argv)
 
     VkSemaphoreCreateInfo semci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&acquired));
-    CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&renderComplete));
+    renderComplete.resize(actualImages,VK_NULL_HANDLE);
+    for (uint32_t i=0;i<actualImages;++i)
+        CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&renderComplete[i]));
     VkCommandPoolCreateInfo cpci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     cpci.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     cpci.queueFamilyIndex=qFamily;
@@ -447,13 +449,14 @@ int main(int argc, char** argv)
         submit.pWaitDstStageMask=&waitStage;
         submit.commandBufferCount=1;
         submit.pCommandBuffers=&commandBuffer;
+        VkSemaphore frameComplete=renderComplete[imageIndex];
         submit.signalSemaphoreCount=1;
-        submit.pSignalSemaphores=&renderComplete;
+        submit.pSignalSemaphores=&frameComplete;
         VkResult submitResult=vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE);
         if (submitResult!=VK_SUCCESS) { Log("FAIL queue submit frame=%u result=%d",frame,int(submitResult)); result=9; break; }
 
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-        pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&renderComplete;
+        pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&frameComplete;
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
         VkResult pr=vkQueuePresentKHR(queue,&pi);
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
@@ -467,7 +470,8 @@ int main(int argc, char** argv)
     if (device) {
         vkDeviceWaitIdle(device);
         if (commandPool) vkDestroyCommandPool(device,commandPool,nullptr);
-        if (renderComplete) vkDestroySemaphore(device,renderComplete,nullptr);
+        for (VkSemaphore semaphore : renderComplete)
+            if (semaphore) vkDestroySemaphore(device,semaphore,nullptr);
         if (acquired) vkDestroySemaphore(device,acquired,nullptr);
         if (swapchain) vkDestroySwapchainKHR(device,swapchain,nullptr);
         vk::loader::ForgetDevice();
