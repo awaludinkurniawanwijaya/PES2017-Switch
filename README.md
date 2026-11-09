@@ -279,7 +279,13 @@ Log job terbaru memastikan file NRO diagnostik PES berhasil di-link dan diunggah
 - Log berhenti setelah marker `[WSI-FINISH] before blit_image_to_buffer`. Karena itu belum ada bukti swapchain berhasil dibuat, enumerasi swapchain image, queue submit, atau present.
 - `nvk_mesa.log` mencatat `nvk wsi: zero-copy FAILED`; pesan ini sendiri bukan diagnosis akhir karena fallback CPU-copy juga dijalankan.
 - Commit diagnostik berikutnya `77d4b2cbc29eb9c717703da1632e43c09a73cdb7` menambahkan marker sebelum/sesudah setiap dispatch Vulkan dalam helper CPU-copy (`CmdPipelineBarrier` dan `CmdCopyImageToBuffer`) untuk mengisolasi titik berhenti pada pengujian ulang.
-- **Status tahap 2: belum lulus; menunggu build diagnostik terbaru dan log pengujian ulang.**
+- **Catatan CI instrumentasi (9 November 2026):**
+- Percobaan workflow `42657374423` gagal pada langkah instrumentasi, sebelum kompilasi NXVK, karena pencocokan batas helper CPU-copy memakai pola newline yang keliru.
+- Ini adalah kegagalan skrip diagnostik, bukan kegagalan build NVK atau hasil pengujian Switch.
+- Diperbaiki pada commit `a17cdcbbabff61a50213827d991b8d05c8dfc5a1`: sekarang memakai anchor sumber WSI yang persis dan menambahkan marker sebelum/sesudah kedua barrier serta copy-image-to-buffer.
+- Build ulang dari commit perbaikan diperlukan sebelum NRO diagnostik baru dapat dibagikan.
+
+**Status tahap 2: belum lulus; menunggu build diagnostik terbaru dan log pengujian ulang.**
 
 **Kriteria lulus tahap 2:** jalankan `pes_loader_smoke.nro` pada Switch; pastikan log menunjukkan pembuatan swapchain sukses, jumlah dan enumerasi image, submit sukses, present sukses, serta tidak ada error NVK/WSI. Simpan log yang dihasilkan NRO dan kirimkan untuk dianalisis. Jika gagal, gunakan trace WSI/NVK dan marker tahap terakhir untuk mengisolasi operasi yang gagal. Setelah runtime present terbukti, baru lanjut ke integrasi backend grafis PES.
 
