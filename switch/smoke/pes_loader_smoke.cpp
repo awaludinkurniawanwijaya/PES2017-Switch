@@ -304,31 +304,83 @@ int main(int argc, char** argv)
     vkGetDeviceQueue(device, qFamily, 0, &queue);
     Log("vkCreateDevice OK queue_family=%u", qFamily);
 
+    Log("stage 8a: querying surface capabilities");
     VkSurfaceCapabilitiesKHR caps{};
     CHECK_VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical,surface,&caps));
+    Log("surface caps: images=%u..%u extent=%ux%u..%ux%u current=%ux%u usage=0x%08x alpha=0x%08x transform=0x%08x",
+        caps.minImageCount,caps.maxImageCount,caps.minImageExtent.width,caps.minImageExtent.height,
+        caps.maxImageExtent.width,caps.maxImageExtent.height,caps.currentExtent.width,caps.currentExtent.height,
+        caps.supportedUsageFlags,caps.supportedCompositeAlpha,caps.supportedTransforms);
+
+    Log("stage 8b: querying surface formats");
     uint32_t formatCount = 0;
     CHECK_VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical,surface,&formatCount,nullptr));
+    Log("surface format count=%u",formatCount);
     if (!formatCount) { Log("FAIL no surface formats"); result = 6; break; }
     std::vector<VkSurfaceFormatKHR> formats(formatCount);
     CHECK_VK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical,surface,&formatCount,formats.data()));
     VkSurfaceFormatKHR format = formats[0];
+    if (format.format == VK_FORMAT_UNDEFINED) format.format = VK_FORMAT_B8G8R8A8_UNORM;
+    Log("selected surface format=%u colorspace=%u",unsigned(format.format),unsigned(format.colorSpace));
+
+    Log("stage 8c: querying present modes");
+    uint32_t presentModeCount = 0;
+    CHECK_VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical,surface,&presentModeCount,nullptr));
+    Log("surface present mode count=%u",presentModeCount);
+    if (!presentModeCount) { Log("FAIL no surface present modes"); result = 6; break; }
+    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+    CHECK_VK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical,surface,&presentModeCount,presentModes.data()));
+    bool fifoSupported = false;
+    for (VkPresentModeKHR mode : presentModes) if (mode == VK_PRESENT_MODE_FIFO_KHR) fifoSupported = true;
+    if (!fifoSupported) { Log("FAIL FIFO present mode is not advertised"); result = 6; break; }
+
     VkExtent2D extent = caps.currentExtent;
-    if (extent.width == UINT32_MAX) { extent.width=1280; extent.height=720; }
+    if (extent.width == UINT32_MAX || extent.height == UINT32_MAX) {
+        extent.width = 1280;
+        extent.height = 720;
+        if (extent.width < caps.minImageExtent.width) extent.width = caps.minImageExtent.width;
+        if (extent.width > caps.maxImageExtent.width) extent.width = caps.maxImageExtent.width;
+        if (extent.height < caps.minImageExtent.height) extent.height = caps.minImageExtent.height;
+        if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
+    }
+    if (!extent.width || !extent.height || extent.width < caps.minImageExtent.width ||
+        extent.width > caps.maxImageExtent.width || extent.height < caps.minImageExtent.height ||
+        extent.height > caps.maxImageExtent.height) {
+        Log("FAIL invalid surface extent %ux%u",extent.width,extent.height); result=6; break;
+    }
+
     uint32_t imageCount = caps.minImageCount + 1;
     if (caps.maxImageCount && imageCount > caps.maxImageCount) imageCount=caps.maxImageCount;
+    if (imageCount < caps.minImageCount || !imageCount) {
+        Log("FAIL invalid swapchain image count=%u min=%u max=%u",imageCount,caps.minImageCount,caps.maxImageCount);
+        result=6; break;
+    }
+    VkImageUsageFlags imageUsage = 0;
+    if (caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    else if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    else {
+        Log("FAIL surface supports neither COLOR_ATTACHMENT nor TRANSFER_DST usage (0x%08x)",caps.supportedUsageFlags);
+        result=6; break;
+    }
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha)) {
+        alpha = (VkCompositeAlphaFlagBitsKHR)0;
         for (uint32_t bit=1; bit<=VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR; bit<<=1)
             if (caps.supportedCompositeAlpha & bit) { alpha=(VkCompositeAlphaFlagBitsKHR)bit; break; }
     }
+    if (!alpha) { Log("FAIL no supported composite alpha mode"); result=6; break; }
     VkSwapchainCreateInfoKHR swci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swci.surface=surface; swci.minImageCount=imageCount; swci.imageFormat=format.format;
     swci.imageColorSpace=format.colorSpace; swci.imageExtent=extent; swci.imageArrayLayers=1;
-    swci.imageUsage=(caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    swci.imageUsage=imageUsage;
     swci.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE; swci.preTransform=caps.currentTransform;
     swci.compositeAlpha=alpha; swci.presentMode=VK_PRESENT_MODE_FIFO_KHR; swci.clipped=VK_TRUE;
-    Log("stage 9: vkCreateSwapchainKHR");
-    CHECK_VK(vkCreateSwapchainKHR(device,&swci,nullptr,&swapchain));
+    Log("swapchain create args: images=%u extent=%ux%u format=%u colorspace=%u usage=0x%08x alpha=0x%08x transform=0x%08x present=FIFO",
+        imageCount,extent.width,extent.height,unsigned(format.format),unsigned(format.colorSpace),
+        imageUsage,unsigned(alpha),unsigned(caps.currentTransform));
+    Log("stage 9: entering vkCreateSwapchainKHR");
     uint32_t actualImages=0;
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,nullptr));
     Log("swapchain=%ux%u images=%u format=%u",extent.width,extent.height,actualImages,unsigned(format.format));
