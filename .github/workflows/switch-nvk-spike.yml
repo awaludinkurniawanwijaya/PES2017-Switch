@@ -56,6 +56,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path("nxvk/src/nouveau/vulkan/nvkmd/nvgpu/nvkmd_nvgpu_pdev.c")
           s = p.read_text()
           s = s.replace('#include "nvkmd_nvgpu.h"', '#include "nvkmd_nvgpu.h"' + chr(10) + '#include <stdio.h>', 1)
@@ -350,25 +351,25 @@ jobs:
           s = p.read_text()
           if '#include <stdio.h>' not in s:
               s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
-          old = """    fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
-            (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
-            (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
-    VkResult result = iface->create_swapchain(surface, _device, wsi_device,
-                                              &info, alloc,
-                                              &swapchain);
-    fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",
-            (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);"""
-          new = """   fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",
-           (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,
-           (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);
-          VkResult result = iface->create_swapchain(surface, _device, wsi_device,
-                                                    &info, alloc,
-                                                    &swapchain);
-          fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",
-                  (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);"""
-          if old not in s:
-              print("Skipping unavailable wsi_common create_swapchain anchor")
-          s = s.replace(old, new, 1)
+          pattern = re.compile(r"(?m)^([ \\t]*)VkResult result = iface->create_swapchain\\(surface, _device, wsi_device,\\n[ \\t]*&info, alloc,\\n[ \\t]*&swapchain\\);")
+          def trace_swapchain(match):
+              indent = match.group(1)
+              lines = [
+                  indent + 'fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\\\n",',
+                  indent + '        (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,',
+                  indent + '        (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);',
+                  indent + 'VkResult result = iface->create_swapchain(surface, _device, wsi_device,',
+                  indent + '                                          &info, alloc,',
+                  indent + '                                          &swapchain);',
+                  indent + 'fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\\\n",',
+                  indent + '        (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);',
+              ]
+              return "\\n".join(lines)
+          s, count = pattern.subn(trace_swapchain, s, count=1)
+          if count != 1:
+              raise SystemExit("Missing WSI common create_swapchain source anchor")
+          p.write_text(s)
+          print("WSI common create_swapchain tracepoints installed")
           p.write_text(s)
           print("WSI common create_swapchain tracepoints installed")
 
