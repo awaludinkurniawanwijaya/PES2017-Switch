@@ -303,7 +303,7 @@ jobs:
              fprintf(stderr, "[SWITCH-WSI] cpu_copy after create_image image=%u result=0x%x\\n", i, (unsigned)result); fflush(stderr);
              if (result != VK_SUCCESS)
                 return result;"""),
-              ("   result = wsi_create_image(&chain->base, &chain->base.image_info,\n                              &img->base);",
+              ("   VkResult result = wsi_create_image(&chain->base, &chain->base.image_info,\n                                       &img->base);",
                """   fprintf(stderr, "[SWITCH-WSI] create_image before wsi_create_image\\n"); fflush(stderr);
              result = wsi_create_image(&chain->base, &chain->base.image_info,
                                        &img->base);
