@@ -351,7 +351,7 @@ jobs:
           s = p.read_text()
           if '#include <stdio.h>' not in s:
               s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
-          pattern = re.compile(r"(?m)^([ \\t]*)VkResult result = iface->create_swapchain\\(surface, _device, wsi_device,\\n[ \\t]*&info, alloc,\\n[ \\t]*&swapchain\\);")
+          pattern = re.compile(r"(?m)^([ \t]*)VkResult result = iface->create_swapchain\(surface, _device, wsi_device,\n[ \t]*&info, alloc,\n[ \t]*&swapchain\);")
           def trace_swapchain(match):
               indent = match.group(1)
               lines = [
@@ -364,12 +364,10 @@ jobs:
                   indent + 'fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\\\n",',
                   indent + '        (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);',
               ]
-              return "\\n".join(lines)
+              return "\n".join(lines)
           s, count = pattern.subn(trace_swapchain, s, count=1)
           if count != 1:
               raise SystemExit("Missing WSI common create_swapchain source anchor")
-          p.write_text(s)
-          print("WSI common create_swapchain tracepoints installed")
           p.write_text(s)
           print("WSI common create_swapchain tracepoints installed")
 
