@@ -42,6 +42,35 @@ replace_once(
     "WSI copy dispatch tracepoints",
 )
 
+# Trace Mesa's legacy-command compatibility wrapper. WSI stores and calls
+# vkCmdCopyImageToBuffer (legacy); that common wrapper converts to the
+# Vulkan 2 command and then dispatches through the device dispatch table.
+p = Path("nxvk/src/vulkan/runtime/vk_cmd_copy.c")
+s = p.read_text()
+if "#include <stdio.h>" not in s:
+    s = s.replace('#include "vk_util.h"', '#include "vk_util.h"\n\n#include <stdio.h>', 1)
+old = """   disp->device->dispatch_table.CmdCopyImageToBuffer2(commandBuffer, &info);"""
+new = """   fprintf(stderr, "[COMMON-COPY] legacy wrapper entered cmd=%p disp=%p device=%p regions=%u\\n",
+           (void *)commandBuffer, (void *)disp, (void *)disp->device,
+           regionCount);
+   fflush(stderr);
+   fprintf(stderr, "[COMMON-COPY] dispatch2 fn=%p image=0x%llx buffer=0x%llx extent=%ux%u rowLength=%u imageHeight=%u\\n",
+           (void *)disp->device->dispatch_table.CmdCopyImageToBuffer2,
+           (unsigned long long)srcImage, (unsigned long long)dstBuffer,
+           info.pRegions[0].imageExtent.width,
+           info.pRegions[0].imageExtent.height,
+           info.pRegions[0].bufferRowLength,
+           info.pRegions[0].bufferImageHeight);
+   fflush(stderr);
+   disp->device->dispatch_table.CmdCopyImageToBuffer2(commandBuffer, &info);
+   fprintf(stderr, "[COMMON-COPY] dispatch2 returned\\n");
+   fflush(stderr);"""
+if old not in s:
+    raise SystemExit("Missing common legacy copy dispatch anchor")
+s = s.replace(old, new, 1)
+p.write_text(s)
+print("Installed common legacy-to-2 copy dispatch tracepoints")
+
 # Log entry into the actual NVK implementation and the selected copy engine.
 p = Path("nxvk/src/nouveau/vulkan/nvk_cmd_meta.c")
 s = p.read_text()
