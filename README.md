@@ -247,18 +247,20 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 
 ### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
 
-Perbaikan diagnostik menutup celah pengujian sebelumnya: marker `stage 9` kini diikuti pemanggilan nyata `vkCreateSwapchainKHR`, pemeriksaan hasil, pencatatan handle, dan enumerasi swapchain images. Workflow #102 juga berhasil memasang instrumentasi sumber NXVK pada jalur WSI Switch, termasuk titik-titik pembuatan swapchain dan image. NRO diagnostik PES dibangun ulang dengan instrumentasi tersebut.
+NRO diagnostik PES memanggil vkCreateSwapchainKHR secara nyata, memeriksa hasilnya, mencatat handle, dan mengenumerasi swapchain images. Instrumentasi terbaru pada sumber NXVK mencakup jalur WSI umum dan jalur image CPU-copy yang dipakai ketika zero-copy tidak tersedia. Instrumentasi ini merekam tahap pembuatan image, alokasi/binding memory, penyelesaian image, pembuatan blit context, dan pemetaan memory CPU.
 
 Status CI yang terakhir diperiksa pada 9 November 2026:
-- Tests #251: berhasil.
-- Nintendo Switch NRO #156: berhasil membuat bootstrap NRO; artefak ini bukan NRO diagnostik Vulkan dan bukan game.
-- Switch NVK feasibility #102: berhasil. Seluruh langkah job, build, dan upload berhasil.
-- Artefak `pes-nxvk-properties2-diagnostic-nro` (artifact ID `13658967439`) berhasil diunggah. Paket artefak khusus ini berisi tepat satu file, `pes_loader_smoke.nro`.
-- Build #102 juga mengunggah artefak diagnostik build dan kumpulan smoke NRO upstream secara terpisah; keduanya bukan NRO tunggal yang diminta untuk pengujian PES.
+- **Switch NVK Build #116: berhasil.** Semua langkah job selesai dengan sukses, termasuk instrumentasi, build NXVK, pembuatan NRO diagnostik PES, dan upload artefak.
+- Commit yang diuji: 91be320d6e1ae3b6a6230e0334013b79673fa892.
+- [Lihat GitHub Actions Build #116](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42599827000).
+- Artefak NRO diagnostik tunggal: [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42599827000/artifacts/13666270811), berisi tepat satu file pes_loader_smoke.nro (14.112.965 bytes).
+- Artefak build diagnostics dan kumpulan smoke NRO upstream diunggah terpisah; keduanya bukan NRO diagnostik tunggal untuk pengujian PES.
 
-**Status bukti:** CI membuktikan bahwa source NXVK yang telah diberi instrumentasi dan NRO diagnostik PES berhasil dibangun. CI belum membuktikan bahwa `vkCreateSwapchainKHR`, pembuatan image, enumerasi image, atau present berhasil pada runtime Horizon/NVK. NRO terbaru disiapkan untuk menghasilkan jejak yang dapat menunjukkan tahap WSI yang dicapai sebelum kegagalan.
+**Pemeriksaan isi NRO #116:** binary final memuat marker [WSI-COMMON], [WSI-IMAGE], vkCreateSwapchainKHR, argv[0], tracepoint CPU buffer sebelum blit_context dan MapMemory, serta tracepoint sebelum BindImageMemory dan finish_create. Log build mengonfirmasi pemasangan instrumentasi WSI umum dan image/CPU-copy selesai. Dengan demikian, masalah anchor instrumentasi yang menghalangi build sebelumnya telah diperbaiki.
 
-**Kriteria lulus tahap 2:** NRO diagnostik berhasil menjalankan `vkCreateSwapchainKHR` pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan jejak WSI terbaru untuk mengisolasi fungsi atau operasi terakhir yang tercapai sebelum menentukan perbaikan berikutnya.
+**Batas bukti:** Build #116 hanya membuktikan source dan NRO diagnostik berhasil dibangun serta tracepoint tertanam dalam binary. Ini belum membuktikan vkCreateSwapchainKHR, pembuatan image, enumerasi image, atau present berhasil pada runtime Horizon/NVK. Belum ada bukti full-game boot atau gameplay.
+
+**Kriteria lulus tahap 2:** NRO diagnostik berhasil menjalankan vkCreateSwapchainKHR pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan jejak WSI image/CPU-copy terbaru untuk mengisolasi operasi terakhir yang tercapai sebelum menentukan perbaikan berikutnya.
 ### 8.2 Kebijakan pemilihan renderer
 
 NXVK tetap merupakan jalur feasibility yang sedang diukur, bukan keputusan final. Arsitektur Vulkan pada referensi BO2-360-NX dapat dipelajari untuk desain dan pola integrasi, tetapi tidak boleh diasumsikan langsung kompatibel dengan PES atau otomatis lebih cepat. Vulkan adalah API; implementasi driver Vulkan untuk Switch tetap diperlukan. Tidak ada migrasi permanen sampai hasil perbandingan teknis cukup kuat dan keputusan tersebut disetujui.
