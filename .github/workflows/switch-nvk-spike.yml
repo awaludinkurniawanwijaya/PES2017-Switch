@@ -480,3 +480,14 @@ jobs:
             nxvk/licenses/
           if-no-files-found: error
           retention-days: 14
+
+      # Keep the user-facing hardware checkpoint separate from upstream smoke
+      # NROs, static libraries, headers, and build diagnostics.
+      - name: Upload single PES-owned Switch diagnostic NRO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes-nxvk-properties2-diagnostic-nro
+          path: artifacts/nxvk/pes_loader_smoke.nro
+          if-no-files-found: error
+          retention-days: 14
