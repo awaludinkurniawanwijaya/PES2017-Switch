@@ -247,14 +247,14 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 
 ### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
 
-Perbaikan diagnostik terbaru menutup celah pada pengujian sebelumnya: marker `stage 9` dahulu tidak diikuti pemanggilan `vkCreateSwapchainKHR`. Kode sekarang benar-benar memanggil fungsi tersebut, memeriksa `VK_SUCCESS`, mencatat handle, lalu melanjutkan enumerasi swapchain images. Karena itu, log lama yang berhenti pada marker stage 9 tidak boleh ditafsirkan sebagai bukti bahwa fungsi pembuatan swapchain macet.
+Perbaikan diagnostik terbaru menutup celah pada pengujian sebelumnya: marker `stage 9` dahulu tidak diikuti pemanggilan `vkCreateSwapchainKHR`. Kode sekarang benar-benar memanggil fungsi tersebut, memeriksa `VK_SUCCESS`, mencatat handle, lalu melanjutkan enumerasi swapchain images. NRO hasil build #97 telah diperiksa dan binary memuat pemanggilan create, enumerate images, serta present. Karena itu, log lama yang berhenti pada marker stage 9 tidak boleh ditafsirkan sebagai bukti bahwa fungsi pembuatan swapchain macet.
 
 Status CI yang terakhir diperiksa pada 9 November 2026:
 - Tests #243: berhasil.
 - Nintendo Switch NRO #156: berhasil membuat **bootstrap NRO saja**; bukan NRO diagnostik Vulkan dan bukan game.
 - Switch NVK feasibility #97: masih berjalan pada pemeriksaan terakhir. Tunggu workflow ini selesai, lalu periksa job, log, dan artefak. Jangan menguji bootstrap NRO sebagai pengganti NRO diagnostik.
 
-**Kriteria lulus tahap 2:** NRO diagnostik yang benar-benar menjalankan `vkCreateSwapchainKHR` berhasil pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Jika gagal, gunakan log untuk menentukan batas kegagalan sebelum memilih langkah berikutnya.
+**Kriteria lulus tahap 2:** NRO diagnostik yang benar-benar menjalankan `vkCreateSwapchainKHR` berhasil pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Build CI #97 sudah memenuhi kesiapan artefak, tetapi kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan log untuk menentukan batas kegagalan sebelum memilih langkah berikutnya.
 
 ### 8.2 Kebijakan pemilihan renderer
 
