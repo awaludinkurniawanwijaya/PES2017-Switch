@@ -15,6 +15,7 @@ on:
       - "switch/smoke/pes_loader_smoke.cpp"
       - "switch/smoke/pes-loader/Makefile"
       - "switch/smoke/build-pes-loader-smoke.sh"
+      - "switch/smoke/patch-nxvk-copy-trace.py"
       - "CMakeLists.txt"
       - "third_party/ffmpeg-xenia/CMakeLists.txt"
       - "cmake/switch-toolchain.cmake"
