@@ -347,6 +347,86 @@ jobs:
           p.write_text(s)
           print("Horizon Switch WSI swapchain tracepoints installed")
 
+          # Trace the generic WSI image lifecycle used by the Switch CPU-copy
+          # fallback. This isolates Vulkan image creation, memory allocation,
+          # binding, and CPU mapping without rewriting the common swapchain call.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("\n".join([
+                  "   result = wsi->CreateImage(chain->device, &info->create,",
+                  "                             &chain->alloc, &image->image);",
+              ]),
+               """   fprintf(stderr, "[WSI-IMAGE] before CreateImage extent=%ux%u format=%u tiling=%u usage=0x%x\n",
+                   info->create.extent.width, info->create.extent.height,
+                   (unsigned)info->create.format, (unsigned)info->create.tiling,
+                   info->create.usage); fflush(stderr);
+             result = wsi->CreateImage(chain->device, &info->create,
+                                       &chain->alloc, &image->image);
+             fprintf(stderr, "[WSI-IMAGE] after CreateImage result=0x%x image=%p\n",
+                     (unsigned)result, (void *)image->image); fflush(stderr);"""),
+              ("   result = info->create_mem(chain, info, image);",
+               """   fprintf(stderr, "[WSI-IMAGE] before create_mem image=%p callback=%p\n",
+                   (void *)image->image, (void *)info->create_mem); fflush(stderr);
+             result = info->create_mem(chain, info, image);
+             fprintf(stderr, "[WSI-IMAGE] after create_mem result=0x%x memory=%p cpu_map=%p\n",
+                     (unsigned)result, (void *)image->memory, image->cpu_map); fflush(stderr);"""),
+              ("\n".join([
+                  "   result = wsi->BindImageMemory(chain->device, image->image,",
+                  "                                 image->memory, 0);",
+              ]),
+               """   fprintf(stderr, "[WSI-IMAGE] before BindImageMemory image=%p memory=%p\n",
+                   (void *)image->image, (void *)image->memory); fflush(stderr);
+             result = wsi->BindImageMemory(chain->device, image->image,
+                                           image->memory, 0);
+             fprintf(stderr, "[WSI-IMAGE] after BindImageMemory result=0x%x\n",
+                     (unsigned)result); fflush(stderr);"""),
+              ("      result = info->finish_create(chain, info, image);",
+               """      fprintf(stderr, "[WSI-IMAGE] before finish_create callback=%p\n",
+                   (void *)info->finish_create); fflush(stderr);
+                result = info->finish_create(chain, info, image);
+                fprintf(stderr, "[WSI-IMAGE] after finish_create result=0x%x\n",
+                        (unsigned)result); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing WSI image lifecycle anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+
+          # The Switch CPU-copy path uses this callback to allocate the blit
+          # image's memory and map it for swizzling into the scanout buffer.
+          old = "\n".join([
+              "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
+              "   if (result != VK_SUCCESS)",
+          ])
+          new = "\n".join([
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer before blit_context image=%p\\n", (void *)image->image); fflush(stderr);',
+              "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer after blit_context result=0x%x memory=%p\\n", (unsigned)result, (void *)image->blit.memory); fflush(stderr);',
+              "   if (result != VK_SUCCESS)",
+          ])
+          if old not in s:
+              raise SystemExit("Missing WSI CPU buffer blit anchor")
+          s = s.replace(old, new, 1)
+
+          old = "\n".join([
+              "   result = chain->wsi->MapMemory(chain->device, image->blit.memory,",
+              "                                  0, VK_WHOLE_SIZE, 0, &image->cpu_map);",
+          ])
+          new = "\n".join([
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer before MapMemory memory=%p\\n", (void *)image->blit.memory); fflush(stderr);',
+              "   result = chain->wsi->MapMemory(chain->device, image->blit.memory,",
+              "                                  0, VK_WHOLE_SIZE, 0, &image->cpu_map);",
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer after MapMemory result=0x%x cpu_map=%p\\n", (unsigned)result, image->cpu_map); fflush(stderr);',
+          ])
+          if old not in s:
+              raise SystemExit("Missing WSI CPU buffer MapMemory anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Generic WSI image and CPU-copy memory tracepoints installed")
+
           # Swapchain call-site instrumentation is intentionally omitted here.
           # Keep the Switch-specific image/fallback tracepoints above; they are
           # less brittle than rewriting a multiline common C call.
