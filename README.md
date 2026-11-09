@@ -137,3 +137,7 @@ This port stands on other people's work.
 ## Licence
 
 GPL-3.0-only, see [LICENSE](LICENSE).
+
+## GitHub Actions history cleanup
+
+The manual workflow [Cleanup old GitHub Actions runs](.github/workflows/cleanup-actions.yml) previews eligible completed runs on `work/switch-libnx-platform`, keeps the 10 latest runs per workflow ID, and protects the PES/NVK diagnostic checkpoints listed in the workflow. It defaults to dry-run. Actual deletion requires `dry_run=false` and the exact confirmation string `DELETE_OLD_RUNS`. Deleting a run also removes its logs and artifacts. Review the job summary and preserve any required artifacts before confirming. The workflow is intentionally manual and does not delete runs from other branches or active runs.
