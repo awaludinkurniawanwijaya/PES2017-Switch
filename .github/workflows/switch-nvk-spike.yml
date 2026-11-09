@@ -288,12 +288,12 @@ jobs:
           ])
           new = "\n".join([
               '{',
-              '   fprintf(stderr, "[PROP2-TRACE] entered physicalDevice=%p pProperties=%p pNext=%p\\n",',
+              '   fprintf(stderr, "[PROP2-TRACE] entered physicalDevice=%p pProperties=%p pNext=%p",',
               '           (void *)physicalDevice, (void *)pProperties,',
               '           pProperties ? (void *)pProperties->pNext : NULL);',
               '   fflush(stderr);',
               '   VK_FROM_HANDLE(vk_physical_device, pdevice, physicalDevice);',
-              '   fprintf(stderr, "[PROP2-TRACE] handle resolved pdevice=%p\\n", (void *)pdevice);',
+              '   fprintf(stderr, "[PROP2-TRACE] handle resolved pdevice=%p", (void *)pdevice);',
               '   fflush(stderr);',
               '',
               '% for prop in pdev_properties:',
@@ -307,10 +307,10 @@ jobs:
               '      switch ((int32_t)ext->sType) {',
           ])
           new = "\n".join([
-              '   fprintf(stderr, "[PROP2-TRACE] base properties copied; entering pNext chain\\n");',
+              '   fprintf(stderr, "[PROP2-TRACE] base properties copied; entering pNext chain");',
               '   fflush(stderr);',
               '   vk_foreach_struct(ext, pProperties->pNext) {',
-              '      fprintf(stderr, "[PROP2-TRACE] pNext sType=%d node=%p\\n",',
+              '      fprintf(stderr, "[PROP2-TRACE] pNext sType=%d node=%p",',
               '              (int)ext->sType, (void *)ext);',
               '      fflush(stderr);',
               '       switch ((int32_t)ext->sType) {',
@@ -329,10 +329,10 @@ jobs:
           ])
           new = "\n".join([
               '      }',
-              '      fprintf(stderr, "[PROP2-TRACE] finished pNext sType=%d\\n", (int)ext->sType);',
+              '      fprintf(stderr, "[PROP2-TRACE] finished pNext sType=%d", (int)ext->sType);',
               '      fflush(stderr);',
               '   }',
-              '   fprintf(stderr, "[PROP2-TRACE] callback returning\\n");',
+              '   fprintf(stderr, "[PROP2-TRACE] callback returning");',
               '   fflush(stderr);',
               '}',
               '',
