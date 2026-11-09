@@ -310,10 +310,11 @@ jobs:
              fprintf(stderr, "[SWITCH-WSI] after init_images result=0x%x zero_copy=%u\\n",
                      (unsigned)result, chain->zero_copy); fflush(stderr);
              if (result != VK_SUCCESS)"""),
-              ("   result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
-               """   fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
-             result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
-             fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("         VkResult result =\\n         wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
+               """         fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
+         VkResult result =
+            wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
+         fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
               ("   return wsi_switch_init_cpu_copy(chain, pCreateInfo);",
                """   fprintf(stderr, "[SWITCH-WSI] before init_cpu_copy\\n"); fflush(stderr);
              VkResult cpu_result = wsi_switch_init_cpu_copy(chain, pCreateInfo);
