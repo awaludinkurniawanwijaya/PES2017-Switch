@@ -57,7 +57,7 @@ jobs:
               core.setFailed("keep_latest must be an integer from 1 to 100.");
               return;
             }
-            if (!dryRun && confirmation !== "DELETE_OLD_RUNS") {
+            if (!dryRun && context.eventName === "workflow_dispatch" && confirmation !== "DELETE_OLD_RUNS") {
               core.setFailed("Deletion blocked: set confirmation exactly to DELETE_OLD_RUNS.");
               return;
             }
