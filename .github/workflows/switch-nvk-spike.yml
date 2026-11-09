@@ -354,7 +354,7 @@ jobs:
           pos = s.find(needle)
           if pos < 0:
               raise SystemExit("Missing wsi_common create_swapchain declaration")
-          line_start = s.rfind("\\n", 0, pos) + 1
+          line_start = s.rfind("\n", 0, pos) + 1
           line_end = s.find(";", pos) + 1
           if line_end <= pos:
               raise SystemExit("Unterminated wsi_common create_swapchain call")
@@ -364,7 +364,7 @@ jobs:
               indent + 'fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\n",\\n'
               + indent + '        (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,\\n'
               + indent + '        (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);\\n'
-              + original + "\\n"
+              + original + "\n"
               + indent + 'fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\n",\\n'
               + indent + '        (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);'
           )
