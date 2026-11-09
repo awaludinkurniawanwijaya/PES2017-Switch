@@ -20,4 +20,6 @@ echo "==> Build PES-owned loader smoke using standard libnx switch_rules"
 make -C "$ROOT/switch/smoke/pes-loader" clean all
 cp "$ROOT/switch/smoke/pes-loader/pes_loader_smoke.nro" "$OUT/pes_loader_smoke.nro"
 test -s "$OUT/pes_loader_smoke.nro"
+grep -aFq "[PROP2-TRACE] entered" "$OUT/pes_loader_smoke.nro" || { echo "ERROR: Properties2 callback trace is absent from final NRO"; exit 1; }
+echo "Verified: Properties2 callback trace is linked into final NRO"
 ls -lh "$OUT/pes_loader_smoke.nro"
