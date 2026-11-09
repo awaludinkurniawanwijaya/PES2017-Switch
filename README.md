@@ -262,6 +262,16 @@ Status CI yang terakhir diperiksa pada 9 November 2026:
 
 **Batas bukti:** status success hanya membuktikan kompilasi dan pengemasan. Kode kini memiliki urutan acquire → command buffer/image layout transition → queue submit → render-complete semaphore → present, tetapi keberhasilan pemanggilan API tersebut pada Horizon/NVK belum terbukti sampai NRO dijalankan di Switch dan log runtime diperiksa. Belum ada bukti full-game boot atau gameplay.
 
+**Pembaruan CI 9 November 2026 (commit `a2c67a77b92aab5aced54e6a6a4f2f91c94330b4`):** perbaikan logging diagnostik menggunakan `va_copy` terpisah untuk output file dan layar agar pemanggilan `vfprintf` tidak menghabiskan argumen sebelum `vprintf`. Tiga workflow pada commit ini berhasil:
+- [Tests](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612820154) — **11/11 CTest lulus**.
+- [Nintendo Switch NRO](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812471) — bootstrap NRO berhasil dibangun dan diunggah; ini bukan full-game NRO.
+- [Switch NVK feasibility spike](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430) — seluruh 11 langkah job berhasil, termasuk build toolchain NXVK, library, dan NRO smoke/diagnostik. Artefak terbaru:
+  - [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671866255) — NRO diagnostik PES untuk pengujian di perangkat.
+  - [nxvk-switch-smoke-nros-c3abea1](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671207722) — NRO smoke NXVK dan library/header.
+  - [nxvk-switch-build-diagnostics](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671936084) — log dan metadata build.
+
+Log job terbaru memastikan file NRO diagnostik PES berhasil di-link dan diunggah. Namun step summary tetap menyatakan PES runtime link tidak dijalankan, full-game NRO tidak dibangun, dan tes fisik masih menunggu. Peringatan compiler terkait initializer Vulkan dan deprecation Node tidak menggagalkan build. Perubahan logging juga belum membuktikan hasil Vulkan runtime; tahap 2 tetap menunggu hasil menjalankan NRO diagnostik di Switch.
+
 **Kriteria lulus tahap 2:** jalankan `pes_loader_smoke.nro` pada Switch; pastikan log menunjukkan pembuatan swapchain sukses, jumlah dan enumerasi image, submit sukses, present sukses, serta tidak ada error NVK/WSI. Simpan log yang dihasilkan NRO dan kirimkan untuk dianalisis. Jika gagal, gunakan trace WSI/NVK dan marker tahap terakhir untuk mengisolasi operasi yang gagal. Setelah runtime present terbukti, baru lanjut ke integrasi backend grafis PES.
 
 ### 8.2 Kebijakan pemilihan renderer
