@@ -247,18 +247,18 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 
 ### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
 
-Perbaikan diagnostik terbaru menutup celah pada pengujian sebelumnya: marker `stage 9` dahulu tidak diikuti pemanggilan `vkCreateSwapchainKHR`. Kode sekarang benar-benar memanggil fungsi tersebut, memeriksa `VK_SUCCESS`, mencatat handle, lalu melanjutkan enumerasi swapchain images. NRO hasil build #97 telah diperiksa dan binary memuat pemanggilan create, enumerate images, serta present. Karena itu, log lama yang berhenti pada marker stage 9 tidak boleh ditafsirkan sebagai bukti bahwa fungsi pembuatan swapchain macet.
+Perbaikan diagnostik menutup celah pengujian sebelumnya: marker `stage 9` kini diikuti pemanggilan nyata `vkCreateSwapchainKHR`, pemeriksaan hasil, pencatatan handle, dan enumerasi swapchain images. Workflow #102 juga berhasil memasang instrumentasi sumber NXVK pada jalur WSI Switch, termasuk titik-titik pembuatan swapchain dan image. NRO diagnostik PES dibangun ulang dengan instrumentasi tersebut.
 
 Status CI yang terakhir diperiksa pada 9 November 2026:
-- Tests #244: berhasil.
+- Tests #251: berhasil.
 - Nintendo Switch NRO #156: berhasil membuat bootstrap NRO; artefak ini bukan NRO diagnostik Vulkan dan bukan game.
-- Switch NVK feasibility #97: berhasil. Semua langkah build dan upload berhasil, termasuk pembuatan satu NRO diagnostik PES-owned.
-- Artefak `pes-nxvk-properties2-diagnostic-nro` (artifact ID `13657741873`) telah diperiksa: ZIP berisi tepat satu file, `pes_loader_smoke.nro`. Binary memuat pemanggilan `vkCreateSwapchainKHR`, `vkGetSwapchainImagesKHR`, dan `vkQueuePresentKHR`.
+- Switch NVK feasibility #102: berhasil. Seluruh langkah job, build, dan upload berhasil.
+- Artefak `pes-nxvk-properties2-diagnostic-nro` (artifact ID `13658967439`) berhasil diunggah. Paket artefak khusus ini berisi tepat satu file, `pes_loader_smoke.nro`.
+- Build #102 juga mengunggah artefak diagnostik build dan kumpulan smoke NRO upstream secara terpisah; keduanya bukan NRO tunggal yang diminta untuk pengujian PES.
 
-**Status bukti:** pemanggilan API tersebut sudah terverifikasi masuk ke binary hasil build. Keberhasilan fungsi-fungsi itu pada runtime Horizon/NVK belum terbukti; hasilnya menunggu log dari NRO yang dijalankan pada Switch. Jangan menganggap status CI sebagai bukti swapchain atau present berhasil pada perangkat.
+**Status bukti:** CI membuktikan bahwa source NXVK yang telah diberi instrumentasi dan NRO diagnostik PES berhasil dibangun. CI belum membuktikan bahwa `vkCreateSwapchainKHR`, pembuatan image, enumerasi image, atau present berhasil pada runtime Horizon/NVK. NRO terbaru disiapkan untuk menghasilkan jejak yang dapat menunjukkan tahap WSI yang dicapai sebelum kegagalan.
 
-**Kriteria lulus tahap 2:** NRO diagnostik yang benar-benar menjalankan `vkCreateSwapchainKHR` berhasil pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Build CI #97 sudah memenuhi kesiapan artefak, tetapi kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan log untuk menentukan batas kegagalan sebelum memilih langkah berikutnya.
-
+**Kriteria lulus tahap 2:** NRO diagnostik berhasil menjalankan `vkCreateSwapchainKHR` pada Switch, swapchain images dapat dienumerasi, dan present dapat dibuktikan. Kriteria runtime belum terpenuhi sampai log dari Switch membuktikan hasil create, enumeration, dan present. Jika gagal, gunakan jejak WSI terbaru untuk mengisolasi fungsi atau operasi terakhir yang tercapai sebelum menentukan perbaikan berikutnya.
 ### 8.2 Kebijakan pemilihan renderer
 
 NXVK tetap merupakan jalur feasibility yang sedang diukur, bukan keputusan final. Arsitektur Vulkan pada referensi BO2-360-NX dapat dipelajari untuk desain dan pola integrasi, tetapi tidak boleh diasumsikan langsung kompatibel dengan PES atau otomatis lebih cepat. Vulkan adalah API; implementasi driver Vulkan untuk Switch tetap diperlukan. Tidak ada migrasi permanen sampai hasil perbandingan teknis cukup kuat dan keputusan tersebut disetujui.
