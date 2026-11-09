@@ -36,16 +36,25 @@ static void Log(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+
+    // Each output destination needs its own copy. vfprintf consumes its
+    // va_list, so copying it only after the file write can corrupt the
+    // screen output while the persistent SD log still looks correct.
     if (g_log) {
-        vfprintf(g_log, fmt, ap);
+        va_list fileArgs;
+        va_copy(fileArgs, ap);
+        vfprintf(g_log, fmt, fileArgs);
+        va_end(fileArgs);
         fputc('\n', g_log);
         fflush(g_log);
     }
-    va_list screen;
-    va_copy(screen, ap);
-    vprintf(fmt, screen);
+
+    va_list screenArgs;
+    va_copy(screenArgs, ap);
+    vprintf(fmt, screenArgs);
+    va_end(screenArgs);
     printf("\n");
-    va_end(screen);
+
     va_end(ap);
     consoleUpdate(nullptr);
 }
