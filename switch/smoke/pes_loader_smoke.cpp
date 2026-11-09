@@ -18,7 +18,6 @@ u32 __nx_heap_size = 0;
 }
 
 static FILE* g_log = nullptr;
-static FILE* g_mesa_log = nullptr;
 extern "C" PFN_vkVoidFunction VKAPI_CALL
 vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
 
@@ -31,7 +30,6 @@ PESDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                         (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ? "WARN" : "INFO";
     const char* message = data && data->pMessage ? data->pMessage : "(no message)";
     if (g_log) { fprintf(g_log, "[NVK/%s] %s\n", level, message); fflush(g_log); }
-    if (g_mesa_log) { fprintf(g_mesa_log, "[%s] %s\n", level, message); fflush(g_mesa_log); }
     return VK_FALSE;
 }
 static void Log(const char* fmt, ...)
@@ -172,15 +170,15 @@ int main(int argc, char** argv)
     } else {
         Log("WARN could not redirect stderr to nvk_internal.log errno=%d", errno);
     }
-    g_mesa_log = fopen(g_mesa_log_path, "w");
-    if (!g_mesa_log) Log("WARN could not open %s errno=%d", g_mesa_log_path, errno);
 
     // Apply NVK's opt-in after libnx console/SD initialization, but before
     // vkCreateInstance and physical-device enumeration. This avoids touching
     // the process environment during the earliest app startup path.
     Log("stage 4: configuring NVK environment");
     if (setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1) != 0 ||
-        setenv("MESA_SHADER_CACHE_SHOW_STATS", "1", 1) != 0) {
+        setenv("MESA_SHADER_CACHE_SHOW_STATS", "1", 1) != 0 ||
+        setenv("MESA_LOG", "file", 1) != 0 ||
+        setenv("MESA_LOG_FILE", g_mesa_log_path, 1) != 0) {
         Log("FAIL could not configure NVK environment (errno=%d)", errno);
         fclose(g_log); g_log = nullptr;
         WaitForExit();
@@ -363,7 +361,6 @@ int main(int argc, char** argv)
     if (instance) vkDestroyInstance(instance,nullptr);
     Log("exit=%d",result);
     if (g_log) { fclose(g_log); g_log=nullptr; }
-    if (g_mesa_log) { fclose(g_mesa_log); g_mesa_log=nullptr; }
     WaitForExit();
     consoleExit(nullptr);
     return result;
