@@ -344,3 +344,13 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
     }
     return VK_SUCCESS;
 }
+
+void vk::provider::DestroyLogicalDevice(VkDevice& device)
+{
+    if (!device) return;
+    vkDestroyDevice(device, nullptr);
+#if defined(PES17_VULKAN_DYNAMIC)
+    vk::loader::ForgetDevice();
+#endif
+    device = VK_NULL_HANDLE;
+}
