@@ -13,7 +13,7 @@
 // platforms that provide its loader/injection mechanism. Horizon has neither
 // that runtime nor a RenderDoc calling-convention definition in the vendored
 // header, so Switch builds compile the no-op capture hooks below.
-#if defined(PES17_HAVE_VULKAN) && !defined(__SWITCH__)
+#if defined(PES17_HAVE_VULKAN) && !defined(PES17_SWITCH) && !defined(__SWITCH__)
 #define PES17_HAVE_RENDERDOC_CAPTURE 1
 #include "../../platform.h"
 #include "../../../third_party/renderdoc/renderdoc_app.h"
