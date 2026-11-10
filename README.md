@@ -452,3 +452,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Moved the `VK_KHR_depth_stencil_resolve` / Vulkan 1.2 sample-zero resolve capability query from Renderer into Pipeline device initialization.
 - Pipeline now records `DepthStencilResolveSampleZero()` as a device capability; Renderer consumes that result for its MSAA decision. WSI-specific present feature negotiation remains in Presenter.
 - This keeps capability discovery with the selected physical device while leaving the renderer's policy (whether to enable MSAA) in Renderer. CI validation is pending.
+
+### Device capability snapshot: core physical features (2026-11-11)
+
+- Pipeline now caches the selected physical device's core `VkPhysicalDeviceFeatures` alongside physical-device properties and memory properties, and exposes a size-checked `GetPhysicalDeviceFeatures` accessor.
+- Presenter diagnostics consumes the cached supported-feature record instead of querying the physical device again. Feature-chain negotiation for extension-specific features remains at the subsystem that requests it.
+- This change is committed; CTest and Switch SDK validation are pending.
