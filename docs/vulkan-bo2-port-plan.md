@@ -305,4 +305,15 @@ CI artifact note: run `42867472597` uploaded artifact `pes17-vulkan-bo2-probe` (
 - The generic tests workflow for the same commit also passed. A follow-up teardown-order correction was committed separately after that SDK run; its own CI validation is pending, so do not treat the teardown-order correction as validated yet.
 - This remains a partial Provider/Device boundary: no independent `VulkanDevice` owner object exists yet, and full PES linking, Switch Vulkan initialization, and game rendering remain unverified.
 
-Next: validate the teardown-order correction, then move device ownership/destruction behind an explicit lifetime object only after confirming all presenter/headless callers and loader teardown paths. Do not move Pipeline feature policy or shared renderer state into Provider by duplicating it.
+The teardown-order correction is now validated by the later B2.6f SDK run. Next: extract a distinct device capability/ownership object only after mapping all presenter/headless callers and loader teardown paths; keep Pipeline's renderer-facing accessors stable and do not duplicate feature policy.
+
+
+### B2.6f — Headless provider path and centralized device lifetime (2026-11-11)
+
+- Moved headless instance creation into vk::provider::CreateHeadlessInstance, including API-version negotiation and only the pre-1.1 instance extensions required by the headless path.
+- Moved headless physical-device selection into vk::provider::PickGraphicsDevice. It enumerates candidates and checks for a non-empty graphics queue before selecting; discrete devices are preferred only when usable, with another graphics-capable device retained as fallback.
+- Provider now exposes the common device-extension query and owns both logical-device creation and destruction. CreateLogicalDevice loads device dispatch and retrieves the queue; DestroyLogicalDevice destroys the device before restoring dispatch to instance-level entry points.
+- Presenter now calls the common destroy path too. It retains WSI responsibilities and presentation-specific extension/feature negotiation; Provider no longer depends on Pipeline.
+- Pipeline continues to own renderer capability state and feature/extension policy. This is deliberately not yet a full BO2-style VulkanDevice object; next extract a device capability/ownership boundary while preserving Pipeline's renderer-facing accessors and the presenter's WSI policy.
+- SDK validation [42877892242](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877892242), commit `b2e34b0a1d8a0d0456966c67e7d9e9fd7a182188`, succeeded: 25 Vulkan runtime translation units compiled; only `renderer_draw.cpp` and `renderer_resolve.cpp` were deferred for private XenonRecomp-generated PPC output; the static BO2 Mesa probe NRO linked and packaged. Generic tests [42877901988](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877901988) also passed.
+- Scope: partial compile + SDK probe only. Full PES link, on-device Vulkan initialization, and PES rendering remain unverified.

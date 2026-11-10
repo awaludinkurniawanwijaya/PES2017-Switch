@@ -334,3 +334,14 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 - Owned headless-device teardown now destroys `VkDevice` before forgetting dynamic device dispatch, preserving the destroy function pointer until it has been called.
 - SDK workflow run [42875642739](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42875642739) on commit `db8a50ef4e84949ed3162ab5c4976e7aa81714e6` completed successfully: 25 Vulkan runtime translation units compiled; 2 remain deferred because private generated PPC output is unavailable; the standalone static BO2 Mesa SDK probe NRO linked and packaged. This is partial compile validation, not a full PES link or physical-device/game-render test.
 - The probe NRO is still the same diagnostic program and is not a new hardware-test checkpoint. No repeated Switch test is requested.
+
+
+### Provider boundary update — headless and device lifecycle (2026-11-11)
+
+- Provider now owns both presentation and headless instance creation, physical-device enumeration/selection, graphics/present queue-family selection, device-extension queries, raw logical-device creation, device dispatch loading, queue retrieval, and instance/device destruction.
+- Headless selection verifies that a candidate actually has a non-empty graphics queue before preferring it; it no longer selects a discrete/integrated device first and then fails if that device has no graphics-capable queue.
+- Presenter retains window-system policy: VI surface, swapchain, present timing extensions/features, acquire/submit/present and recreation. Pipeline retains renderer/device feature policy, queue-priority negotiation/fallback, fault reporting and renderer capability state.
+- The logical-device destroy path is centralized in Provider for both Presenter and headless Pipeline, so vkDestroyDevice executes while device dispatch remains loaded; dynamic dispatch is then restored to instance-level functions.
+- Validation: SDK workflow [42877892242](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877892242) on commit `b2e34b0a1d8a0d0456966c67e7d9e9fd7a182188` succeeded. It compiled 25 Vulkan runtime translation units, deferred only `renderer_draw.cpp` and `renderer_resolve.cpp` for private generated PPC output, and linked/packaged the static BO2 Mesa probe NRO. The tests workflow [42877901988](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877901988) also passed.
+- This remains partial source validation. It is not a full PES link, Switch Vulkan initialization, or PES scene-render test. The probe NRO is diagnostic and is not a new physical-test request.
+- A standalone VulkanDevice capability/ownership object has not yet been extracted; Pipeline still stores renderer-facing capability state. Keep that as the next architecture boundary rather than moving feature policy into Presenter or duplicating it in Provider.
