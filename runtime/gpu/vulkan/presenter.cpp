@@ -625,11 +625,17 @@ namespace
         if (!ok) return false;
         g.swapchainsMade++;
 
-        uint32_t imageCount = 0;
-        vkGetSwapchainImagesKHR(g.device, g.swapchain, &imageCount, nullptr);
-        g.images.resize(imageCount);
-        vkGetSwapchainImagesKHR(g.device, g.swapchain, &imageCount, g.images.data());
-        LOGI("vulkan: swapchain %ux%u, %u images", g.extent.width, g.extent.height, imageCount);
+        if (!EnumerateVector(g.images,
+                [](uint32_t* count, VkImage* data) {
+                    return vkGetSwapchainImagesKHR(g.device, g.swapchain, count, data);
+                }, "swapchain images") || g.images.empty())
+        {
+            LOGW("vulkan: the created swapchain exposes no images");
+            vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
+            g.swapchain = VK_NULL_HANDLE;
+            return false;
+        }
+        LOGI("vulkan: swapchain %ux%u, %zu images", g.extent.width, g.extent.height, g.images.size());
         return true;
     }
 
@@ -1716,18 +1722,22 @@ std::string vk::PresenterReport()
             props.limits.maxPerStageDescriptorSamplers);
         if (g.surface)
         {
-            uint32_t modes = 0;
-            vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, &modes, nullptr);
-            std::vector<VkPresentModeKHR> list(modes);
-            if (modes) vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, &modes, list.data());
+            std::vector<VkPresentModeKHR> list;
+            if (!EnumerateVector(list,
+                    [](uint32_t* count, VkPresentModeKHR* data) {
+                        return vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, count, data);
+                    }, "surface present modes"))
+                list.clear();
             out += "surface present modes:";
             for (VkPresentModeKHR mode : list) { add(" %d", int(mode)); }
             out += "\n";
         }
-        uint32_t count = 0;
-        vkEnumerateDeviceExtensionProperties(g.physical, nullptr, &count, nullptr);
-        std::vector<VkExtensionProperties> extensions(count);
-        if (count) vkEnumerateDeviceExtensionProperties(g.physical, nullptr, &count, extensions.data());
+        std::vector<VkExtensionProperties> extensions;
+        if (!EnumerateVector(extensions,
+                [](uint32_t* count, VkExtensionProperties* data) {
+                    return vkEnumerateDeviceExtensionProperties(g.physical, nullptr, count, data);
+                }, "device extensions"))
+            extensions.clear();
         out += "device extensions:";
         for (const VkExtensionProperties& e : extensions) { out += ' '; out += e.extensionName; }
         out += "\n";
