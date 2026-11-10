@@ -950,10 +950,10 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
     if (borrowedContext)
     {
         g.instance = static_cast<VkInstance>(borrowedContext->instance);
-        g.device = static_cast<VkDevice>(borrowedContext->logical);
-        g.physical = static_cast<VkPhysicalDevice>(borrowedContext->physical);
-        g.queue = static_cast<VkQueue>(borrowedContext->queue);
-        g.family = borrowedContext->queueFamily;
+        g.device = static_cast<VkDevice>(borrowedContext->device->Logical());
+        g.physical = static_cast<VkPhysicalDevice>(borrowedContext->device->Physical());
+        g.queue = static_cast<VkQueue>(borrowedContext->device->Queue());
+        g.family = borrowedContext->device->QueueFamily();
         g.ownsDevice = false;
     }
     else if (!BringUpHeadless())

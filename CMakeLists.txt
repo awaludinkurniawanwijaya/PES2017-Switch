@@ -444,6 +444,7 @@ add_executable(translate-shader
     "${CMAKE_SOURCE_DIR}/tools/translate_shader.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/shader_translator.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/pipeline.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/device.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/provider.cpp"
     # The device this tool brings up is the runtime's own, so it answers for the
     # same Snapdragon workaround (bc_decoder.cpp, vk::bc::AdrenoMode).
@@ -470,6 +471,7 @@ add_executable(upload-texture
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/image_memory.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/texture_formats.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/pipeline.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/device.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/provider.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/shader_translator.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/spirv.cpp")

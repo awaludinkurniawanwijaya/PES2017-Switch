@@ -31,6 +31,7 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <memory>
 #include <shared_mutex>
 #include <thread>
 #include <chrono>
@@ -98,6 +99,7 @@ namespace
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         VkPhysicalDevice physical = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
+        std::unique_ptr<vk::device::Device> deviceOwner;
         uint32_t queueFamily = 0;
         VkQueue queue = VK_NULL_HANDLE;
 
@@ -287,8 +289,15 @@ namespace
             g.presentWait = false;
             return false;
         }
-        g.device = static_cast<VkDevice>(createdDevice);
-        g.queue = static_cast<VkQueue>(createdQueue);
+        g.deviceOwner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
+        if (!g.deviceOwner)
+        {
+            vk::provider::DestroyLogicalDevice(static_cast<VkDevice>(createdDevice));
+            g.presentWait = false;
+            return false;
+        }
+        g.device = static_cast<VkDevice>(g.deviceOwner->Logical());
+        g.queue = static_cast<VkQueue>(g.deviceOwner->Queue());
 #if defined(PES17_VULKAN_DYNAMIC)
         // Swapchain commands are mandatory for every dynamic window-system
         // presenter, not only Horizon. Static-link builds resolve these symbols
@@ -1056,7 +1065,7 @@ namespace
             }
             if (g.pool) vkDestroyCommandPool(g.device, g.pool, nullptr);
             if (g.swapchain) vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
-            vk::provider::DestroyLogicalDevice(g.device);
+            g.deviceOwner.reset();
             g.pool = VK_NULL_HANDLE;
             g.swapchain = VK_NULL_HANDLE;
             g.device = VK_NULL_HANDLE;
@@ -1169,7 +1178,7 @@ namespace
 
     bool InitialisePipelineOnPresenterDevice()
     {
-        const vk::device::BorrowedContext context{ g.instance, g.physical, g.device, g.queue, g.queueFamily };
+        const vk::device::BorrowedContext context{ g.instance, g.deviceOwner.get() };
         return vk::pipeline::Initialise(&context);
     }
 
