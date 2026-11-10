@@ -8,4 +8,7 @@ namespace vk::provider
     // Platform surface/swapchain ownership remains with the presenter.
     bool CreateInstance(VkInstance& instance);
     void DestroyInstance(VkInstance& instance);
+    // Selects a graphics queue that can present to the caller-owned surface.
+    bool PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
+                            VkPhysicalDevice& physical, uint32_t& queueFamily);
 }
