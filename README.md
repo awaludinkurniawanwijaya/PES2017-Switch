@@ -59,7 +59,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 | Analisis jump table | Masih ada pekerjaan | 2 dispatch terlewat pada laporan analisis |
 | Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
 | Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
-| NXVK / VI WSI | Smoke test fisik berhasil | NVK Tegra X1, VI swapchain, acquire, submit, present: 120/120 frame; belum menguji GPU draw/clear atau workload PES |
+| NXVK / VI WSI + GPU clear | Berhasil pada Switch fisik | 120/120 frame acquire-submit-present; `vkCmdClearColorImage` tiga fase warna; pengguna mengonfirmasi perubahan warna terlihat. Belum menguji graphics pipeline/draw atau renderer PES |
 | Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
 | PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
@@ -67,7 +67,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 
 - **Build berhasil** berarti compiler dan linker berhasil menghasilkan target yang diuji.
 - **Syntax check berhasil** berarti file yang diperiksa dapat dikompilasi pada tahap pemeriksaan tersebut; belum membuktikan perilaku runtime.
-- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil. Smoke test PES-owned VI terbaru telah menyelesaikan 120/120 frame, tetapi belum melakukan clear/draw GPU.
+- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil. NRO PES-owned #147 telah menyelesaikan 120/120 frame dan GPU color-clear tiga fase; perubahan warna terlihat di layar Switch menurut konfirmasi pengguna. Ini belum membuktikan graphics pipeline atau renderer PES.
 - **Playable** baru dapat dinyatakan setelah game benar-benar berjalan di Switch dan fungsi permainan penting telah diverifikasi.
 
 Keberhasilan smoke test VI tidak boleh dianggap sebagai bukti bahwa PES 2017 sudah berjalan di perangkat fisik.
@@ -133,7 +133,7 @@ Keberadaan source code adapter tidak berarti semua fungsi sudah diuji pada beban
 
 Eksperimen grafis menggunakan port NXVK yang dipatok pada revisi sumber tertentu. Build CI telah menghasilkan library NVK dan aplikasi smoke test untuk jalur Vulkan, termasuk uji offscreen/triangle dan VI swapchain.
 
-Pada 10 November 2026, NRO PES-owned loader berhasil pada Switch fisik: NVK Tegra X1, VI surface/swapchain, acquire, command-buffer barrier, queue submit, dan queue present berjalan selama 120/120 frame. Tahap lanjutan mengubah smoke test menjadi GPU color-clear agar benar-benar membuktikan operasi tulis GPU; setelah itu baru menguji pipeline/render target, shader, resource, sinkronisasi, dan workload PES. Hasil ini belum membuktikan integrasi renderer PES.
+Pada 10 November 2026, NRO PES-owned #147 berhasil pada Switch fisik: NVK Tegra X1, VI surface/swapchain, 120/120 acquire-submit-present, serta `vkCmdClearColorImage` dalam tiga fase warna. Pengguna mengonfirmasi perubahan warna terlihat pada layar. Dengan demikian operasi tulis GPU dan present visual dasar telah terbukti; tahap aktif berikutnya adalah graphics pipeline dan `vkCmdDraw`, sebelum integrasi renderer PES. Hasil ini belum membuktikan gambar game atau integrasi renderer PES.
 
 ## 5. Struktur direktori penting
 
@@ -237,9 +237,9 @@ Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerja
 |---|---|---|
 | 0. Validasi sumber dan recompilation | Mengunci identitas XEX, menghasilkan PPC, mencatat gap analisis | **Sebagian selesai** — XEX tervalidasi dan 1.413 file PPC pernah dihasilkan lokal; 44 word dan 2 dispatch masih perlu ditinjau |
 | 1. Fondasi Switch | Bootstrap libnx, toolchain, input/platform probe, test mandiri CI | **Build CI berhasil** — bukan game dan belum membuktikan runtime game |
-| 2. Kelayakan Vulkan/NVK + VI | Memastikan loader, instance, GPU, device, surface, swapchain, image, dan present | **Sedang dikerjakan** — jalur sampai device dan surface sudah pernah berhasil pada Switch; smoke upstream NVK/VI pernah lulus. NRO diagnostik PES kini benar-benar memanggil `vkCreateSwapchainKHR`; hasil pemanggilan aktual itulah checkpoint berikutnya |
+| 2. Kelayakan Vulkan/NVK + VI + GPU clear | Memastikan loader, device, surface, swapchain, acquire, submit, present, dan operasi tulis GPU | **Lulus untuk smoke dasar** — NRO PES-owned #147 menyelesaikan 120/120 frame dan menampilkan perubahan warna pada Switch fisik; graphics pipeline/draw belum diuji |
 | 3. Keputusan arsitektur renderer | Menilai jalur NXVK yang ada dan referensi renderer Vulkan dari proyek BO2-360-NX; menentukan apakah tetap, diadaptasi, atau diganti | **Belum diputuskan** — referensi BO2 adalah bahan evaluasi, bukan bukti kompatibilitas/performa PES dan bukan migrasi yang sudah disetujui |
-| 4. Integrasi backend grafis PES | Menghubungkan resource, shader, texture, render target, command submission, sinkronisasi, dan present dengan backend terpilih | **Belum dimulai sebagai integrasi game yang tervalidasi** |
+| 4. Integrasi backend grafis PES | Menghubungkan resource, shader, texture, render target, command submission, sinkronisasi, dan present dengan backend terpilih | **Belum dimulai sebagai integrasi game yang tervalidasi** — prasyarat GPU clear visual lulus; graphics pipeline/draw smoke menjadi pekerjaan aktif sebelum integrasi renderer game |
 | 5. Runtime kompatibilitas dan loader | Menuntaskan kernel imports prioritas, guest memory/thread, dynamic library/symbol loading, filesystem dan startup path | **Belum lengkap** — 69 kernel import masih tercatat sebagai stub; jumlah dan prioritas perlu diperbarui berdasarkan audit terbaru |
 | 6. Audio, input, dan penyimpanan | Menghubungkan XMA/audio, controller, save dan data persisten | **Belum tervalidasi sebagai satu alur game** |
 | 7. Integrasi full-game | Menggabungkan runtime, backend, dan PPC privat yang cocok menjadi satu full-game NRO | **Belum tersedia** — bootstrap NRO bukan full-game NRO |
@@ -435,4 +435,4 @@ This is a concrete ownership conflict in the PES diagnostic harness and a strong
 
 ## PES-owned GPU clear hardware checkpoint (10 November 2026)
 
-NRO #147 was tested on the physical Switch. The log records `vkCmdClearColorImage` for all 120 acquired swapchain images, followed on every frame by successful `vkQueueSubmit`, `vkQueuePresentKHR`, and `vkDeviceWaitIdle`. The run finished with `presented 120 / 120` and `exit=0`. NVK zero-copy was unavailable and the CPU-copy WSI fallback remained active. This establishes completion of a GPU transfer-clear workload, but the log does not independently prove visible screen colors. The next graphics milestone is to move the tested `nvk_tri` pipeline/readback pattern onto the PES-owned VI swapchain. The game renderer and full PES boot remain unvalidated.
+NRO #147 was tested on the physical Switch. The log records `vkCmdClearColorImage` for all 120 acquired swapchain images, followed on every frame by successful `vkQueueSubmit`, `vkQueuePresentKHR`, and `vkDeviceWaitIdle`. The run finished with `presented 120 / 120` and `exit=0`. NVK zero-copy was unavailable and the CPU-copy WSI fallback remained active. The user confirmed that the display visibly showed the changing color background during this test. Therefore the PES-owned path has passed a visible GPU transfer-clear test, not merely a log-level completion check. The next milestone is a real graphics pipeline and `vkCmdDraw` on the PES-owned VI swapchain, using the upstream `nvk_tri` implementation as the reference. PES scene rendering and full-game boot remain unvalidated.
