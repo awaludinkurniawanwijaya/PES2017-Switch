@@ -506,3 +506,5 @@ Validation for B2.21 is pending.
 ### B2.22 — Device is the sole Presenter logical-handle authority (2026-11-11)
 
 Removed Presenter State's duplicate raw `VkDevice` field. All Presenter Vulkan device operations now obtain the handle from the owning `deviceOwner` via `DeviceHandle()`. The `Device` object is the sole logical-device lifetime/destruction authority; Pipeline borrows that same object through `BorrowedContext`. Physical-device and queue/family raw fields are retained temporarily and will be consolidated in a separate step. The corrected implementation is commit `bbe3cf62aa74f55668ffc9290d2791fea3b6f57e`; CI validation pending.
+
+**B2.21 validation completed:** CTest and the Switch BO2 Mesa SDK probe passed for `5803a69c6d754b592a83d3735055aea6371ce81e`. The SDK probe compiled 26 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. This is not full PES game-link or scene-rendering validation.
