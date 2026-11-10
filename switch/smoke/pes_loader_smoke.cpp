@@ -390,8 +390,11 @@ int main(int argc, char** argv)
     }
     // Require WSI color-attachment usage and format support before creating
     // render targets for the real graphics-pipeline draw.
-    if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
-        Log("FAIL surface lacks COLOR_ATTACHMENT usage (0x%08x)", caps.supportedUsageFlags);
+    const VkImageUsageFlags requiredUsage =
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if ((caps.supportedUsageFlags & requiredUsage) != requiredUsage) {
+        Log("FAIL surface lacks required COLOR_ATTACHMENT|TRANSFER_DST usage (0x%08x)",
+            caps.supportedUsageFlags);
         result=6; break;
     }
     VkFormatProperties formatProps{};
@@ -401,7 +404,7 @@ int main(int argc, char** argv)
             unsigned(format.format), formatProps.optimalTilingFeatures);
         result=6; break;
     }
-    VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    VkImageUsageFlags imageUsage = requiredUsage;
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha)) {
         alpha = (VkCompositeAlphaFlagBitsKHR)0;
