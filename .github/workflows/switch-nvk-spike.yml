@@ -688,7 +688,7 @@ jobs:
 
               nm -g --defined-only "$NVK_LIB" > /tmp/nvk-symbols.txt
               grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" /tmp/nvk-symbols.txt || true
-              grep -q "vk_icdGetInstanceProcAddr" /tmp/nvk-symbols.txt
+              grep -q "nvk_GetInstanceProcAddr" /tmp/nvk-symbols.txt
 
               cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
               cd /work
@@ -702,7 +702,7 @@ jobs:
                   -c /project/runtime/gpu/vulkan/loader.cpp \
                   -o switch/build/loader-switch.o
               nm -u switch/build/loader-switch.o > /tmp/loader-undefined-symbols.txt
-              grep -q "vk_icdGetInstanceProcAddr" /tmp/loader-undefined-symbols.txt
+              grep -q "nvk_GetInstanceProcAddr" /tmp/loader-undefined-symbols.txt
 
               run_stage "Compile PES Vulkan presenter adapter for Switch" \
                 /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
