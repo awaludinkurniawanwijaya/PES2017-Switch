@@ -248,7 +248,7 @@ namespace
         if (!InstanceHasExtension(VK_KHR_SURFACE_EXTENSION_NAME) ||
             !InstanceHasExtension("VK_NN_vi_surface"))
         {
-            LOGW("vulkan: NXVK does not advertise the required KHR surface and NN VI surface extensions");
+            LOGW("vulkan: the selected Switch Vulkan implementation does not advertise the required KHR surface and NN VI surface extensions");
             return false;
         }
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
