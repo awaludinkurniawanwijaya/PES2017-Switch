@@ -7,6 +7,8 @@ namespace vk::provider
     // Owns the Vulkan instance, instance-level dispatch and optional validation messenger.
     // Platform surface/swapchain ownership remains with the presenter.
     bool CreateInstance(VkInstance& instance);
+    // Headless/offline tools need an instance without any window-system extensions.
+    bool CreateHeadlessInstance(VkInstance& instance);
     void DestroyInstance(VkInstance& instance);
     // Creates a logical device and loads its device dispatch; feature policy stays in pipeline.
     // Optional present-id/wait support is enabled only when both extensions and features exist.
@@ -19,4 +21,7 @@ namespace vk::provider
     // Selects a graphics queue that can present to the caller-owned surface.
     bool PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
                             VkPhysicalDevice& physical, uint32_t& queueFamily);
+    // Selects a graphics-capable device without requiring presentation support.
+    bool PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& physical,
+                            uint32_t& queueFamily);
 }

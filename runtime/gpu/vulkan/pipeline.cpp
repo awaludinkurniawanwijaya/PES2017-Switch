@@ -581,97 +581,21 @@ namespace
     {
         if (!OpenVulkan()) { LOGW("pipeline: no Vulkan library"); return false; }
 
-        VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
-        app.pApplicationName = "pes17recomp";
-        // 1.0 is the floor: negative viewport heights (VK_KHR_maintenance1
-        // before that) and still-valid depth resolves (VK_KHR_get_*2 and
-        // VK_KHR_depth_stencil_resolve) are all extensions, and the top of the
-        // device's version is checked in CreateDevice regardless. The highest
-        // the loader will admit to, capped at 1.3: dynamic rendering and
-        // extended dynamic state are core there, and a driver that has them
-        // in core rather than as extensions can only be asked for them by an
-        // application that says it targets 1.3.
-        app.apiVersion = VK_API_VERSION_1_0;
-#if defined(PES17_VULKAN_DYNAMIC)
-        if (vkEnumerateInstanceVersion)
-#endif
-        {
-            uint32_t available = 0;
-            if (vkEnumerateInstanceVersion(&available) == VK_SUCCESS)
-            {
-                if (available >= VK_API_VERSION_1_3)
-                    app.apiVersion = VK_API_VERSION_1_3;
-                else if (available >= VK_API_VERSION_1_1)
-                    app.apiVersion = VK_API_VERSION_1_1;
-            }
-        }
+            if (!vk::provider::CreateHeadlessInstance(g.instance)) return false;
+        auto abandon = []() {
+            vk::provider::DestroyInstance(g.instance);
+            g.physical = VK_NULL_HANDLE;
+            return false;
+        };
 
-        // A 1.0 instance has to name what 1.1 and 1.2 make core, because the
-        // runtime asks for negative viewport heights (maintenance1) and for
-        // the pNext-chain properties2 the depth resolve read goes through.
-        std::vector<const char*> instanceExtensions;
-        if (app.apiVersion < VK_API_VERSION_1_1)
-        {
-            uint32_t offered = 0;
-            if (vkEnumerateInstanceExtensionProperties(nullptr, &offered, nullptr) == VK_SUCCESS && offered)
-            {
-                std::vector<VkExtensionProperties> list(offered);
-                if (vkEnumerateInstanceExtensionProperties(nullptr, &offered, list.data()) == VK_SUCCESS)
-                {
-                    const auto have = [&list](const char* name) {
-                        for (const auto& e : list)
-                            if (std::strcmp(e.extensionName, name) == 0) return true;
-                        return false;
-                    };
-                    if (have(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-                        instanceExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-                    if (have(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
-                        instanceExtensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
-                }
-            }
-        }
-
-        VkInstanceCreateInfo info{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-        info.pApplicationInfo = &app;
-        info.enabledExtensionCount = uint32_t(instanceExtensions.size());
-        info.ppEnabledExtensionNames = instanceExtensions.data();
-        VkResult r = vkCreateInstance(&info, nullptr, &g.instance);
-        if (r != VK_SUCCESS) { LOGW("pipeline: no Vulkan instance (%s)", Explain(r)); return false; }
-#if defined(PES17_VULKAN_DYNAMIC)
-        vk::loader::LoadInstance(g.instance);
-#endif
-
-        uint32_t count = 0;
-        vkEnumeratePhysicalDevices(g.instance, &count, nullptr);
-        if (!count) { LOGW("pipeline: no Vulkan device"); return false; }
-        std::vector<VkPhysicalDevice> devices(count);
-        vkEnumeratePhysicalDevices(g.instance, &count, devices.data());
-
-        // Prefer real hardware: a software rasteriser accepts SPIR-V a hardware
-        // compiler refuses, so validating against one proves less.
-        uint32_t chosen = 0;
-        for (uint32_t i = 0; i < count; i++)
-        {
-            VkPhysicalDeviceProperties p{};
-            vkGetPhysicalDeviceProperties(devices[i], &p);
-            if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
-                p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { chosen = i; break; }
-        }
-        g.physical = devices[chosen];
-
-        uint32_t families = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(g.physical, &families, nullptr);
-        std::vector<VkQueueFamilyProperties> props(families);
-        vkGetPhysicalDeviceQueueFamilyProperties(g.physical, &families, props.data());
-        uint32_t family = UINT32_MAX;
-        for (uint32_t i = 0; i < families; i++)
-            if (props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { family = i; break; }
-        if (family == UINT32_MAX) { LOGW("pipeline: no graphics queue"); return false; }
+        uint32_t family = 0;
+        if (!vk::provider::PickGraphicsDevice(g.instance, g.physical, family))
+            return abandon();
 
         void* device = nullptr;
         void* queue = nullptr;
         if (!vk::pipeline::CreateDevice(g.physical, family, nullptr, 0, &device, &queue))
-            return false;
+            return abandon();
         g.device = static_cast<VkDevice>(device);
         g.queue = static_cast<VkQueue>(queue);
         g.family = family;
@@ -1001,8 +925,7 @@ void vk::pipeline::Shutdown()
     if (g.ownsDevice)
     {
         vk::provider::DestroyLogicalDevice(g.device);
-        if (g.instance) vkDestroyInstance(g.instance, nullptr);
-        g.instance = VK_NULL_HANDLE;
+        vk::provider::DestroyInstance(g.instance);
     }
     g.device = VK_NULL_HANDLE;
     g.physical = VK_NULL_HANDLE;

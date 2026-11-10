@@ -210,6 +210,46 @@ bool vk::provider::CreateInstance(VkInstance& instance)
         return true;
     }
 
+bool vk::provider::CreateHeadlessInstance(VkInstance& instance)
+{
+    VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
+    app.pApplicationName = "pes17recomp";
+    app.apiVersion = VK_API_VERSION_1_0;
+#if defined(PES17_VULKAN_DYNAMIC)
+    if (vkEnumerateInstanceVersion)
+#endif
+    {
+        uint32_t available = 0;
+        if (vkEnumerateInstanceVersion(&available) == VK_SUCCESS)
+        {
+            if (available >= VK_API_VERSION_1_3)
+                app.apiVersion = VK_API_VERSION_1_3;
+            else if (available >= VK_API_VERSION_1_1)
+                app.apiVersion = VK_API_VERSION_1_1;
+        }
+    }
+
+    std::vector<const char*> extensions;
+    if (app.apiVersion < VK_API_VERSION_1_1)
+    {
+        if (InstanceHasExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+            extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+        if (InstanceHasExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
+            extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+    }
+
+    VkInstanceCreateInfo info{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+    info.pApplicationInfo = &app;
+    info.enabledExtensionCount = uint32_t(extensions.size());
+    info.ppEnabledExtensionNames = extensions.data();
+    if (!CheckInstance(vkCreateInstance(&info, nullptr, &instance), "headless vkCreateInstance"))
+        return false;
+#if defined(PES17_VULKAN_DYNAMIC)
+    vk::loader::LoadInstance(instance);
+#endif
+    return true;
+}
+
 void vk::provider::DestroyInstance(VkInstance& instance)
 {
     if (g_messenger)
@@ -282,6 +322,50 @@ bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
         LOGI("vulkan: %s", info.deviceName);
         return true;
     }
+bool vk::provider::PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& physical,
+                                              uint32_t& queueFamily)
+{
+    std::vector<VkPhysicalDevice> devices;
+    if (!EnumerateVector(devices,
+            [instance](uint32_t* count, VkPhysicalDevice* data) {
+                return vkEnumeratePhysicalDevices(instance, count, data);
+            }, "physical devices"))
+        return false;
+    if (devices.empty()) { LOGW("pipeline: no Vulkan device"); return false; }
+
+    uint32_t chosen = 0;
+    for (uint32_t i = 0; i < devices.size(); ++i)
+    {
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(devices[i], &properties);
+        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+            properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+        {
+            chosen = i;
+            break;
+        }
+    }
+    physical = devices[chosen];
+
+    std::vector<VkQueueFamilyProperties> families;
+    if (!EnumerateVector(families,
+            [physical](uint32_t* count, VkQueueFamilyProperties* data) {
+                vkGetPhysicalDeviceQueueFamilyProperties(physical, count, data);
+                return VK_SUCCESS;
+            }, "queue families"))
+        return false;
+    for (uint32_t i = 0; i < families.size(); ++i)
+    {
+        if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        {
+            queueFamily = i;
+            return true;
+        }
+    }
+    LOGW("pipeline: no graphics queue");
+    return false;
+}
+
 bool vk::provider::CreatePresentationDevice(VkPhysicalDevice physical, uint32_t queueFamily,
                                             VkDevice& device, VkQueue& queue, bool& presentWait)
 {
