@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <vector>
 #include <cctype>
+#include "shaders/tri_vert.h"
+#include "shaders/solid_frag.h"
 
 extern "C" {
 u32 __nx_applet_type = AppletType_Application;
@@ -222,6 +224,13 @@ int main(int argc, char** argv)
     std::vector<VkSemaphore> renderComplete;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    VkShaderModule vertexShader = VK_NULL_HANDLE;
+    VkShaderModule fragmentShader = VK_NULL_HANDLE;
+    std::vector<VkImageView> swapchainViews;
+    std::vector<VkFramebuffer> swapchainFramebuffers;
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
     do {
@@ -379,14 +388,20 @@ int main(int argc, char** argv)
         Log("FAIL invalid swapchain image count=%u min=%u max=%u",imageCount,caps.minImageCount,caps.maxImageCount);
         result=6; break;
     }
-    // The next milestone must prove real GPU writes, not only image-layout
-    // transitions. Require transfer-destination support so each frame can
-    // clear the acquired swapchain image before presenting it.
-    if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
-        Log("FAIL surface lacks TRANSFER_DST usage required by clear test (0x%08x)",caps.supportedUsageFlags);
+    // Require WSI color-attachment usage and format support before creating
+    // render targets for the real graphics-pipeline draw.
+    if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
+        Log("FAIL surface lacks COLOR_ATTACHMENT usage (0x%08x)", caps.supportedUsageFlags);
         result=6; break;
     }
-    VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkFormatProperties formatProps{};
+    vkGetPhysicalDeviceFormatProperties(physical, format.format, &formatProps);
+    if (!(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) {
+        Log("FAIL swapchain format=%u lacks optimal COLOR_ATTACHMENT feature (0x%08x)",
+            unsigned(format.format), formatProps.optimalTilingFeatures);
+        result=6; break;
+    }
+    VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha)) {
         alpha = (VkCompositeAlphaFlagBitsKHR)0;
@@ -412,6 +427,134 @@ int main(int argc, char** argv)
     std::vector<VkImage> swapchainImages(actualImages);
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,swapchainImages.data()));
     Log("swapchain=%ux%u images=%u format=%u",extent.width,extent.height,actualImages,unsigned(format.format));
+
+    Log("[PIPELINE] creating image views for swapchain images");
+    swapchainViews.resize(actualImages, VK_NULL_HANDLE);
+    swapchainFramebuffers.resize(actualImages, VK_NULL_HANDLE);
+    for (uint32_t i = 0; i < actualImages; ++i) {
+        VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        viewInfo.image = swapchainImages[i];
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = format.format;
+        viewInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+                                VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.layerCount = 1;
+        CHECK_VK(vkCreateImageView(device, &viewInfo, nullptr, &swapchainViews[i]));
+    }
+
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = format.format;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkAttachmentReference colorReference{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorReference;
+    VkSubpassDependency dependencies[2]{};
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    VkRenderPassCreateInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.pDependencies = dependencies;
+    Log("[PIPELINE] before vkCreateRenderPass");
+    CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+    Log("[PIPELINE] render pass created");
+
+    for (uint32_t i = 0; i < actualImages; ++i) {
+        VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = &swapchainViews[i];
+        framebufferInfo.width = extent.width;
+        framebufferInfo.height = extent.height;
+        framebufferInfo.layers = 1;
+        CHECK_VK(vkCreateFramebuffer(device, &framebufferInfo, nullptr,
+                                     &swapchainFramebuffers[i]));
+    }
+    Log("[PIPELINE] framebuffers created count=%u", actualImages);
+
+    VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    shaderInfo.codeSize = sizeof(tri_vert_spv);
+    shaderInfo.pCode = tri_vert_spv;
+    CHECK_VK(vkCreateShaderModule(device, &shaderInfo, nullptr, &vertexShader));
+    shaderInfo.codeSize = sizeof(solid_frag_spv);
+    shaderInfo.pCode = solid_frag_spv;
+    CHECK_VK(vkCreateShaderModule(device, &shaderInfo, nullptr, &fragmentShader));
+    Log("[PIPELINE] vertex and fragment shader modules created");
+
+    VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    CHECK_VK(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
+    VkPipelineShaderStageCreateInfo shaderStages[2]{};
+    shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shaderStages[0].module = vertexShader;
+    shaderStages[0].pName = "main";
+    shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shaderStages[1].module = fragmentShader;
+    shaderStages[1].pName = "main";
+    VkPipelineVertexInputStateCreateInfo vertexInput{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo viewportState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo rasterization{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    rasterization.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterization.cullMode = VK_CULL_MODE_NONE;
+    rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterization.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineColorBlendAttachmentState blendAttachment{};
+    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkPipelineColorBlendStateCreateInfo blendState{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    blendState.attachmentCount = 1;
+    blendState.pAttachments = &blendAttachment;
+    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynamicState{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
+    VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInput;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterization;
+    pipelineInfo.pMultisampleState = &multisample;
+    pipelineInfo.pColorBlendState = &blendState;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    Log("[PIPELINE] before vkCreateGraphicsPipelines");
+    CHECK_VK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo,
+                                       nullptr, &graphicsPipeline));
+    Log("[PIPELINE] vkCreateGraphicsPipelines returned VK_SUCCESS");
+
+
 
     VkSemaphoreCreateInfo semci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     CHECK_VK(vkCreateSemaphore(device,&semci,nullptr,&acquired));
@@ -440,75 +583,43 @@ int main(int argc, char** argv)
         if (imageIndex>=acquiredImageCount) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,acquiredImageCount); result=7; break; }
         Log("[FRAME %u] after acquired-image bounds check", frame);
 
-        // Render a deterministic color directly into the acquired swapchain
-        // image. This exercises a real NVK GPU write through the PES-owned
-        // loader/VI path instead of merely presenting untouched images.
+        // Draw the upstream nvk_tri RGB triangle directly into the acquired
+        // PES-owned swapchain image; gl_VertexIndex supplies all vertices.
         Log("[FRAME %u] before reset command buffer", frame);
         VkResult resetResult=vkResetCommandBuffer(commandBuffer,0);
-        Log("[FRAME %u] after reset command buffer result=%d", frame, int(resetResult));
         if (resetResult!=VK_SUCCESS) { Log("FAIL reset command buffer frame=%u result=%d",frame,int(resetResult)); result=9; break; }
-        Log("[FRAME %u] before begin command buffer", frame);
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         VkResult beginResult=vkBeginCommandBuffer(commandBuffer,&begin);
-        Log("[FRAME %u] after begin command buffer result=%d", frame, int(beginResult));
         if (beginResult!=VK_SUCCESS) { Log("FAIL begin command buffer frame=%u result=%d",frame,int(beginResult)); result=9; break; }
-        VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        toTransfer.srcAccessMask=0;
-        toTransfer.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
-        toTransfer.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;
-        toTransfer.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        toTransfer.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        toTransfer.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        toTransfer.image=swapchainImages[imageIndex];
-        toTransfer.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
-        toTransfer.subresourceRange.baseMipLevel=0;
-        toTransfer.subresourceRange.levelCount=1;
-        toTransfer.subresourceRange.baseArrayLayer=0;
-        toTransfer.subresourceRange.layerCount=1;
-        Log("[FRAME %u] before transfer-dst barrier", frame);
-        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT,0,
-                             0,nullptr,0,nullptr,1,&toTransfer);
-        Log("[FRAME %u] after transfer-dst barrier", frame);
 
-        VkClearColorValue clearColor{};
-        const uint32_t phase = (frame / 40) % 3;
-        clearColor.float32[0] = phase == 0 ? 0.85f : 0.05f;
-        clearColor.float32[1] = phase == 1 ? 0.85f : 0.05f;
-        clearColor.float32[2] = phase == 2 ? 0.85f : 0.05f;
-        clearColor.float32[3] = 1.0f;
-        VkImageSubresourceRange clearRange{};
-        clearRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
-        clearRange.baseMipLevel=0;
-        clearRange.levelCount=1;
-        clearRange.baseArrayLayer=0;
-        clearRange.layerCount=1;
-        Log("[FRAME %u] before vkCmdClearColorImage phase=%u", frame, phase);
-        vkCmdClearColorImage(commandBuffer,swapchainImages[imageIndex],
-                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,&clearColor,1,&clearRange);
-        Log("[FRAME %u] after vkCmdClearColorImage", frame);
-
-        VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        toPresent.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
-        toPresent.dstAccessMask=0;
-        toPresent.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        toPresent.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        toPresent.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        toPresent.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        toPresent.image=swapchainImages[imageIndex];
-        toPresent.subresourceRange=clearRange;
-        Log("[FRAME %u] before present barrier", frame);
-        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,
-                             0,nullptr,0,nullptr,1,&toPresent);
-        Log("[FRAME %u] after present barrier", frame);
-        Log("[FRAME %u] before end command buffer", frame);
+        VkClearValue clear{};
+        clear.color.float32[0] = 0.015f;
+        clear.color.float32[1] = 0.020f;
+        clear.color.float32[2] = 0.060f;
+        clear.color.float32[3] = 1.0f;
+        VkRenderPassBeginInfo passBegin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+        passBegin.renderPass = renderPass;
+        passBegin.framebuffer = swapchainFramebuffers[imageIndex];
+        passBegin.renderArea.offset = {0, 0};
+        passBegin.renderArea.extent = extent;
+        passBegin.clearValueCount = 1;
+        passBegin.pClearValues = &clear;
+        Log("[FRAME %u] before vkCmdBeginRenderPass", frame);
+        vkCmdBeginRenderPass(commandBuffer, &passBegin, VK_SUBPASS_CONTENTS_INLINE);
+        VkViewport viewport{0.0f, 0.0f, (float)extent.width, (float)extent.height, 0.0f, 1.0f};
+        VkRect2D scissor{{0, 0}, extent};
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+        Log("[FRAME %u] before vkCmdDraw vertexCount=3", frame);
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        Log("[FRAME %u] after vkCmdDraw", frame);
+        vkCmdEndRenderPass(commandBuffer);
         VkResult endResult=vkEndCommandBuffer(commandBuffer);
-        Log("[FRAME %u] after end command buffer result=%d", frame, int(endResult));
         if (endResult!=VK_SUCCESS) { Log("FAIL end command buffer frame=%u result=%d",frame,int(endResult)); result=9; break; }
 
-        const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.waitSemaphoreCount=1;
         submit.pWaitSemaphores=&acquired;
@@ -536,12 +647,19 @@ int main(int argc, char** argv)
         Log("[FRAME %u] after device wait idle", frame);
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
     }
-    if (!result) Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
+    if (!result) Log("=== PES-OWNED VI GRAPHICS PIPELINE + TRIANGLE DRAW PASSED ===");
     } while (false);
 
     if (device) {
         vkDeviceWaitIdle(device);
         if (commandPool) vkDestroyCommandPool(device,commandPool,nullptr);
+        for (VkFramebuffer framebuffer : swapchainFramebuffers) if (framebuffer) vkDestroyFramebuffer(device, framebuffer, nullptr);
+        if (graphicsPipeline) vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        if (pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        if (vertexShader) vkDestroyShaderModule(device, vertexShader, nullptr);
+        if (fragmentShader) vkDestroyShaderModule(device, fragmentShader, nullptr);
+        if (renderPass) vkDestroyRenderPass(device, renderPass, nullptr);
+        for (VkImageView view : swapchainViews) if (view) vkDestroyImageView(device, view, nullptr);
         for (VkSemaphore semaphore : renderComplete)
             if (semaphore) vkDestroySemaphore(device,semaphore,nullptr);
         if (acquired) vkDestroySemaphore(device,acquired,nullptr);
