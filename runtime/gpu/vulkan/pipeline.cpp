@@ -194,7 +194,28 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
                                 const char* const* extraExtensions, uint32_t extraCount,
                                 void** deviceOut, void** queueOut, void* features)
 {
+    if (deviceOut) *deviceOut = nullptr;
+    if (queueOut) *queueOut = nullptr;
+    if (!physicalDevice || !deviceOut || !queueOut || (extraCount && !extraExtensions))
+    {
+        LOGW("vulkan: invalid logical-device creation arguments");
+        return false;
+    }
     VkPhysicalDevice physical = static_cast<VkPhysicalDevice>(physicalDevice);
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
+    if (family >= familyCount)
+    {
+        LOGW("vulkan: queue family %u is outside the device's %u families", family, familyCount);
+        return false;
+    }
+    std::vector<VkQueueFamilyProperties> familyProperties(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, familyProperties.data());
+    if (family >= familyCount || !familyProperties[family].queueCount)
+    {
+        LOGW("vulkan: queue family %u has no queues", family);
+        return false;
+    }
     VkPhysicalDeviceProperties physicalProperties{};
     vkGetPhysicalDeviceProperties(physical, &physicalProperties);
     g.deviceProperties = physicalProperties;
@@ -351,7 +372,8 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     // The image format list lets a resolve destination carry an sRGB view beside
     // its own without the driver giving up compression; naming it in an image's
     // pNext without enabling it is invalid.
-    std::vector<const char*> extensions(extraExtensions, extraExtensions + extraCount);
+    std::vector<const char*> extensions;
+    if (extraCount) extensions.assign(extraExtensions, extraExtensions + extraCount);
     if (vk::provider::DeviceHasExtension(physical, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
         extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
     // MSAA depth surfaces are read back through a render pass resolve. That is
