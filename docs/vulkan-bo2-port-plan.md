@@ -124,6 +124,7 @@ PES changes made in this checkpoint:
 3. The existing `switch/mesa/elf_stubs.c` is added to the active target and C language is enabled for that target.
 4. `switch_driver.cpp` now requests the public `vkGetInstanceProcAddr` symbol on the default Mesa path. The old `nvk_GetInstanceProcAddr` entrypoint remains only under `PES17_SWITCH_USE_LEGACY_NXVK=ON`.
 5. README and CMake status text now distinguish the default Mesa SDK route from the preserved legacy NXVK route.
+6. Removed the old NXVK-only `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER` startup flag and NXVK-specific diagnostic from the active Switch presenter. BO2's checked Switch startup path does not set this flag; it uses the public static Mesa entrypoint directly.
 
 ### B2 result and limitations
 
