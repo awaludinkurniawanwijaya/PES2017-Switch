@@ -5,7 +5,7 @@
 Repositori ini mengembangkan jalur recompilation PowerPC, runtime kompatibilitas Xbox 360, lapisan platform libnx, serta backend grafis Vulkan melalui NXVK. Target akhirnya adalah menjalankan PES 2017 sebagai aplikasi homebrew Nintendo Switch (NRO), bukan menjalankan emulator Xbox 360.
 
 > [!WARNING]
-> **Status per 9 November 2026: belum playable.** Yang sudah terbukti saat ini adalah proses recompilation lokal, bootstrap libnx, pemeriksaan kompilasi beberapa subsistem Switch, serta build CI untuk eksperimen NXVK. Belum ada bukti bahwa keseluruhan game berhasil boot, masuk menu, atau menjalankan pertandingan di perangkat Switch.
+> **Status per 10 November 2026: belum playable.** Selain recompilation lokal dan bootstrap libnx, smoke test yang memakai loader PES sendiri kini berhasil menjalankan NVK pada Tegra X1, membuat VI swapchain, serta menyelesaikan 120 siklus acquire–submit–present pada Switch fisik. Ini membuktikan jalur loader/WSI dasar, bukan rendering game atau boot PES 2017.
 
 ---
 
@@ -59,7 +59,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 | Analisis jump table | Masih ada pekerjaan | 2 dispatch terlewat pada laporan analisis |
 | Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
 | Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
-| NXVK | Build CI berhasil | Library dan NRO smoke test berhasil dibuat |
+| NXVK / VI WSI | Smoke test fisik berhasil | NVK Tegra X1, VI swapchain, acquire, submit, present: 120/120 frame; belum menguji GPU draw/clear atau workload PES |
 | Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
 | PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
@@ -67,10 +67,10 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 
 - **Build berhasil** berarti compiler dan linker berhasil menghasilkan target yang diuji.
 - **Syntax check berhasil** berarti file yang diperiksa dapat dikompilasi pada tahap pemeriksaan tersebut; belum membuktikan perilaku runtime.
-- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil.
+- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil. Smoke test PES-owned VI terbaru telah menyelesaikan 120/120 frame, tetapi belum melakukan clear/draw GPU.
 - **Playable** baru dapat dinyatakan setelah game benar-benar berjalan di Switch dan fungsi permainan penting telah diverifikasi.
 
-Keberhasilan CI tidak boleh dianggap sebagai bukti bahwa PES 2017 sudah berjalan di perangkat fisik.
+Keberhasilan smoke test VI tidak boleh dianggap sebagai bukti bahwa PES 2017 sudah berjalan di perangkat fisik.
 
 ## 4. Arsitektur port
 
@@ -133,7 +133,7 @@ Keberadaan source code adapter tidak berarti semua fungsi sudah diuji pada beban
 
 Eksperimen grafis menggunakan port NXVK yang dipatok pada revisi sumber tertentu. Build CI telah menghasilkan library NVK dan aplikasi smoke test untuk jalur Vulkan, termasuk uji offscreen/triangle dan VI swapchain.
 
-Integrasi grafis PES masih membutuhkan validasi lebih jauh pada resource, shader, command submission, sinkronisasi, format tekstur, render target, dan presentasi dari workload game.
+Pada 10 November 2026, NRO PES-owned loader berhasil pada Switch fisik: NVK Tegra X1, VI surface/swapchain, acquire, command-buffer barrier, queue submit, dan queue present berjalan selama 120/120 frame. Tahap lanjutan mengubah smoke test menjadi GPU color-clear agar benar-benar membuktikan operasi tulis GPU; setelah itu baru menguji pipeline/render target, shader, resource, sinkronisasi, dan workload PES. Hasil ini belum membuktikan integrasi renderer PES.
 
 ## 5. Struktur direktori penting
 
