@@ -129,3 +129,23 @@ PES changes made in this checkpoint:
 ### B2 result and limitations
 
 **Source migration applied; compile/link not yet verified.** No GitHub Actions workflow currently builds the large Mesa SDK; the existing `switch-nro.yml` only builds the libnx bootstrap and does not validate this CMake target. No NRO artifact is claimed from this checkpoint. Next work must provide the pinned Mesa SDK to a build runner, compile/link the PES full runtime, then resolve any real linker or API errors before extracting provider/device/presenter ownership.
+
+
+## B2.1 — BO2 release SDK link probe (2026-11-10)
+
+A reproducible CI input is now available from the pinned BO2 tag `Release-1.1.0`, whose tag resolves to the same commit `dd189961e8876079087d6f0843af8013bd154277`. Its published Switch/Windows build kit includes the prebuilt runtime package, specifically `runtime/switch/portlibs` (Mesa/NVK headers and archives, plus the separately built static zstd library). The workflow verifies the release ZIP SHA-256 and the embedded runtime manifest before using the SDK:
+
+- Release asset: `bo2-360-nx-release-1.1.0-switch+windows-build-kit.zip`
+- SHA-256: `5c973a38b0921650ebfddf47fd9064f46f5aefa60d019a84371cfb0af328a26f`
+- Mesa base in manifest: `danfromtico/mesa-switch 1a8c1a66d6f`
+
+Added:
+
+- `switch/mesa/vulkan_link_probe.cpp`: minimal libnx NRO that calls the public Mesa `vkGetInstanceProcAddr`, resolves `vkEnumerateInstanceVersion`, and prints the returned API version.
+- `.github/workflows/switch-vulkan-bo2-sdk.yml`: downloads and checksum-verifies the pinned BO2 build kit, extracts only its Switch portlibs SDK, compiles the PES libelf stubs and probe with devkitA64, links the static archives in BO2's exact order, packages a probe NRO, and uploads the NRO/ELF/NACP artifact.
+
+The active CMake configuration now also checks for `libzstd.a` and the devkitPro `libexpat.a`, `libz.a`, and `libnx.a` inputs before proceeding. This catches the common incomplete-SDK case before a long compile.
+
+### B2.1 verification boundary
+
+The workflow is committed but has not yet returned a GitHub Actions result in this checkpoint. The probe NRO is not yet available. A successful CI run will prove static archive linking and packaging; it will **not** prove the Vulkan entrypoint works on physical Switch hardware. The probe NRO must then be run on the console and its output reviewed before migrating the full PES runtime.
