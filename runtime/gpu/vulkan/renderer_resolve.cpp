@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <cstring>
 #include <atomic>
-#include "../../kernel/kernel.h"
+#include "../../kernel/physical.h"
 #include "../../guest_memory.h"
 #include <unordered_set>
 // Resolves: EDRAM copied out to a texture the title reads back, or the
