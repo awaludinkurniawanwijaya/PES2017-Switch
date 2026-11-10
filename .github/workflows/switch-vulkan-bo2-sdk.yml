@@ -83,7 +83,7 @@ jobs:
                 fi
                 object="/tmp/pes-vulkan-runtime-objects/$(basename "${source%.cpp}").o"
                 echo "Compile PES Vulkan runtime: $source"
-                "$compiler-g++" -std=c++20 -O2 $common -pthread \
+                "${compiler}-g++" -std=c++20 -O2 $common -pthread \
                   -D__SWITCH__=1 -DPES17_SWITCH=1 -DPES17_VULKAN_DYNAMIC=1 -DPES17_HAVE_VULKAN=1 \
                   -DVK_NO_PROTOTYPES=1 \
                   -D_GNU_SOURCE=1 -D_DEFAULT_SOURCE=1 -DPES17_DIAGNOSTICS=0 \
@@ -96,11 +96,11 @@ jobs:
                 compiled=$((compiled + 1))
               done
               echo "PARTIAL PASS: $compiled Vulkan runtime TUs compiled; $deferred TUs deferred for private PPC output"
-              "$compiler-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
-              "$compiler-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
+              "${compiler}-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
+              "${compiler}-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
                 -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
                 -c switch/mesa/vulkan_link_probe.cpp -o /tmp/pes-vulkan-probe.o
-              "$compiler-g++" -specs=/opt/devkitpro/libnx/switch.specs $common \
+              "${compiler}-g++" -specs=/opt/devkitpro/libnx/switch.specs $common \
                 -Wl,--gc-sections -Wl,-z,notext -Wl,-u,vkGetInstanceProcAddr -pthread \
                 -L/mesa-sdk/lib -L/opt/devkitpro/portlibs/switch/lib -L/opt/devkitpro/libnx/lib \
                 -o /work/pes17-vulkan-bo2-probe.elf \
