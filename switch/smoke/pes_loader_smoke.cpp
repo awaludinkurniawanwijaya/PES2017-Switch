@@ -56,7 +56,16 @@ static void Log(const char* fmt, ...)
     printf("\n");
 
     va_end(ap);
+    const bool traceFrameAcquire = fmt && std::strstr(fmt, "[FRAME %u] after acquire") != nullptr;
+    if (traceFrameAcquire && g_log) {
+        fputs("[LOG-TRACE] before consoleUpdate after acquire\\n", g_log);
+        fflush(g_log);
+    }
     consoleUpdate(nullptr);
+    if (traceFrameAcquire && g_log) {
+        fputs("[LOG-TRACE] after consoleUpdate after acquire\\n", g_log);
+        fflush(g_log);
+    }
 }
 
 static void WaitForExit()
@@ -423,7 +432,11 @@ int main(int argc, char** argv)
         VkResult ar=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,acquired,VK_NULL_HANDLE,&imageIndex);
         if (ar!=VK_SUCCESS && ar!=VK_SUBOPTIMAL_KHR) { Log("FAIL acquire frame=%u result=%d",frame,int(ar)); result=7; break; }
         Log("[FRAME %u] after acquire result=%d image=%u", frame, int(ar), imageIndex);
-        if (imageIndex>=swapchainImages.size()) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,swapchainImages.size()); result=7; break; }
+        Log("[FRAME %u] before acquired-image bounds check", frame);
+        const size_t acquiredImageCount = swapchainImages.size();
+        Log("[FRAME %u] acquired-image bounds values index=%u count=%zu", frame, imageIndex, acquiredImageCount);
+        if (imageIndex>=acquiredImageCount) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,acquiredImageCount); result=7; break; }
+        Log("[FRAME %u] after acquired-image bounds check", frame);
 
         // A presentable image must be transitioned to PRESENT_SRC_KHR by a
         // queue operation. The acquire semaphore is consumed by this submit;
