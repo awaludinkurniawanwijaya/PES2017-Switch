@@ -145,21 +145,25 @@ PPC output.
 2. **PES-owned VI swapchain on physical Switch — passed.** The latest log
    confirms NVK Tegra X1 initialization, VI surface/swapchain creation, image
    enumeration, and 120/120 acquire-submit-present cycles.
-3. **Exercise real GPU writes — in progress.** The next NRO clears each
-   acquired swapchain image with `vkCmdClearColorImage` in three changing
-   color phases before presenting. This separates real NVK image writes from
-   the already-proven barrier/submit/present path.
-4. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
-5. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
+3. **Transfer clear on physical Switch — passed at command/completion level.**
+   NRO #147 recorded `vkCmdClearColorImage` in three 40-frame color phases;
+   all 120 frames then submitted, presented, and passed `vkDeviceWaitIdle`.
+   Visible color output has not yet been independently confirmed from a photo.
+4. **Graphics pipeline on the PES-owned VI path — next.** Reuse the already
+   hardware-tested upstream `nvk_tri` offscreen pipeline/readback pattern,
+   but bind its rendering work to the PES-owned swapchain. Validate shader
+   modules, render pass/pipeline, draw, and present as separate checkpoints.
+5. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
+6. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
    install, and generated PPC sources with the correct libnx/NXVK dependencies.
    The current bootstrap target is not this executable.
-6. **Generate title-specific PPC output.** This requires the user's legally
+7. **Generate title-specific PPC output.** This requires the user's legally
    obtained PES 2017 executable and matching build metadata. Those files and
    generated output must remain outside the public repository.
-7. **Complete game-data import and verification.** The Switch build must accept
+8. **Complete game-data import and verification.** The Switch build must accept
    local game data, verify the executable hash, and locate required CPK files
    without embedding or distributing copyrighted assets.
-8. **Run full hardware validation.** Verify boot, menus, controller behavior,
+9. **Run full hardware validation.** Verify boot, menus, controller behavior,
    audio, match rendering, save paths, suspend/resume, memory pressure, and a
    sustained full-match session on a physical Switch.
 
