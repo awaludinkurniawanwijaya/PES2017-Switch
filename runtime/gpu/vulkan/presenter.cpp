@@ -1448,6 +1448,11 @@ namespace
 #endif
         if (!Bring())
         {
+            // Bring may fail after creating only part of the Vulkan object
+            // graph (instance, VI surface, device, swapchain, or frame sync).
+            // Release that partial graph here: Start() reports headless mode
+            // and the caller is not required to invoke Stop() after failure.
+            Teardown();
             LOGW("vulkan: presenting disabled, continuing headless");
             g.running = false;
             g.ready = true;
