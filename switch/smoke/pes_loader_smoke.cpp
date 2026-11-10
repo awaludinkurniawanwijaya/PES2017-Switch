@@ -286,15 +286,13 @@ int main(int argc, char** argv)
         break;
     }
 
-    auto enumDirect = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
-        vk_icdGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
-    Log("stage 7a2: enumerate ptr loader=%p direct-ICD=%p",
-        reinterpret_cast<void*>(vkEnumeratePhysicalDevices), reinterpret_cast<void*>(enumDirect));
-    if (!enumDirect) { Log("FAIL direct ICD lookup returned null"); result = 11; break; }
+    // Keep all calls on the loader-owned dispatch path. The Mesa ICD-private
+    // vk_icdGetInstanceProcAddr entry point must not receive a loader-owned
+    // VkInstance; BO2 uses loader/instance dispatch before device dispatch.
     uint32_t physicalCount = 0;
-    Log("stage 7b: entering vkEnumeratePhysicalDevices(count) via direct ICD pointer");
-    VkResult enumResult = enumDirect(instance, &physicalCount, nullptr);
-    Log("stage 7c: vkEnumeratePhysicalDevices(count) returned %d count=%u",
+    Log("stage 7b: entering loader vkEnumeratePhysicalDevices(count)");
+    VkResult enumResult = vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr);
+    Log("stage 7c: loader vkEnumeratePhysicalDevices(count) returned %d count=%u",
         int(enumResult), physicalCount);
     CHECK_VK(enumResult);
     if (!physicalCount) { Log("FAIL no physical devices (check NVK opt-in and Mesa diagnostics)"); result = 4; break; }
