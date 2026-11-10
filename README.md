@@ -462,3 +462,10 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 **Validation completed for B2.12:** CTest and the BO2 Mesa Switch SDK probe passed for `6404803a77719e7edb629f79866df4e4c5ee94ce`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. This does not validate full PES game linking or scene rendering.
 
 **Validation completed for B2.13:** CTest and the BO2 Mesa Switch SDK probe passed for `ec82f9e71fc92924ec587ed7d84107cc4a9ab0fd`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact `13795297981`, ZIP SHA256 `ab5e114ca6dfc542b66a1be9c1fe1a8f5e27f67e5cb1a73556ea27e6c633e942`. No full PES game link or scene rendering is claimed.
+
+### Device snapshot reuse during logical-device bring-up (2026-11-11)
+
+- `CreateDevice` now records the core physical properties and supported core features it already queried for device negotiation. `Pipeline::Initialise` reuses those records rather than querying the same physical device a second time.
+- Direct borrowed-context initialization remains supported: if no snapshot exists (the caller did not use `pipeline::CreateDevice`), Pipeline queries and fills the missing records itself.
+- New creation attempts invalidate the prior property/feature readiness flags before probing a new physical device; shutdown clears all snapshots. This avoids stale metadata crossing device lifetimes.
+- Validation pending.
