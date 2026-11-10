@@ -408,7 +408,14 @@ namespace
             {
                 if (!(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
                 VkBool32 canPresent = VK_FALSE;
-                vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, g.surface, &canPresent);
+                const VkResult supportResult =
+                    vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, g.surface, &canPresent);
+                if (supportResult != VK_SUCCESS)
+                {
+                    LOGW("vulkan: surface support query failed for queue family %u (%d)",
+                         i, int(supportResult));
+                    continue;
+                }
                 if (!canPresent) continue;
 
                 VkPhysicalDeviceProperties info{};
