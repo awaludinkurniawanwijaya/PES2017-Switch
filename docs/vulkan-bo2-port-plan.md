@@ -416,3 +416,5 @@ Pipeline device context now captures `VkPhysicalDeviceMemoryProperties` once aft
 Migrated consumers: Renderer, Texture Cache, Frame Generation, Upscaler and Presenter. This removes repeated physical-device memory-property queries from those subsystems. Texture Cache continues to derive its device-local heap budget from the snapshot. Each allocation still intersects the resource's `memoryTypeBits` with the subsystem's requested memory flags; ownership and failure cleanup have not been moved into Pipeline.
 
 Validation is pending for this commit. The next steps are inspect CI, fix any compile/test failures, then migrate physical-device properties through the same lifecycle only after auditing all standalone tool targets.
+
+**Validation update:** the tests-only CTest workflow for implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5` completed successfully. The Switch BO2 Mesa SDK probe job is still running; its result is not yet claimed.
