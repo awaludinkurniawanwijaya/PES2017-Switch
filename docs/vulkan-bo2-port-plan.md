@@ -434,3 +434,9 @@ Validation for this follow-up commit is pending. The previous B2.10 implementati
 Pipeline now queries and stores whether the selected physical device supports sample-zero depth/stencil resolve, considering Vulkan 1.2 core promotion or `VK_KHR_depth_stencil_resolve`. Renderer reads the immutable capability through `DepthStencilResolveSampleZero()` and retains the policy decision to enable or disable MSAA. Presenter-specific present-ID/present-wait feature negotiation remains in Presenter because it is WSI policy, not a general Device capability.
 
 Validation for B2.12 is pending.
+
+### B2.13 — Core physical-device features cached (2026-11-11)
+
+Pipeline device initialization now snapshots core `VkPhysicalDeviceFeatures` and exposes a size-checked copy accessor. Presenter diagnostics uses the cached feature record rather than issuing a second core-feature query. Extension-specific feature-chain negotiation (for example present-wait) remains with the feature consumer; the snapshot does not imply those extension features are enabled.
+
+Validation for B2.13 is pending.
