@@ -460,3 +460,9 @@ Validation pending.
 **Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`; 25 runtime TUs compiled, with two private PPC-dependent TUs deferred. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This does not prove full-game link or scene rendering.
 
 **Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `147cad0eb0c9ed2f911a548656d5003973e0d98f`; 25 runtime TUs compiled, with the two PPC-dependent renderer TUs deferred. Diagnostic NRO artifact `13795741590`, ZIP SHA256 `487127e7a5027e117d2a6a8d89e646689599d0e12247db1244196e017951d477`. Full-game linking and scene rendering remain unvalidated.
+
+### B2.16 — Failed device bring-up state isolation (2026-11-11)
+
+Added `ResetDeviceSnapshot()` as the common invalidation path for all physical-device-derived state: immutable properties/memory/core features, depth resolve, BC/ASTC format support, anisotropy, rendering/pipeline-library capabilities and device identity. `CreateDevice` rejects replacing an already active Pipeline device, resets prior metadata before a fresh attempt, and resets the failed attempt if `vkCreateDevice` fails. Headless rollback destroys its instance and resets the same state as one operation. This prevents stale capabilities from a failed/abandoned physical-device attempt from appearing valid during a subsequent bring-up.
+
+Validation for B2.16 is pending.
