@@ -326,3 +326,11 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 - Artefak run `42869421006` ID `13788841794` diperiksa. SHA-256 ZIP `f13218ba55c82c7090971d7a0f7401feb98a784e6821ddc1f6cda6c5c3f8a597`; SHA-256 NRO `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3`, masih identik dengan probe tahap 2. Tidak perlu uji fisik ulang.
 - Satu run antara (`42869404449`) gagal karena commit provider.cpp berjalan sebelum header deklarasi tiba pada branch; run final setelah header dan presenter commit (`42869421006`) sukses. Tidak ada error kompilasi tersisa pada commit final.
 - Batas yang belum selesai: pipeline-global `vk::pipeline::CreateDevice` masih mengelola feature policy dan dispatch device bersama; belum ada class `VulkanDevice` mandiri. Full PES link, physical Switch API initialization, triangle, dan PES scene rendering tetap belum terbukti.
+
+### Vulkan provider/device lifecycle update (2026-11-11)
+
+- `provider::CreateLogicalDevice` now performs the raw `vkCreateDevice` call, loads device dispatch for the dynamic-loader configuration, retrieves the requested queue, and cleans up the device/dispatch if queue retrieval fails.
+- `pipeline::CreateDevice` retains GPU feature/extension policy, optional global queue-priority negotiation and retry, and renderer-specific capability selection. This is an intentional intermediate boundary, not a standalone `VulkanDevice` class.
+- Owned headless-device teardown now destroys `VkDevice` before forgetting dynamic device dispatch, preserving the destroy function pointer until it has been called.
+- SDK workflow run [42875642739](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42875642739) on commit `db8a50ef4e84949ed3162ab5c4976e7aa81714e6` completed successfully: 25 Vulkan runtime translation units compiled; 2 remain deferred because private generated PPC output is unavailable; the standalone static BO2 Mesa SDK probe NRO linked and packaged. This is partial compile validation, not a full PES link or physical-device/game-render test.
+- The probe NRO is still the same diagnostic program and is not a new hardware-test checkpoint. No repeated Switch test is requested.
