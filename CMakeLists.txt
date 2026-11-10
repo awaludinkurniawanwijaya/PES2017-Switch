@@ -470,6 +470,7 @@ add_executable(upload-texture
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/image_memory.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/texture_formats.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/pipeline.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/provider.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/shader_translator.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/spirv.cpp")
 target_include_directories(upload-texture PRIVATE "${CMAKE_SOURCE_DIR}/runtime")
