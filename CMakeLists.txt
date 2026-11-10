@@ -206,6 +206,9 @@ if(PES17_SWITCH)
         "$ENV{DEVKITPRO}/portlibs/switch/include")
     target_compile_definitions(pes17 PRIVATE
         __SWITCH__=1 PES17_VULKAN_DYNAMIC=1 VK_NO_PROTOTYPES=1 _GNU_SOURCE=1 _DEFAULT_SOURCE=1)
+    # Dynamic Vulkan dispatch declarations must precede every runtime TU.
+    target_compile_options(pes17 PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/loader.h>)
     target_compile_options(pes17 PRIVATE
         -ffunction-sections -fdata-sections -pthread)
     target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
