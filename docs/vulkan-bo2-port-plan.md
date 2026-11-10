@@ -231,3 +231,41 @@ Percobaan pertama setelah isolasi gagal sebelum kompilasi dimulai karena ekspans
 - Perubahan source commit: `e69b540f6db57a1eda41782b975619ddf6d6d216`.
 - Validasi CI BO2 SDK pada run [42866248741](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42866248741) selesai **success**; workflow compile gate terkait juga lulus. NRO probe yang dihasilkan memiliki SHA-256 sama dengan probe tahap 2 sebelumnya, sehingga tidak mewakili perubahan runtime probe dan tidak perlu diuji ulang.
 - Ini memperbaiki konsistensi ownership handle WSI saat resize/recreate. Belum mengubah status arsitektur monolitik dan bukan bukti present atau rendering pada Switch fisik.
+
+## B2.6 — Concrete PES-to-BO2 ownership map (2026-11-11)
+
+This is the source-level extraction map for the current `runtime/gpu/vulkan/presenter.cpp`. It deliberately records the current coupling before moving code; no runtime behavior is changed by this audit.
+
+| PES code/state | Current responsibility | Target owner | Extraction constraint |
+|---|---|---|---|
+| `CreateInstance`, `InstanceHasExtension`, `Validating`, validation messenger and `g.instance` | Vulkan instance version/extension negotiation, instance creation, instance dispatch load and optional debug messenger | `VulkanInstance` / provider | Keep platform-required extension selection injectable; validation messenger must be destroyed before the instance. |
+| `PickDevice`, `g.physical`, `g.queueFamily` | Enumerates physical devices and graphics queue families, then checks presentation support against `g.surface` | Provider/device selection | This is not wholly device-only: present support depends on the presenter's already-created surface. Pass the surface/capability query into selection rather than making the provider own WSI. |
+| `CreateDevice`, `g.device`, `g.queue`, `g.presentWait`, `g.waitForPresent` | Chooses optional present-id/wait features, delegates common feature/device creation to `pipeline::CreateDevice`, then loads/checks swapchain dispatch | `VulkanDevice` | Device creation currently mixes renderer feature policy (`pipeline::CreateDevice`) with WSI extensions. Define extension/feature inputs and device-dispatch lifetime explicitly; do not create a second independent device. |
+| `CreateSurfaceForWindow`, `g.surface`, `AdoptNewSurface` | Creates/destroys VI or Android surface and handles native-window replacement | Platform surface / presenter | Keep VI and Android WSI out of the generic provider. A surface must be destroyed before its instance. |
+| `CreateSwapchain`, `RemakeSwapchain`, `g.swapchain`, `g.images`, `g.extent`, `g.swapchainFormat` | Surface capability/format selection, swapchain creation/recreation and swapchain-owned image tracking | Presenter | Swapchain images are borrowed handles. Clear the image list as soon as the owning swapchain is destroyed, including failure paths. |
+| `CreateFrames`, `Acquire`, `Begin`, `SubmitAndPresent`, `DrawOneFrame` | Presenter command pool/buffers, frame semaphores/fences, acquire, submit and present | Presenter | The renderer and presenter share one queue; every queue submit must continue to use `pipeline::QueueMutex()`. |
+| `Waiter`, `FollowTheDisplay`, present-wait state | Tracks completion of presents and display timing on a worker thread | Presenter | Stop/join waiter and release swapchain-life locks before destroying the device or swapchain. |
+| `Teardown` | Current reverse-order destruction of device resources, swapchain/device, surface, debug messenger and instance | Explicit owner teardown sequence | Required order: stop workers; wait for device idle under the shared queue lock where renderer submissions may race; destroy presenter-owned device resources and swapchain; destroy device; destroy surface; destroy debug messenger; destroy instance; then release platform window. The presenter's current function interleaves these owners and must be split without changing order. |
+| `Bring`, `Worker`, window/applet and native-window acquisition | Starts Vulkan and coordinates platform window lifecycle | Switch application context / platform context | Keep libnx applet/window lifetime distinct from Vulkan provider and presenter lifetimes. |
+| `pipeline::CreateDevice`, `pipeline::Initialise`, `QueueMutex` | Shared renderer device feature policy, pipeline state, and queue synchronization | Renderer/device integration boundary | Existing pipeline code is also used by headless/offline tools; provider extraction must preserve borrowed-device and headless initialization modes. |
+
+### Dependency findings that constrain the first extraction
+
+1. `PickDevice` cannot be moved unchanged into a surface-agnostic provider: it queries `vkGetPhysicalDeviceSurfaceSupportKHR` using `g.surface`. The provider can enumerate and inspect physical devices, but the presenter/platform WSI must supply the surface and presentation-support predicate.
+2. `CreateDevice` is not an isolated raw `vkCreateDevice`: it delegates to `vk::pipeline::CreateDevice`, which records the physical device in pipeline-global state and configures renderer-required features/extensions. The new device abstraction must wrap or deliberately replace that shared policy, not duplicate it.
+3. Instance dispatch is loaded immediately after `vkCreateInstance`; device dispatch is loaded by the pipeline device creation path. A split must preserve the exact point at which each dispatch becomes valid and the point at which `vk::loader::ForgetDevice()` restores instance-level pointers.
+4. The presenter's queue is shared with the renderer. Queue ownership may be represented by the device object, but queue external synchronization remains shared through `vk::pipeline::QueueMutex()` until the renderer and presenter use one common synchronization contract.
+5. `Teardown` currently owns resources from multiple layers. Extraction must first introduce explicit handles/lifetime boundaries, then move destruction in reverse dependency order. Moving the whole presenter or independently destroying shared pipeline/device state would be unsafe.
+
+### Safe implementation order
+
+- **B2.6a (this audit):** map state, methods, dispatch and teardown dependencies. Complete.
+- **B2.6b:** introduce a small provider/instance interface that owns only instance creation, instance dispatch and validation messenger. Keep the current call order and public `vk::Start/Stop` behavior unchanged.
+- **B2.6c:** represent physical-device selection as a provider query that accepts the active surface/present-support requirement; preserve the current discrete-GPU preference and fallback.
+- **B2.6d:** introduce a device wrapper around the existing `pipeline::CreateDevice` path, with explicit requested WSI extensions/features and shared queue synchronization. Do not duplicate device state.
+- **B2.6e:** leave VI surface, swapchain, frame synchronization and present in the presenter; only then split platform applet/window lifecycle if it can be done without changing thread ownership.
+- Compile each step with the Switch SDK workflow and host tests before proceeding. Hardware testing is required only when a changed NRO provides a new diagnostic or behavior.
+
+### Status after B2.6
+
+The concrete ownership map is complete. No provider/device source extraction has been claimed yet. The first code change is constrained to instance ownership; surface selection, shared pipeline-device state, loader dispatch timing, and reverse teardown order are explicit invariants for that change.
