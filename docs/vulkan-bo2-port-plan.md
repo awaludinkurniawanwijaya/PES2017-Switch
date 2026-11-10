@@ -269,3 +269,14 @@ This is the source-level extraction map for the current `runtime/gpu/vulkan/pres
 ### Status after B2.6
 
 The concrete ownership map is complete. No provider/device source extraction has been claimed yet. The first code change is constrained to instance ownership; surface selection, shared pipeline-device state, loader dispatch timing, and reverse teardown order are explicit invariants for that change.
+
+### B2.6b — Initial instance ownership extraction (2026-11-11; CI pending)
+
+- Added `runtime/gpu/vulkan/provider.h/.cpp` with a PES-owned provider boundary for Vulkan instance creation, instance dispatch loading, optional validation callback/messenger ownership, and instance destruction.
+- `presenter.cpp` now delegates instance creation/destruction to `vk::provider`; VI/Android surface creation, physical-device selection, device creation, swapchain and frame presentation remain in the presenter for now.
+- The original extension negotiation and API-version selection logic was moved without intentionally changing its policy. The provider receives the instance handle by reference so the presenter retains the existing shared state and call sequence during this first extraction.
+- The source glob in CMake and the Switch workflow includes the new translation unit automatically.
+- CI runs 42867472597 (provider implementation) and 42867467446 (interface checkpoint) were triggered. Their result is not yet known at this documentation update.
+- This is a source ownership boundary, not a completed BO2 provider/device/presenter port. No new NRO has been verified and no hardware test is requested from this checkpoint.
+
+Next: validate the new translation unit and presenter compile together; fix any compile errors before extracting physical-device selection. Keep dispatch timing, validation-messenger teardown-before-instance, and surface-before-instance destruction unchanged.
