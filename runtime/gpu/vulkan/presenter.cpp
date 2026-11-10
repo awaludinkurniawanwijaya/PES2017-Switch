@@ -404,7 +404,7 @@ namespace
                     }, "queue families"))
                 continue;
 
-            for (uint32_t i = 0; i < families; i++)
+            for (uint32_t i = 0; i < properties.size(); i++)
             {
                 if (!(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
                 VkBool32 canPresent = VK_FALSE;
