@@ -431,3 +431,8 @@ This is a concrete ownership conflict in the PES diagnostic harness and a strong
 - Commit `1d130d92a64510ec9be1cbc592b29953effeebe7` corrects the newline escape in the guarded screen-output path.
 - This is a targeted correction to the harness, not a claim that the full frame loop or PES renderer is working. The next hardware result must show command-buffer recording, queue submission, and `vkQueuePresentKHR` completing.
 - The BO2 presenter also documents a separate NVK/Horizon synchronization issue: waiting on the acquire semaphore inside the GPU channel can stall subsequent GPU work. Its optional `present_wait_acquire_on_cpu` path uses an acquire fence and waits on the CPU instead. We will only adopt that path if the new log reaches submit and demonstrates the corresponding stall; it is not mixed into this first fix.
+
+
+## PES-owned GPU clear hardware checkpoint (10 November 2026)
+
+NRO #147 was tested on the physical Switch. The log records `vkCmdClearColorImage` for all 120 acquired swapchain images, followed on every frame by successful `vkQueueSubmit`, `vkQueuePresentKHR`, and `vkDeviceWaitIdle`. The run finished with `presented 120 / 120` and `exit=0`. NVK zero-copy was unavailable and the CPU-copy WSI fallback remained active. This establishes completion of a GPU transfer-clear workload, but the log does not independently prove visible screen colors. The next graphics milestone is to move the tested `nvk_tri` pipeline/readback pattern onto the PES-owned VI swapchain. The game renderer and full PES boot remain unvalidated.
