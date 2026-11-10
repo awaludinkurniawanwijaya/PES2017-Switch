@@ -205,9 +205,9 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
             else if (std::strcmp(wanted, "high") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_HIGH_KHR;
             else if (std::strcmp(wanted, "realtime") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_REALTIME_KHR;
         }
-        if (level && vk::provider::DeviceHasExtension(physical, VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))
+        if (level && hasExtension(VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))
             priorityExtension = VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME;
-        else if (level && vk::provider::DeviceHasExtension(physical, VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))
+        else if (level && hasExtension(VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))
             priorityExtension = VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME;
         if (priorityExtension)
         {
@@ -338,7 +338,7 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     // pNext without enabling it is invalid.
     std::vector<const char*> extensions;
     if (extraCount) extensions.assign(extraExtensions, extraExtensions + extraCount);
-    if (vk::provider::DeviceHasExtension(physical, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
+    if (hasExtension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
         extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
     // MSAA depth surfaces are read back through a render pass resolve. That is
     // core in Vulkan 1.2 but an extension before it, so a 1.1-or-1.0 device
@@ -346,16 +346,16 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     // gates multisampling on.
     {
         if (physicalProperties.apiVersion < VK_API_VERSION_1_2 &&
-            vk::provider::DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
+            hasExtension(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
             extensions.push_back(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
         // The depth resolve's own query goes through GetPhysicalDevice*
         // Properties2, and the 1.1 promoted Maintenance1 is where negative
         // viewport heights (the renderer's flipped clip space) live.
         if (physicalProperties.apiVersion < VK_API_VERSION_1_1)
         {
-            if (vk::provider::DeviceHasExtension(physical, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+            if (hasExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
                 extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-            if (vk::provider::DeviceHasExtension(physical, VK_KHR_MAINTENANCE1_EXTENSION_NAME))
+            if (hasExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
                 extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
         }
     }
@@ -365,7 +365,7 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     // same thing.
     VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT nonSeamless{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT };
-    if (vk::provider::DeviceHasExtension(physical, VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME))
+    if (hasExtension(VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME))
     {
         VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
         query.pNext = &nonSeamless;
@@ -385,11 +385,11 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     const bool core13 = physicalProperties.apiVersion >= VK_API_VERSION_1_3;
 
     const bool dynamicRenderingExtension =
-        vk::provider::DeviceHasExtension(physical, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        hasExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     const bool dynamicStateExtension =
-        vk::provider::DeviceHasExtension(physical, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+        hasExtension(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
     const bool pipelineLibrariesExtension =
-        vk::provider::DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
+        hasExtension(VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
 
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRendering{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
@@ -461,8 +461,8 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     if (dynamicStateExtension) extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
     impl->pipelineLibraries =
         !impl->staticStates &&
-        vk::provider::DeviceHasExtension(physical, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
-        vk::provider::DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME) &&
+        hasExtension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
+        hasExtension(VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME) &&
         libraries.graphicsPipelineLibrary;
     if (impl->pipelineLibraries)
     {
@@ -495,7 +495,7 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     }
 
     VkPhysicalDeviceFaultFeaturesEXT fault{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
-    if (vk::provider::DeviceHasExtension(physical, VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+    if (hasExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
     {
         VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
         query.pNext = &fault;
