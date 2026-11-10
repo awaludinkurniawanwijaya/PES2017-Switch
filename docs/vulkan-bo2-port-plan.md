@@ -587,3 +587,11 @@ Validation for B2.29 is pending.
 - Device owns logical-device creation, queue acquisition, core feature/property snapshots, extension inventory, capability negotiation, and device-fault dispatch. Presenter retains WSI-specific surface, swapchain, present-ID/present-wait policy; Pipeline retains descriptor layouts/cache and shader-module/pipeline resources.
 - No lifecycle refactor was committed from this audit alone: changing ownership without a reproducible failing path would risk reintroducing double-destruction or stale borrowed handles. The next code audit focuses on renderer startup/rollback/shutdown relative to Presenter worker teardown, then on the missing PPC-dependent renderer translation units and the real frame submission path.
 - Gameplay gate remains open: full PES target build, NRO boot, Vulkan device/swapchain on Switch, visible test frame, PES renderer integration, game boot, match entry and sustained gameplay have not been demonstrated by this SDK probe.
+
+
+### B2.32 — Validate caller-required Device extensions before creation (2026-11-11)
+
+- `Device::Create` now validates every caller-supplied required device extension name against the cached physical-device extension inventory before building the final extension list or calling `vkCreateDevice`.
+- Empty/null required names and names not advertised by the selected physical device fail early with a specific diagnostic. This covers the Presenter/WSI required extension contract (including `VK_KHR_swapchain`) and avoids relying on a generic driver `VK_ERROR_EXTENSION_NOT_PRESENT` after device creation is attempted.
+- The check reuses the existing one-time inventory; it does not add another driver enumeration.
+- Validation is running for code commit `6348024af52e3a565aefb4aa16aa325594953e8d`: CTest run [42926195764](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926195764) and Switch BO2 Mesa SDK compile/link probe [42926188345](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926188345). Hardware runtime and gameplay are not validated by these jobs.
