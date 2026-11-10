@@ -234,7 +234,7 @@ Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimp
 
 ## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX
 
-Audit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
+Audit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Audit menemukan dispatch instance di `loader.cpp` masih memakai nama fungsi langsung alih-alih pointer GIPA; pemanggilan itu sudah diarahkan ke `vkGetInstanceProcAddrFn`. Workflow kini menambahkan kompilasi semua `runtime/gpu/vulkan/*.cpp` untuk Switch terhadap header SDK BO2 yang dipin. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
 
 **Keputusan arsitektur:** pengembangan NXVK dihentikan. Tidak ada lagi pekerjaan fitur, debugging, atau penambahan integrasi pada jalur NXVK. Source, konfigurasi, workflow, dan artefak NXVK yang sudah ada wajib dipertahankan sebagai cadangan yang terpisah. Jangan menghapusnya dahulu.
 
@@ -245,7 +245,7 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 | Jalur | Kebijakan | Status |
 |---|---|---|
 | NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake hanya memilih jalur NXVK jika `PES17_SWITCH_USE_LEGACY_NXVK=ON`. | **Dihentikan — opsi legacy eksplisit saja** |
-| Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. SDK statis BO2 dipakai oleh workflow link-probe; probe NRO sudah dibuka pada Switch. Provider/device/presenter PES belum dipisahkan. | **Arah kerja aktif — build dan peluncuran NRO terkonfirmasi; hasil GIPA perlu dicatat** |
+| Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. SDK statis BO2 dipakai oleh workflow link-probe dan kini workflow juga mengompilasi seluruh translation unit Vulkan runtime PES untuk target Switch. Provider/device/presenter PES belum dipisahkan. | **Arah kerja aktif — gate kompilasi runtime ditambahkan; hasil CI gate baru menunggu** |
 
 Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).
 
