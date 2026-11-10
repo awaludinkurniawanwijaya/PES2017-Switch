@@ -35,7 +35,7 @@ replace_once(
 
 replace_once(
 '''      rc = bqDequeueBuffer(&nw->bq, true, nw->width, nw->height, nw->format,
-                            nw->usage, &slot, &release);
+                           nw->usage, &slot, &release);
       if (R_VALUE(rc) != WSI_SWITCH_BQ_WOULD_BLOCK)''',
 '''      fprintf(stderr, "[ACQUIRE-TRACE] before bqDequeueBuffer waited=%u\n", waited); fflush(stderr);
       rc = bqDequeueBuffer(&nw->bq, true, nw->width, nw->height, nw->format,
