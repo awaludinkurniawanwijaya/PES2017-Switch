@@ -123,3 +123,78 @@ if old not in s:
 s = s.replace(old, new, 1)
 p.write_text(s)
 print("Installed NVK copy entrypoint and branch tracepoints")
+
+
+# Prefer the Vulkan 1.3 copy-commands2 entrypoint for the Switch WSI CPU-copy
+# path. The legacy WSI callback is resolved from the instance proc table and
+# does not reliably reach the device's common legacy-to-2 wrapper in this
+# static-ICD configuration. Keep the legacy callback as a compatibility
+# fallback, but select the direct 2 entrypoint when available.
+p = Path("nxvk/src/vulkan/wsi/wsi_common.h")
+s = p.read_text()
+old = "   WSI_CB(CmdCopyImageToBuffer);"
+new = "   WSI_CB(CmdCopyImageToBuffer);\n   WSI_CB(CmdCopyImageToBuffer2);"
+if old not in s:
+    raise SystemExit("Missing WSI callback declaration anchor")
+s = s.replace(old, new, 1)
+p.write_text(s)
+print("Added direct WSI CmdCopyImageToBuffer2 callback")
+
+p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+s = p.read_text()
+old = "   WSI_GET_CB(CmdCopyImageToBuffer);"
+new = "   WSI_GET_CB(CmdCopyImageToBuffer);\n   WSI_GET_CB(CmdCopyImageToBuffer2);"
+if old not in s:
+    raise SystemExit("Missing WSI callback initialization anchor")
+s = s.replace(old, new, 1)
+
+old = """   wsi->CmdCopyImageToBuffer(cmd_buffer,
+                             image->image,
+                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                             image->blit.buffer,
+                             1, &buffer_image_copy);"""
+new = """   if (wsi->CmdCopyImageToBuffer2) {
+      VkBufferImageCopy2 buffer_image_copy2 = {
+         .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+         .bufferOffset = buffer_image_copy.bufferOffset,
+         .bufferRowLength = buffer_image_copy.bufferRowLength,
+         .bufferImageHeight = buffer_image_copy.bufferImageHeight,
+         .imageSubresource = buffer_image_copy.imageSubresource,
+         .imageOffset = buffer_image_copy.imageOffset,
+         .imageExtent = buffer_image_copy.imageExtent,
+      };
+      VkCopyImageToBufferInfo2 copy_info = {
+         .sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
+         .srcImage = image->image,
+         .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+         .dstBuffer = image->blit.buffer,
+         .regionCount = 1,
+         .pRegions = &buffer_image_copy2,
+      };
+      fprintf(stderr, "[WSI-BLIT2] direct dispatch cmd=%p fn=%p image=0x%llx buffer=0x%llx extent=%ux%u rowLength=%u imageHeight=%u\\n",
+              (void *)cmd_buffer, (void *)wsi->CmdCopyImageToBuffer2,
+              (unsigned long long)image->image,
+              (unsigned long long)image->blit.buffer,
+              buffer_image_copy2.imageExtent.width,
+              buffer_image_copy2.imageExtent.height,
+              buffer_image_copy2.bufferRowLength,
+              buffer_image_copy2.bufferImageHeight);
+      fflush(stderr);
+      wsi->CmdCopyImageToBuffer2(cmd_buffer, &copy_info);
+      fprintf(stderr, "[WSI-BLIT2] direct dispatch returned\\n");
+      fflush(stderr);
+   } else {
+      fprintf(stderr, "[WSI-BLIT2] unavailable; falling back to legacy fn=%p\\n",
+              (void *)wsi->CmdCopyImageToBuffer);
+      fflush(stderr);
+      wsi->CmdCopyImageToBuffer(cmd_buffer,
+                                image->image,
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                image->blit.buffer,
+                                1, &buffer_image_copy);
+   }"""
+if old not in s:
+    raise SystemExit("Missing exact WSI legacy copy call anchor")
+s = s.replace(old, new, 1)
+p.write_text(s)
+print("Installed direct Vulkan copy-commands2 WSI path with legacy fallback")
