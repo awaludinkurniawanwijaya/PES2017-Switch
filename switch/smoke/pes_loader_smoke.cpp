@@ -428,11 +428,15 @@ int main(int argc, char** argv)
         // A presentable image must be transitioned to PRESENT_SRC_KHR by a
         // queue operation. The acquire semaphore is consumed by this submit;
         // presentation waits on the semaphore signalled after the barrier.
+        Log("[FRAME %u] before reset command buffer", frame);
         VkResult resetResult=vkResetCommandBuffer(commandBuffer,0);
+        Log("[FRAME %u] after reset command buffer result=%d", frame, int(resetResult));
         if (resetResult!=VK_SUCCESS) { Log("FAIL reset command buffer frame=%u result=%d",frame,int(resetResult)); result=9; break; }
+        Log("[FRAME %u] before begin command buffer", frame);
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         VkResult beginResult=vkBeginCommandBuffer(commandBuffer,&begin);
+        Log("[FRAME %u] after begin command buffer result=%d", frame, int(beginResult));
         if (beginResult!=VK_SUCCESS) { Log("FAIL begin command buffer frame=%u result=%d",frame,int(beginResult)); result=9; break; }
         VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         toPresent.srcAccessMask=0;
@@ -447,10 +451,14 @@ int main(int argc, char** argv)
         toPresent.subresourceRange.levelCount=1;
         toPresent.subresourceRange.baseArrayLayer=0;
         toPresent.subresourceRange.layerCount=1;
+        Log("[FRAME %u] before pipeline barrier", frame);
         vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,
                              0,nullptr,0,nullptr,1,&toPresent);
+        Log("[FRAME %u] after pipeline barrier", frame);
+        Log("[FRAME %u] before end command buffer", frame);
         VkResult endResult=vkEndCommandBuffer(commandBuffer);
+        Log("[FRAME %u] after end command buffer result=%d", frame, int(endResult));
         if (endResult!=VK_SUCCESS) { Log("FAIL end command buffer frame=%u result=%d",frame,int(endResult)); result=9; break; }
 
         const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
