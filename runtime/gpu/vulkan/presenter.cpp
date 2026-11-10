@@ -624,6 +624,10 @@ namespace
             // Nothing waits on a present of the old one once it is gone.
             std::unique_lock life(g.swapchainLife);
             if (old) vkDestroySwapchainKHR(g.device, old, nullptr);
+            // Image handles belong to the swapchain just destroyed. Do not
+            // leave stale handles visible if replacement creation/enumeration
+            // fails and the presenter falls back to its no-swapchain path.
+            g.images.clear();
             g.swapchain = ok ? made : VK_NULL_HANDLE;
             std::lock_guard waiting(g.waitLock);
             g.waiting.clear();
@@ -638,6 +642,7 @@ namespace
                 }, "swapchain images") || g.images.empty())
         {
             LOGW("vulkan: the created swapchain exposes no images");
+            g.images.clear();
             vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
             g.swapchain = VK_NULL_HANDLE;
             return false;
