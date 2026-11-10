@@ -487,3 +487,10 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Headless bring-up rollback now destroys the instance and clears the complete failed-device snapshot, rather than only nulling the physical-device handle.
 - CI validation for this change is pending.
 - Portability refinement: the fixed BC capability array is reset with a range-for loop, avoiding reliance on `std::begin` header exposure.
+
+### BO2 Device ownership mapping (2026-11-11)
+
+- Compared the pinned BO2 `VulkanDevice` implementation (`sdk/include/rex/ui/vulkan/device.h`, `sdk/src/ui/vulkan/vulkan_device.cpp`) with PES2017's `pipeline.cpp` and Presenter.
+- BO2's Device object owns the selected physical device, logical device, negotiated properties/features/extensions, device function table, queue families/queues and memory-type summary. Provider owns the Device lifetime; Presenter receives it and retains only WSI surface/swapchain/present policy.
+- PES2017 currently combines logical-device creation, capability negotiation/snapshots, queue synchronization and pipeline layout/cache in `vk::pipeline::State`, while Presenter owns the window-system device handles and passes them back as a borrowed tuple. A direct move would risk double ownership and break the headless path.
+- The next extraction is therefore gated on an explicit ownership contract: Provider/Device will own instance + physical/logical device + queue; Presenter will borrow that Device for WSI; Pipeline will borrow Device handles but retain descriptor/pipeline layout/cache. Do not mechanically move `CreateDevice` until lifecycle rollback and both headless/presenting call paths are migrated together.
