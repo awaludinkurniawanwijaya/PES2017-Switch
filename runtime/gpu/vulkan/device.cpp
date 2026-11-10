@@ -511,6 +511,19 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     }
     if (priorityExtension) extensions.push_back(priorityExtension);
 
+    // Extra extensions supplied by WSI and capabilities selected above may
+    // overlap. Vulkan requires each enabled extension name to appear once.
+    std::vector<const char*> uniqueExtensions;
+    uniqueExtensions.reserve(extensions.size());
+    for (const char* name : extensions)
+    {
+        if (!name) continue;
+        const bool alreadyAdded = std::any_of(uniqueExtensions.begin(), uniqueExtensions.end(),
+            [name](const char* existing) { return std::strcmp(existing, name) == 0; });
+        if (!alreadyAdded) uniqueExtensions.push_back(name);
+    }
+    extensions.swap(uniqueExtensions);
+
     VkDeviceCreateInfo info{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     info.pNext = chain;
     if (impl->nonSeamlessCubes) { nonSeamless.pNext = chain; info.pNext = &nonSeamless; }
