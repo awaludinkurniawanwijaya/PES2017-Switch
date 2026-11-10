@@ -439,10 +439,13 @@ int main(int argc, char** argv)
     // images. The latter are presentable but their framebuffer path stalls
     // on this Switch/NVK combination. Copy the completed render target to the
     // acquired swapchain image before present.
+    // Match the pinned upstream nvk_tri target size first. This isolates the
+    // framebuffer path from the 1280x720 VI surface dimensions.
+    const VkExtent2D renderExtent{256, 256};
     VkImageCreateInfo offscreenInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     offscreenInfo.imageType = VK_IMAGE_TYPE_2D;
     offscreenInfo.format = format.format;
-    offscreenInfo.extent = { extent.width, extent.height, 1 };
+    offscreenInfo.extent = { renderExtent.width, renderExtent.height, 1 };
     offscreenInfo.mipLevels = 1;
     offscreenInfo.arrayLayers = 1;
     offscreenInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -505,24 +508,20 @@ int main(int argc, char** argv)
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorReference;
-    VkSubpassDependency dependencies[2]{};
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dependencies[1].srcSubpass = 0;
-    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dependencies[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    // Keep the same single post-render dependency used by upstream nvk_tri.
+    VkSubpassDependency dependencies[1]{};
+    dependencies[0].srcSubpass = 0;
+    dependencies[0].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     VkRenderPassCreateInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     renderPassInfo.attachmentCount = 1;
     renderPassInfo.pAttachments = &colorAttachment;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = dependencies;
     Log("[PIPELINE] before vkCreateRenderPass");
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
@@ -537,11 +536,11 @@ int main(int argc, char** argv)
     framebufferInfo.renderPass = renderPass;
     framebufferInfo.attachmentCount = 1;
     framebufferInfo.pAttachments = &offscreenView;
-    framebufferInfo.width = extent.width;
-    framebufferInfo.height = extent.height;
+    framebufferInfo.width = renderExtent.width;
+    framebufferInfo.height = renderExtent.height;
     framebufferInfo.layers = 1;
-    Log("[PIPELINE] before app-owned vkCreateFramebuffer view=%p extent=%ux%u",
-        reinterpret_cast<void*>(offscreenView), extent.width, extent.height);
+    Log("[PIPELINE] before app-owned vkCreateFramebuffer view=%p extent=%ux%u format=%u",
+        reinterpret_cast<void*>(offscreenView), renderExtent.width, renderExtent.height, unsigned(format.format));
     CHECK_VK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &offscreenFramebuffer));
     Log("[PIPELINE] app-owned framebuffer created handle=%p", reinterpret_cast<void*>(offscreenFramebuffer));
 
@@ -654,13 +653,13 @@ int main(int argc, char** argv)
         passBegin.renderPass = renderPass;
         passBegin.framebuffer = offscreenFramebuffer;
         passBegin.renderArea.offset = {0, 0};
-        passBegin.renderArea.extent = extent;
+        passBegin.renderArea.extent = renderExtent;
         passBegin.clearValueCount = 1;
         passBegin.pClearValues = &clear;
         Log("[FRAME %u] before vkCmdBeginRenderPass", frame);
         vkCmdBeginRenderPass(commandBuffer, &passBegin, VK_SUBPASS_CONTENTS_INLINE);
-        VkViewport viewport{0.0f, 0.0f, (float)extent.width, (float)extent.height, 0.0f, 1.0f};
-        VkRect2D scissor{{0, 0}, extent};
+        VkViewport viewport{0.0f, 0.0f, (float)renderExtent.width, (float)renderExtent.height, 0.0f, 1.0f};
+        VkRect2D scissor{{0, 0}, renderExtent};
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
@@ -683,10 +682,21 @@ int main(int argc, char** argv)
         vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
                              1, &toTransfer);
+        // Clear the acquired VI image, then center the 256x256 upstream target.
+        VkClearColorValue background{};
+        background.float32[0] = 0.015f;
+        background.float32[1] = 0.020f;
+        background.float32[2] = 0.060f;
+        background.float32[3] = 1.0f;
+        vkCmdClearColorImage(commandBuffer, swapchainImages[imageIndex],
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &background, 1,
+                             &toTransfer.subresourceRange);
         VkImageCopy copyRegion{};
         copyRegion.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copyRegion.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-        copyRegion.extent = { extent.width, extent.height, 1 };
+        copyRegion.dstOffset = { (int32_t)((extent.width - renderExtent.width) / 2),
+                                 (int32_t)((extent.height - renderExtent.height) / 2), 0 };
+        copyRegion.extent = { renderExtent.width, renderExtent.height, 1 };
         vkCmdCopyImage(commandBuffer, offscreenImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                        1, &copyRegion);
