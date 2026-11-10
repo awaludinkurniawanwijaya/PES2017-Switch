@@ -229,5 +229,5 @@ Percobaan pertama setelah isolasi gagal sebelum kompilasi dimulai karena ekspans
 - Jika pembuatan/enumerasi swapchain baru gagal, handle lama atau hasil enumerasi parsial dapat tertinggal dan terlihat oleh jalur diagnostik/presenter yang memeriksa daftar image.
 - `presenter.cpp` kini mengosongkan `g.images` tepat setelah swapchain lama dihancurkan, dan juga membersihkannya pada kegagalan enumerasi image swapchain baru.
 - Perubahan source commit: `e69b540f6db57a1eda41782b975619ddf6d6d216`.
-- Validasi CI BO2 SDK dan compile gate runtime sedang berjalan pada run [42866248741](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42866248741). Belum dihitung lulus sampai job selesai.
+- Validasi CI BO2 SDK pada run [42866248741](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42866248741) selesai **success**; workflow compile gate terkait juga lulus. NRO probe yang dihasilkan memiliki SHA-256 sama dengan probe tahap 2 sebelumnya, sehingga tidak mewakili perubahan runtime probe dan tidak perlu diuji ulang.
 - Ini memperbaiki konsistensi ownership handle WSI saat resize/recreate. Belum mengubah status arsitektur monolitik dan bukan bukti present atau rendering pada Switch fisik.
