@@ -523,3 +523,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - `pipeline::Shutdown()` previously returned immediately when no logical Pipeline device had been adopted. A Presenter can successfully create a Device and then fail during later WSI bring-up before Pipeline adopts it; the logical Device is subsequently destroyed by Presenter, but Pipeline's earlier capability snapshot remained cached.
 - The no-device shutdown path now clears device-fault dispatch state, borrowed handle copies and all physical-device snapshots/capabilities through `ResetDeviceSnapshot()`. The normal shutdown path now reuses the same reset helper.
 - CI validation pending.
+
+### Presenter uses Device as its only logical-handle authority (2026-11-11)
+
+- Removed the duplicate raw `VkDevice` field from Presenter state. All device operations now resolve the handle through `deviceOwner` (`DeviceHandle()`), and the Device object's lifetime is the sole authority for logical-device destruction.
+- Pipeline receives the same owner object through `BorrowedContext`; no raw logical-device tuple is separately cached in Presenter state. Physical device and queue metadata remain transitional fields pending their next consolidation.
+- A mechanical replacement briefly touched the `deviceOwner` identifier; it was corrected before the validated follow-up commit. CI validation pending.
