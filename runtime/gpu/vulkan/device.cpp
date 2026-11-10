@@ -18,6 +18,7 @@ bool vk::device::Device::Complete() const { return false; }
 const char* vk::device::Device::Name() const { return "none"; }
 bool vk::device::Device::GetMemoryProperties(void*, size_t) const { return false; }
 bool vk::device::Device::GetDeviceProperties(void*, size_t) const { return false; }
+bool vk::device::Device::GetDriverProperties(void*, size_t) const { return false; }
 bool vk::device::Device::GetPhysicalDeviceFeatures(void*, size_t) const { return false; }
 bool vk::device::Device::DepthStencilResolveSampleZero() const { return false; }
 bool vk::device::Device::PreciseOcclusionQueries() const { return false; }
@@ -60,6 +61,8 @@ struct vk::device::Device::Impl
     bool astcSampled = false;
     std::string name = "none";
     VkPhysicalDeviceProperties deviceProperties{};
+    VkPhysicalDeviceDriverProperties driverProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES };
+    bool driverPropertiesReady = false;
     VkPhysicalDeviceMemoryProperties memoryProperties{};
     bool memoryPropertiesReady = false;
     bool devicePropertiesReady = false;
@@ -159,6 +162,14 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     impl->deviceProperties = physicalProperties;
     impl->devicePropertiesReady = true;
     impl->name = physicalProperties.deviceName;
+    if (physicalProperties.apiVersion >= VK_API_VERSION_1_2 ||
+        hasExtension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
+    {
+        VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+        properties2.pNext = &impl->driverProperties;
+        vkGetPhysicalDeviceProperties2(physical, &properties2);
+        impl->driverPropertiesReady = true;
+    }
     vkGetPhysicalDeviceMemoryProperties(physical, &impl->memoryProperties);
     impl->memoryPropertiesReady = true;
     if (physicalProperties.apiVersion >= VK_API_VERSION_1_2 ||
@@ -562,6 +573,11 @@ bool vk::device::Device::GetDeviceProperties(void* p, size_t n) const
 {
     if (!impl_ || !p || n != sizeof(VkPhysicalDeviceProperties) || !impl_->devicePropertiesReady) return false;
     std::memcpy(p, &impl_->deviceProperties, sizeof(impl_->deviceProperties)); return true;
+}
+bool vk::device::Device::GetDriverProperties(void* p, size_t n) const
+{
+    if (!impl_ || !p || n != sizeof(VkPhysicalDeviceDriverProperties) || !impl_->driverPropertiesReady) return false;
+    std::memcpy(p, &impl_->driverProperties, sizeof(impl_->driverProperties)); return true;
 }
 bool vk::device::Device::GetPhysicalDeviceFeatures(void* p, size_t n) const
 {

@@ -28,6 +28,7 @@ namespace vk::device
 
         bool GetMemoryProperties(void* properties, size_t size) const;
         bool GetDeviceProperties(void* properties, size_t size) const;
+        bool GetDriverProperties(void* properties, size_t size) const;
         bool GetPhysicalDeviceFeatures(void* features, size_t size) const;
         bool DepthStencilResolveSampleZero() const;
         bool PreciseOcclusionQueries() const;

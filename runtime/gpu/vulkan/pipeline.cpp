@@ -495,12 +495,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
     if (report::On())
     {
         VkPhysicalDeviceDriverProperties driver{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES };
-        if (props.apiVersion >= VK_API_VERSION_1_2)
-        {
-            VkPhysicalDeviceProperties2 more{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-            more.pNext = &driver;
-            vkGetPhysicalDeviceProperties2(g.physical, &more);
-        }
+        g.deviceContext->GetDriverProperties(&driver, sizeof(driver));
         LOGI("report: graphics %s (%04X:%04X), driver %s %s (%08X), Vulkan %u.%u.%u", props.deviceName,
              props.vendorID, props.deviceID, driver.driverName, driver.driverInfo, props.driverVersion,
              VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
