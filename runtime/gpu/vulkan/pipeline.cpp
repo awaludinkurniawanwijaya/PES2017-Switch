@@ -81,11 +81,9 @@ namespace
 
     struct State
     {
-        // Owned only when this file brought the device up itself; when the presenter
-        // supplies one, teardown leaves it alone.
-        bool ownsDevice = false;
-        std::unique_ptr<vk::instance::Instance> ownedInstance;
-        std::unique_ptr<vk::device::Device> ownedDevice;
+        // Owns a headless Provider context only; Presenter contexts are borrowed.
+        bool ownsContext = false;
+        std::unique_ptr<vk::provider::Context> ownedProvider;
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice physical = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
@@ -650,42 +648,27 @@ namespace
     {
         if (!OpenVulkan()) { LOGW("pipeline: no Vulkan library"); return false; }
 
-        VkInstance instance = VK_NULL_HANDLE;
-        if (!vk::provider::CreateHeadlessInstance(instance)) return false;
-        g.ownedInstance = vk::instance::Instance::Adopt(instance);
-        if (!g.ownedInstance)
-        {
-            vk::provider::DestroyInstance(instance);
-            return false;
-        }
-        g.instance = static_cast<VkInstance>(g.ownedInstance->Handle());
+        g.ownedProvider = vk::provider::Context::Create(true);
+        if (!g.ownedProvider) return false;
         auto abandon = []() {
-            g.ownedDevice.reset();
-            g.ownedInstance.reset();
+            g.ownedProvider.reset();
             g.instance = VK_NULL_HANDLE;
+            g.device = VK_NULL_HANDLE;
+            g.queue = VK_NULL_HANDLE;
+            g.family = 0;
+            g.ownsContext = false;
             ResetDeviceSnapshot();
             return false;
         };
-
-        uint32_t family = 0;
-        if (!vk::provider::PickGraphicsDevice(g.instance, g.physical, family))
+        if (!g.ownedProvider->SelectHeadlessDevice() ||
+            !g.ownedProvider->CreateLogicalDevice(nullptr, 0))
             return abandon();
-
-        void* device = nullptr;
-        void* queue = nullptr;
-        if (!vk::pipeline::CreateDevice(g.physical, family, nullptr, 0, &device, &queue))
-            return abandon();
-        g.ownedDevice = vk::device::Device::Adopt(g.physical, device, queue, family);
-        if (!g.ownedDevice)
-        {
-            VkDevice orphan = static_cast<VkDevice>(device);
-            vk::provider::DestroyLogicalDevice(orphan);
-            return abandon();
-        }
-        g.device = static_cast<VkDevice>(g.ownedDevice->Logical());
-        g.queue = static_cast<VkQueue>(g.ownedDevice->Queue());
-        g.family = g.ownedDevice->QueueFamily();
-        g.ownsDevice = true;
+        g.instance = g.ownedProvider->InstanceHandle();
+        g.physical = g.ownedProvider->PhysicalHandle();
+        g.device = g.ownedProvider->LogicalHandle();
+        g.queue = g.ownedProvider->QueueHandle();
+        g.family = g.ownedProvider->QueueFamily();
+        g.ownsContext = true;
         return true;
     }
 
@@ -972,7 +955,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
         g.physical = static_cast<VkPhysicalDevice>(borrowedContext->device->Physical());
         g.queue = static_cast<VkQueue>(borrowedContext->device->Queue());
         g.family = borrowedContext->device->QueueFamily();
-        g.ownsDevice = false;
+        g.ownsContext = false;
     }
     else if (!BringUpHeadless())
     {
@@ -1043,12 +1026,11 @@ void vk::pipeline::Shutdown()
         // adopted its borrowed context. Clear metadata from that attempt.
         g_faultInfo.store(nullptr);
         g_faultDevice.store(VK_NULL_HANDLE);
-        g.ownedDevice.reset();
-        g.ownedInstance.reset();
+        g.ownedProvider.reset();
         g.instance = VK_NULL_HANDLE;
         g.queue = VK_NULL_HANDLE;
         g.family = 0;
-        g.ownsDevice = false;
+        g.ownsContext = false;
         ResetDeviceSnapshot();
         return;
     }
@@ -1064,10 +1046,9 @@ void vk::pipeline::Shutdown()
         if (set) { vkDestroyDescriptorSetLayout(g.device, set, nullptr); set = VK_NULL_HANDLE; }
     g.cache = VK_NULL_HANDLE;
     g.layout = VK_NULL_HANDLE;
-    if (g.ownsDevice)
+    if (g.ownsContext)
     {
-        g.ownedDevice.reset();
-        g.ownedInstance.reset();
+        g.ownedProvider.reset();
     }
     // Pipeline keeps only a borrowed copy of Presenter-owned handles. Clear
     // those copies too: after Shutdown no accessor may expose a dead/stale
@@ -1077,7 +1058,7 @@ void vk::pipeline::Shutdown()
     ResetDeviceSnapshot();
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
-    g.ownsDevice = false;
+    g.ownsContext = false;
 }
 
 bool vk::pipeline::Ready() { return g.device != VK_NULL_HANDLE; }
