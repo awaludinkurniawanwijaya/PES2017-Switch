@@ -3,23 +3,6 @@ name: Legacy NXVK backup smoke (manual only)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - work/switch-libnx-platform
-    paths:
-      - ".github/workflows/switch-nvk-spike.yml"
-      - "runtime/gpu/vulkan/loader.cpp"
-      - "runtime/gpu/vulkan/loader.h"
-      - "runtime/gpu/vulkan/vulkan_functions.inc"
-      - "runtime/gpu/vulkan/presenter.cpp"
-      - "switch/smoke/pes_loader_smoke.cpp"
-      - "switch/smoke/pes-loader/Makefile"
-      - "switch/smoke/build-pes-loader-smoke.sh"
-      - "switch/smoke/patch-nxvk-copy-trace.py"
-      - "switch/smoke/patch-nxvk-acquire-trace.py"
-      - "CMakeLists.txt"
-      - "third_party/ffmpeg-xenia/CMakeLists.txt"
-      - "cmake/switch-toolchain.cmake"
 
 permissions:
   contents: read
