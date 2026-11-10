@@ -340,3 +340,9 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 
 - After releasing Pipeline-owned cache/layout resources, `pipeline::Shutdown` now clears all cached Vulkan context handles and queue-family state regardless of ownership. It still calls Provider destruction only for a Pipeline-owned headless context; a borrowed Presenter device/instance remain owned by Presenter.
 - This prevents `Instance`, `PhysicalDevice`, `Queue`, `QueueFamily` and related accessors from returning stale borrowed handles after Pipeline shutdown, without changing the BO2-inspired ownership boundary.
+
+
+### B2.6j — Provider logical-device boundary validation (2026-11-11)
+
+- Hardened `provider::CreateLogicalDevice` as a reusable low-level boundary: rejects null physical devices, malformed `VkDeviceCreateInfo`, out-of-range or queue-less family indices, and create-info records that do not request the queue family that Provider will retrieve. Outputs remain null on all validation failures.
+- Validation is intentionally layered: Pipeline validates its renderer-facing arguments and negotiated queue request; Provider independently verifies the Vulkan object-creation contract before invoking the driver.

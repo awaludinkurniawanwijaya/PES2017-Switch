@@ -426,6 +426,45 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
 {
     device = VK_NULL_HANDLE;
     queue = VK_NULL_HANDLE;
+    if (!physical || info.sType != VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO ||
+        !info.queueCreateInfoCount || !info.pQueueCreateInfos)
+    {
+        LOGW("vulkan: invalid Provider logical-device creation info");
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
+    if (queueFamily >= familyCount)
+    {
+        LOGW("vulkan: Provider queue family %u is outside the device's %u families",
+             queueFamily, familyCount);
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    std::vector<VkQueueFamilyProperties> familyProperties(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, familyProperties.data());
+    if (queueFamily >= familyCount || !familyProperties[queueFamily].queueCount)
+    {
+        LOGW("vulkan: Provider queue family %u has no queues", queueFamily);
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    bool familyRequested = false;
+    for (uint32_t i = 0; i < info.queueCreateInfoCount; ++i)
+    {
+        const VkDeviceQueueCreateInfo& requested = info.pQueueCreateInfos[i];
+        if (requested.queueFamilyIndex == queueFamily && requested.queueCount)
+        {
+            familyRequested = true;
+            break;
+        }
+    }
+    if (!familyRequested)
+    {
+        LOGW("vulkan: Provider device create info does not request queue family %u", queueFamily);
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
     const VkResult result = vkCreateDevice(physical, &info, nullptr, &device);
     if (result != VK_SUCCESS) return result;
 #if defined(PES17_VULKAN_DYNAMIC)
