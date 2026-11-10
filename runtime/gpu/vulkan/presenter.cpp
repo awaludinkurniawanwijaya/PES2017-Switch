@@ -1218,7 +1218,7 @@ namespace
             return false;
         }
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
-            !PickDevice() || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
         return true;
@@ -1242,7 +1242,7 @@ namespace
             LOGW("vulkan: no surface (%s)", SDL_GetError());
             return false;
         }
-        if (!PickDevice() || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         SDL_ShowWindow(g.window);
         SDL_RaiseWindow(g.window);
