@@ -24,7 +24,7 @@ endif()
 
 # Android and Switch provide native window/input/audio backends, so SDL is
 # disabled for either target regardless of a stale cache value.
-option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and NXVK" OFF)
+option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and BO2-style Vulkan architecture" OFF)
 if(ANDROID AND PES17_SWITCH)
     message(FATAL_ERROR "PES17_SWITCH cannot be combined with Android")
 endif()
@@ -210,7 +210,7 @@ if(PES17_SWITCH)
         -ffunction-sections -fdata-sections -pthread)
     target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(NXVK REQUIRED nxvk)
+    pkg_check_modules(SWITCH_VULKAN_DRIVER REQUIRED nxvk)
     target_link_directories(pes17 PRIVATE
         "$ENV{DEVKITPRO}/portlibs/switch/lib"
         "$ENV{DEVKITPRO}/libnx/lib")
@@ -356,9 +356,9 @@ elseif(ANDROID)
     set(Vulkan_FOUND TRUE)
     set(Vulkan_LIBRARY "loaded at run time")
 elseif(PES17_SWITCH)
-    # Vulkan entry points are resolved from the statically linked NXVK ICD.
+    # Vulkan entry points are resolved through the isolated Switch driver adapter.
     set(Vulkan_FOUND TRUE)
-    set(Vulkan_LIBRARY "NXVK static ICD")
+    set(Vulkan_LIBRARY "statically linked Switch NVK driver")
 else()
     find_package(Vulkan)
 endif()
