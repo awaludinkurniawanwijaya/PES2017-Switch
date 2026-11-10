@@ -1000,10 +1000,7 @@ void vk::pipeline::Shutdown()
     g.layout = VK_NULL_HANDLE;
     if (g.ownsDevice)
     {
-vkDestroyDevice(g.device, nullptr);
-#if defined(PES17_VULKAN_DYNAMIC)
-        vk::loader::ForgetDevice();
-#endif
+vk::provider::DestroyLogicalDevice(g.device);
         if (g.instance) vkDestroyInstance(g.instance, nullptr);
         g.instance = VK_NULL_HANDLE;
     }
