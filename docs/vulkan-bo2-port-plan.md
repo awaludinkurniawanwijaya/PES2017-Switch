@@ -172,3 +172,12 @@ The probe source prints the GIPA/API-version result before the HOME prompt. Pres
 - Probe source now checks public GIPA, optional API version query, `vkCreateInstance`, `vkEnumeratePhysicalDevices`, and first GPU properties/name. It prints explicit PASS/FAIL diagnostics before the HOME exit prompt.
 - Physical Switch result for this extended probe: not yet reported. The prior report applies only to the earlier probe build and must not be reused as evidence for this extended test.
 - Full PES runtime integration, logical-device creation, surface/swapchain, presentation, triangle, and game rendering remain unverified.
+
+
+## B2.4 — Correct instance dispatch and runtime compile gate (2026-11-10)
+
+Source review found that `loader.cpp::LoadInstance` still used a direct `vkGetInstanceProcAddr(...)` call for both instance- and device-dispatch symbol lookup even though this build defines `VK_NO_PROTOTYPES` and stores the driver entrypoint in `vkGetInstanceProcAddrFn`. Both lookups now call the stored GIPA pointer. This keeps dispatch on the adapter-provided static Mesa entrypoint and avoids an undeclared/direct loader symbol.
+
+The BO2 SDK workflow now compiles every `runtime/gpu/vulkan/*.cpp` translation unit for the Switch target against the same pinned Mesa Vulkan headers and devkitPro/libnx headers before building the standalone GIPA/instance/physical-device probe. This is deliberately a **compile-only runtime gate**: it checks PES Vulkan source compatibility with the Switch SDK, but does not link the complete PES executable or prove runtime behavior.
+
+Important build constraint discovered during inspection: this repository checkout does not contain `pes/default.xex` or generated `ppc/*.cpp`. The top-level CMake project intentionally refuses to configure without the user's private game input and matching recompiled PPC output. Therefore this CI step does not pretend to build the complete PES NRO; it isolates and compiles the full Vulkan runtime translation-unit set. Full executable link and physical-device tests remain separate checkpoints.
