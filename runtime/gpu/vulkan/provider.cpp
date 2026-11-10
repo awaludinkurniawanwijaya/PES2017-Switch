@@ -435,7 +435,7 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
 
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
-    if (queueFamily >= familyCount)
+    if (!familyCount || queueFamily >= familyCount)
     {
         LOGW("vulkan: Provider queue family %u is outside the device's %u families",
              queueFamily, familyCount);
@@ -453,11 +453,40 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
     for (uint32_t i = 0; i < info.queueCreateInfoCount; ++i)
     {
         const VkDeviceQueueCreateInfo& requested = info.pQueueCreateInfos[i];
-        if (requested.queueFamilyIndex == queueFamily && requested.queueCount)
+        if (requested.sType != VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO ||
+            !requested.queueCount || !requested.pQueuePriorities ||
+            requested.queueFamilyIndex >= familyCount)
         {
-            familyRequested = true;
-            break;
+            LOGW("vulkan: Provider received an invalid queue-create record at index %u", i);
+            return VK_ERROR_INITIALIZATION_FAILED;
         }
+        if (requested.queueCount > familyProperties[requested.queueFamilyIndex].queueCount)
+        {
+            LOGW("vulkan: Provider queue-create record %u requests %u queues from family %u, which exposes %u",
+                 i, requested.queueCount, requested.queueFamilyIndex,
+                 familyProperties[requested.queueFamilyIndex].queueCount);
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        for (uint32_t q = 0; q < requested.queueCount; ++q)
+        {
+            const float priority = requested.pQueuePriorities[q];
+            if (!(priority >= 0.0f && priority <= 1.0f))
+            {
+                LOGW("vulkan: Provider queue priority %u in record %u is outside [0, 1]", q, i);
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+        }
+        for (uint32_t previous = 0; previous < i; ++previous)
+        {
+            if (info.pQueueCreateInfos[previous].queueFamilyIndex == requested.queueFamilyIndex)
+            {
+                LOGW("vulkan: Provider queue family %u is requested more than once",
+                     requested.queueFamilyIndex);
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+        }
+        if (requested.queueFamilyIndex == queueFamily)
+            familyRequested = true;
     }
     if (!familyRequested)
     {

@@ -346,3 +346,10 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 
 - Hardened `provider::CreateLogicalDevice` as a reusable low-level boundary: rejects null physical devices, malformed `VkDeviceCreateInfo`, out-of-range or queue-less family indices, and create-info records that do not request the queue family that Provider will retrieve. Outputs remain null on all validation failures.
 - Validation is intentionally layered: Pipeline validates its renderer-facing arguments and negotiated queue request; Provider independently verifies the Vulkan object-creation contract before invoking the driver.
+
+
+### B2.6k — Provider queue-create record validation (2026-11-11)
+
+- Provider now validates the complete `VkDeviceQueueCreateInfo` array before calling the driver: record `sType`, nonzero count, non-null priorities, valid family index, per-family queue capacity, finite-by-range priority values (NaN also fails the range predicate), no duplicate family records, and inclusion of the queue family whose queue is retrieved.
+- This complements the earlier selected-family check and makes the low-level Provider boundary independently safe for callers other than the current Pipeline.
+- No renderer feature policy or WSI policy moved. The next BO2-inspired Device milestone remains a coherent extraction of physical-device properties, feature/extension negotiation, queue-family state and device dispatch—not a superficial wrapper.

@@ -374,3 +374,10 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 
 - `provider::CreateLogicalDevice` now independently validates its physical-device handle, create-info shape, requested queue-family index, available queue count, and that the create-info actually requests that family before calling the driver. Pipeline still validates its renderer-facing request, while Provider enforces its own low-level boundary instead of relying on one caller's checks.
 - This keeps the BO2-style separation intact: Provider owns Vulkan object creation/dispatch lifetime; Pipeline owns feature and extension policy; Presenter owns WSI policy.
+
+
+### Provider queue-create record validation (2026-11-11)
+
+- Extended the Provider boundary audit beyond the selected queue family: every requested queue-create record must have the correct structure type, nonzero queue count, a priority array, an in-range family index, and a queue count no greater than that family's reported capacity.
+- Each requested priority is checked against Vulkan's `[0, 1]` range, duplicate queue-family records are rejected, and the family whose queue Provider returns must actually be included in the create info. Invalid requests fail before `vkCreateDevice`, with output handles left null.
+- This is input-contract hardening only. It does not change selected GPU policy, queue priority fallback, feature negotiation, or Presenter ownership. BO2 `VulkanDevice` capability extraction remains a separate future milestone.
