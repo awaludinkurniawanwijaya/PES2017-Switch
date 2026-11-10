@@ -516,3 +516,9 @@ Presenter State no longer caches duplicate raw `VkDevice`, `VkPhysicalDevice`, `
 Implementation commits: `bbe3cf62aa74f55668ffc9290d2791fea3b6f57e` (logical handle migration), `ab00bdd45e3c0e42ebbfc8856a44e405e78cb9c7` (metadata accessors), and `97632d08aee9598e7abaf90eb0954a8d42969d71` (clear selected adapter at teardown). CI validation pending.
 
 **B2.22 validation completed:** CTest and the Switch BO2 Mesa SDK probe passed for `97632d08aee9598e7abaf90eb0954a8d42969d71`. The SDK probe compiled 26 Vulkan runtime TUs, with `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private PPC output. Diagnostic NRO artifact `13799734628`, ZIP SHA256 `f3ab3850f520cb08e64442e2b6fe266212e2fd8a95ea90d32c8db88f907729f5`. This is not full-game linking or actual scene rendering.
+
+### B2.23 — RAII Instance ownership for Presenter path (2026-11-11)
+
+Added `vk::instance::Instance` as a non-copyable RAII owner for `VkInstance`, with destruction delegated to Provider's instance-dispatch cleanup. Presenter State now holds `std::unique_ptr<Instance>` instead of a raw `VkInstance`; all surface creation/destruction and physical-device selection resolve through `InstanceHandle()`. `BorrowedContext` carries `const Instance*` and `const Device*`, and Pipeline only borrows their handles. Teardown order is surface → Device → Instance. The headless Pipeline path still creates and owns its raw instance internally; it will be migrated separately so both paths converge on one Provider-owned lifecycle.
+
+Validation for B2.23 is pending.
