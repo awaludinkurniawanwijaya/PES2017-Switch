@@ -181,16 +181,7 @@ bool vk::renderer::Initialise()
         g.sampleCounts = properties.limits.framebufferColorSampleCounts &
                          properties.limits.framebufferDepthSampleCounts &
                          properties.limits.framebufferStencilSampleCounts;
-        VkPhysicalDeviceDepthStencilResolveProperties resolve{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
-        VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-        properties2.pNext = &resolve;
-        const bool modern = properties.apiVersion >= VK_API_VERSION_1_2;
-        if (modern || vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
-            vkGetPhysicalDeviceProperties2(g.physical, &properties2);
-        const bool depthResolve =
-            (modern || vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME)) &&
-            (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
+        const bool depthResolve = vk::pipeline::DepthStencilResolveSampleZero();
         g.msaa = !off && depthResolve && (g.sampleCounts & ~VkSampleCountFlags(VK_SAMPLE_COUNT_1_BIT));
         if (g.msaa)
             LOGI("renderer: multisampling on: the device draws at%s%s%s%s, the title's 2x and 4x"
@@ -203,8 +194,7 @@ bool vk::renderer::Initialise()
                  env::Text("PES17_MSAA") ? " (PES17_MSAA)" : "");
         else
             LOGI("renderer: multisampling off (%s): the title's 2x and 4x surfaces are drawn at 1x",
-                 off ? "PES17_NO_MSAA" : !modern && !vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME) ? "the device is Vulkan 1.1 without the depth resolve extension"
-                     : !depthResolve ? "no first-sample depth resolve"
+                 off ? "PES17_NO_MSAA" : !depthResolve ? "no first-sample depth resolve"
                      : "the device draws at 1x only");
     }
 

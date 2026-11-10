@@ -17,6 +17,7 @@ void vk::pipeline::FlushCache() {}
 bool vk::pipeline::Ready() { return false; }
 bool vk::pipeline::GetMemoryProperties(void*, size_t) { return false; }
 bool vk::pipeline::GetDeviceProperties(void*, size_t) { return false; }
+bool vk::pipeline::DepthStencilResolveSampleZero() { return false; }
 const char* vk::pipeline::DeviceName() { return "none"; }
 void*    vk::pipeline::Instance() { return nullptr; }
 void*    vk::pipeline::Device() { return nullptr; }
@@ -111,6 +112,7 @@ namespace
         VkPhysicalDeviceMemoryProperties memoryProperties{};
         bool memoryPropertiesReady = false;
         bool devicePropertiesReady = false;
+        bool depthStencilResolveSampleZero = false;
         std::string lastError;
     };
     State g;
@@ -920,6 +922,18 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
     g.memoryPropertiesReady = true;
     g.deviceProperties = props;
     g.devicePropertiesReady = true;
+    g.depthStencilResolveSampleZero = false;
+    if (props.apiVersion >= VK_API_VERSION_1_2 ||
+        vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
+    {
+        VkPhysicalDeviceDepthStencilResolveProperties resolve{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
+        VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+        properties2.pNext = &resolve;
+        vkGetPhysicalDeviceProperties2(g.physical, &properties2);
+        g.depthStencilResolveSampleZero =
+            (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) != 0;
+    }
     g.name = props.deviceName;
     // A bug report is read against the driver's known faults.
     if (report::On())
@@ -973,6 +987,7 @@ void vk::pipeline::Shutdown()
     g.memoryPropertiesReady = false;
     g.deviceProperties = {};
     g.devicePropertiesReady = false;
+    g.depthStencilResolveSampleZero = false;
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
@@ -993,6 +1008,7 @@ bool vk::pipeline::GetDeviceProperties(void* properties, size_t size)
     std::memcpy(properties, &g.deviceProperties, sizeof(g.deviceProperties));
     return true;
 }
+bool vk::pipeline::DepthStencilResolveSampleZero() { return g.depthStencilResolveSampleZero; }
 const char* vk::pipeline::DeviceName() { return g.name.c_str(); }
 void*    vk::pipeline::Instance() { return g.instance; }
 void*    vk::pipeline::Device() { return g.device; }

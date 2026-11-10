@@ -23,6 +23,7 @@ namespace vk::pipeline
     // `properties` must point to VkPhysicalDeviceMemoryProperties and `size` must match.
     bool GetMemoryProperties(void* properties, size_t size);
     bool GetDeviceProperties(void* properties, size_t size);
+    bool DepthStencilResolveSampleZero();
 
     // Creates the device the runtime draws on, with the features and extensions
     // the renderer depends on, plus the caller's own (the swapchain, for the
