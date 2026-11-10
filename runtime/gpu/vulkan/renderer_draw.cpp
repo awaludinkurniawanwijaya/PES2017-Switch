@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <bit>
-#include "../../kernel/kernel.h"
 #include "../../guest_memory.h"
 #include <cmath>
 #include <unistd.h>
