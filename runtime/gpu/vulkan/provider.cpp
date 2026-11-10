@@ -1,5 +1,4 @@
 #include "provider.h"
-#include "pipeline.h"
 
 #include "../../log.h"
 #include "loader.h"
@@ -571,18 +570,9 @@ bool vk::provider::Context::CreateLogicalDevice(const char* const* extraExtensio
 {
     if (!instance_ || device_ || !selectedPhysical_ || (extraCount && !extraExtensions))
         return false;
-    void* logical = nullptr;
-    void* queue = nullptr;
-    if (!vk::pipeline::CreateDevice(selectedPhysical_, selectedQueueFamily_,
-                                    extraExtensions, extraCount, &logical, &queue, features))
-        return false;
-    device_ = vk::device::Device::Adopt(selectedPhysical_, logical, queue, selectedQueueFamily_);
-    if (!device_)
-    {
-        VkDevice orphan = static_cast<VkDevice>(logical);
-        DestroyLogicalDevice(orphan);
-        return false;
-    }
+    device_ = vk::device::Device::Create(selectedPhysical_, selectedQueueFamily_,
+                                         extraExtensions, extraCount, features);
+    if (!device_) return false;
     selectedPhysical_ = VK_NULL_HANDLE;
     selectedQueueFamily_ = 0;
     return true;
