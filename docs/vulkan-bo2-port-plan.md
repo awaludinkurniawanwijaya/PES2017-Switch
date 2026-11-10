@@ -603,3 +603,8 @@ Validation for B2.29 is pending.
 - `renderer_draw.cpp` now relies on its existing narrow `kernel/physical.h` include. `renderer_resolve.cpp` now includes `kernel/physical.h` and declares only the `DumpYieldStacks(int)` diagnostic function it calls. This keeps Vulkan renderer compilation independent of generated PPC declarations without fabricating a replacement header.
 - Updated `.github/workflows/switch-vulkan-bo2-sdk.yml` to compile every `runtime/gpu/vulkan/*.cpp` translation unit instead of skipping draw/resolve. This improves the SDK gate to cover the complete Vulkan renderer source set; it still does not link the full game, whose other runtime/game translation units require private XenonRecomp output.
 - The updated full-renderer SDK probe is queued for workflow run [42926468631](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926468631). Earlier intermediate commits are also being checked by CI; only the final full-renderer run is the acceptance result for this change. Hardware rendering and gameplay remain unvalidated.
+
+
+### Repository cleanup — empty renderer backup (2026-11-11)
+
+- Removed `runtime/gpu/vulkan/.!28804!renderer_resolve.cpp`, a zero-byte hidden editor/merge artifact. It contained no source, was not a CMake or shell-glob build input, and had no value as a rollback copy; the real `renderer_resolve.cpp` remains intact.
