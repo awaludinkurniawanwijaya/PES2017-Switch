@@ -400,3 +400,11 @@ The first extraction slice was checked against the current call sites rather tha
 - All observed memory-property queries feed the same `vk::util::FindMemory` selection algorithm; subsystem-specific required flags remain different (for example device-local versus host-visible/coherent) and must not be collapsed into one hard-coded allocation choice.
 
 **Next implementation boundary:** introduce one device-context-owned immutable memory-properties snapshot, initialized only after a physical device is selected and cleared with that context. Migrate consumers to read the snapshot while leaving allocation policy, resource ownership and failure cleanup in their current subsystems. Check standalone tool targets (`translate-shader` and `upload-texture`) before making the API mandatory, because they compile selected Vulkan sources independently. This checkpoint records analysis only; it does not claim the Device object or metadata migration has been implemented.
+
+### B2.9 — BO2 Device memory-type model comparison (2026-11-11)
+
+The pinned BO2 implementation (`sdk/include/rex/ui/vulkan/device.h` and `sdk/src/ui/vulkan/vulkan_device.cpp`) was inspected directly. Its Device object does not make every allocator repeatedly inspect a raw physical-device structure: it derives a compact `MemoryTypes` capability set once, exposing bitmasks for device-local, host-visible, host-coherent and host-cached types. Allocation still intersects the resource's Vulkan `memoryTypeBits` with the desired capability mask.
+
+PES should follow that ownership pattern without copying BO2's complete class or allocator policy. The device context should own the immutable memory-property data and may expose derived masks; resource subsystems retain their own required flags, resource lifetime and failure handling. The `memoryTypeBits` intersection is mandatory and must not be lost during migration.
+
+This is a source-grounded design refinement only. The next code change should implement the shared device-scoped metadata API and migrate one consumer group at a time, while retaining standalone tool build compatibility.
