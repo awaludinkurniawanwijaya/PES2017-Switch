@@ -1216,8 +1216,8 @@ namespace
     }
 
 #ifdef __SWITCH__
-    // Horizon VI owns the default applet window. Keep this minimal and use the
-    // same window/surface contract as the upstream NXVK smoke test.
+    // Horizon VI owns the default applet window. Match BO2's Switch Vulkan
+    // presenter contract and keep the platform surface boundary here.
     bool CreateSurfaceForWindow()
     {
 #if defined(PES17_VULKAN_DYNAMIC)
@@ -1347,12 +1347,10 @@ namespace
         android::SetStatus((std::string("Running on ") + vk::pipeline::DeviceName()).c_str());
         return true;
 #elif defined(__SWITCH__)
-        // NXVK deliberately requires an explicit opt-in because this NVK
-        // port is experimental and not Vulkan-conformant. Keep the opt-in
-        // local to the Switch process and make the risk visible in logs.
-        if (setenv("NVK_I_WANT_A_BROKEN_VULKAN_DRIVER", "1", 1) != 0)
-            LOGW("vulkan: could not set NXVK experimental-driver opt-in");
-        LOGW("vulkan: using experimental NXVK/NVK; compatibility and stability are not guaranteed");
+        // The active path is the BO2 Mesa Horizon SDK, statically linked
+        // through the public Vulkan entry point. Do not apply NXVK-specific
+        // environment flags or describe this as the old NXVK route.
+        LOGI("vulkan: starting the BO2 Mesa Horizon SDK path on Switch");
         std::string error;
         if (!vk::loader::Opened() && !vk::loader::Open(error))
         {
