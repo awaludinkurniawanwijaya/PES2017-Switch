@@ -68,19 +68,12 @@ jobs:
               test -x "${compiler}-gcc"
               test -x "${compiler}-g++"
               common="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -ffunction-sections -fdata-sections"
-              # Compile every Vulkan TU that is independent of generated PPC output.
-              # renderer_draw.cpp and renderer_resolve.cpp include runtime/kernel/kernel.h,
-              # which requires ppc/ppc_recomp_shared.h generated from private
-              # default.xex. Defer only those TUs; never fabricate a substitute PPC header.
+              # Compile every Vulkan runtime TU. Draw/resolve use the narrow
+              # physical-memory and yield-diagnostic declarations they need;
+              # they must not include kernel.h, which pulls in private PPC output.
               mkdir -p /tmp/pes-vulkan-runtime-objects
-              deferred=0
               compiled=0
               for source in runtime/gpu/vulkan/*.cpp; do
-                if [[ "$source" == "runtime/gpu/vulkan/renderer_draw.cpp" || "$source" == "runtime/gpu/vulkan/renderer_resolve.cpp" ]]; then
-                  echo "DEFERRED (private XenonRecomp output required): $source"
-                  deferred=$((deferred + 1))
-                  continue
-                fi
                 object="/tmp/pes-vulkan-runtime-objects/$(basename "${source%.cpp}").o"
                 echo "Compile PES Vulkan runtime: $source"
                 "${compiler}-g++" -std=c++20 -O2 $common -pthread \
@@ -95,7 +88,7 @@ jobs:
                   -c "$source" -o "$object"
                 compiled=$((compiled + 1))
               done
-              echo "PARTIAL PASS: $compiled Vulkan runtime TUs compiled; $deferred TUs deferred for private PPC output"
+              echo "PASS: compiled all $compiled PES Vulkan runtime translation units, including draw and resolve"
               "${compiler}-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
               "${compiler}-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
                 -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
