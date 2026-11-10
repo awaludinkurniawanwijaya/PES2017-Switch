@@ -475,3 +475,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Bound the cached physical properties/features to the exact `VkPhysicalDevice` handle they describe. A new CreateDevice attempt invalidates the prior association; Pipeline::Initialise refreshes the snapshots if a directly borrowed context supplies a different physical device.
 - Shutdown clears the association. This prevents cached physical-device data from leaking across device changes while retaining the fast reuse path for the same selected physical device.
 - B2.14 validation is still running; this follow-up is pending CI as well.
+
+**Validation completed for B2.14:** CTest and the BO2 Mesa Switch SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This is not full-game link or scene-rendering validation.
