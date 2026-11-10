@@ -294,7 +294,7 @@ namespace
         // extensions behind both.
         if (app.apiVersion < VK_API_VERSION_1_1)
         {
-            if (vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties") &&
+            if (vkGetInstanceProcAddrFn(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties") &&
                 InstanceHasExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
                 extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
             if (InstanceHasExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
@@ -339,7 +339,7 @@ namespace
         if (validating)
         {
             auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-                vkGetInstanceProcAddr(g.instance, "vkCreateDebugUtilsMessengerEXT"));
+                vkGetInstanceProcAddrFn(g.instance, "vkCreateDebugUtilsMessengerEXT"));
             if (!create || create(g.instance, &messenger, nullptr, &g_messenger) != VK_SUCCESS)
                 LOGW("vulkan: validation asked for, but its messages cannot be caught");
             else
