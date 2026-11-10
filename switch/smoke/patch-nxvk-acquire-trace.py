@@ -27,8 +27,8 @@ replace_once(
 '''   mutexLock(&nw->mutex);
 
    if (nw->slots_configured == 0)''',
-'''   fprintf(stderr, "[ACQUIRE-TRACE] dequeue_nonblocking enter timeout=%llu slots=%u cur_slot=%d event_active=%u\\n",
-           (unsigned long long)timeout_ns, nw->slots_configured, nw->cur_slot, eventActive(&nw->event)); fflush(stderr);
+'''   fprintf(stderr, "[ACQUIRE-TRACE] dequeue_nonblocking enter timeout=%llu slots=%llu cur_slot=%d event_active=%u\\n",
+           (unsigned long long)timeout_ns, (unsigned long long)nw->slots_configured, nw->cur_slot, eventActive(&nw->event)); fflush(stderr);
    mutexLock(&nw->mutex);
 
    if (nw->slots_configured == 0)''', "nonblocking entry")
