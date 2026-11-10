@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <utility>
 
 #if defined(PES17_USE_SDL)
 #include <SDL3/SDL.h>
