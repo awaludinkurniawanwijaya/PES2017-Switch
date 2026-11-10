@@ -321,3 +321,26 @@ bool vk::provider::CreatePresentationDevice(VkPhysicalDevice physical, uint32_t 
     queue = static_cast<VkQueue>(createdQueue);
     return true;
 }
+bool vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDeviceCreateInfo& info,
+                                        uint32_t queueFamily, VkDevice& device, VkQueue& queue)
+{
+    device = VK_NULL_HANDLE;
+    queue = VK_NULL_HANDLE;
+    const VkResult result = vkCreateDevice(physical, &info, nullptr, &device);
+    if (result != VK_SUCCESS) return false;
+#if defined(PES17_VULKAN_DYNAMIC)
+    // Device entrypoints become valid only after the driver-created device exists.
+    vk::loader::LoadDevice(device);
+#endif
+    vkGetDeviceQueue(device, queueFamily, 0, &queue);
+    if (!queue)
+    {
+#if defined(PES17_VULKAN_DYNAMIC)
+        vk::loader::ForgetDevice();
+#endif
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
+}
