@@ -595,3 +595,11 @@ Validation for B2.29 is pending.
 - Empty/null required names and names not advertised by the selected physical device fail early with a specific diagnostic. This covers the Presenter/WSI required extension contract (including `VK_KHR_swapchain`) and avoids relying on a generic driver `VK_ERROR_EXTENSION_NOT_PRESENT` after device creation is attempted.
 - The check reuses the existing one-time inventory; it does not add another driver enumeration.
 - Validation is running for code commit `6348024af52e3a565aefb4aa16aa325594953e8d`: CTest run [42926195764](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926195764) and Switch BO2 Mesa SDK compile/link probe [42926188345](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926188345). Hardware runtime and gameplay are not validated by these jobs.
+
+
+### B2.33 — Remove private PPC-header dependency from Vulkan draw/resolve TUs (2026-11-11)
+
+- Audited the only reason the Switch SDK workflow deferred `renderer_draw.cpp` and `renderer_resolve.cpp`: both included broad `runtime/kernel/kernel.h`, which imports `ppc_recomp_shared.h` even though these renderer files only need `kernel::FromPhysical` and (resolve only) `kernel::DumpYieldStacks`.
+- `renderer_draw.cpp` now relies on its existing narrow `kernel/physical.h` include. `renderer_resolve.cpp` now includes `kernel/physical.h` and declares only the `DumpYieldStacks(int)` diagnostic function it calls. This keeps Vulkan renderer compilation independent of generated PPC declarations without fabricating a replacement header.
+- Updated `.github/workflows/switch-vulkan-bo2-sdk.yml` to compile every `runtime/gpu/vulkan/*.cpp` translation unit instead of skipping draw/resolve. This improves the SDK gate to cover the complete Vulkan renderer source set; it still does not link the full game, whose other runtime/game translation units require private XenonRecomp output.
+- The updated full-renderer SDK probe is queued for workflow run [42926468631](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926468631). Earlier intermediate commits are also being checked by CI; only the final full-renderer run is the acceptance result for this change. Hardware rendering and gameplay remain unvalidated.
