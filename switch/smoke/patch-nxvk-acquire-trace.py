@@ -4,7 +4,7 @@ from pathlib import Path
 p = Path("nxvk/src/vulkan/wsi/wsi_switch.c")
 s = p.read_text()
 if '#include <stdio.h>' not in s:
-    anchor = '#include "wsi_switch.h"'
+    anchor = '#include "wsi_common_private.h"'
     if anchor not in s:
         raise SystemExit("Missing wsi_switch include anchor")
     s = s.replace(anchor, anchor + '\n#include <stdio.h>', 1)
