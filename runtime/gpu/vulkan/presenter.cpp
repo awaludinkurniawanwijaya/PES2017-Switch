@@ -77,7 +77,7 @@ namespace
 
     VkDevice DeviceHandle()
     {
-        return DeviceHandle()Owner ? static_cast<VkDevice>(DeviceHandle()Owner->Logical()) : VK_NULL_HANDLE;
+        return g.deviceOwner ? static_cast<VkDevice>(g.deviceOwner->Logical()) : VK_NULL_HANDLE;
     }
 
     struct Frame
@@ -293,15 +293,15 @@ namespace
             g.presentWait = false;
             return false;
         }
-        DeviceHandle()Owner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
-        if (!DeviceHandle()Owner)
+        g.deviceOwner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
+        if (!g.deviceOwner)
         {
             VkDevice orphan = static_cast<VkDevice>(createdDevice);
             vk::provider::DestroyLogicalDevice(orphan);
             g.presentWait = false;
             return false;
         }
-        g.queue = static_cast<VkQueue>(DeviceHandle()Owner->Queue());
+        g.queue = static_cast<VkQueue>(g.deviceOwner->Queue());
 #if defined(PES17_VULKAN_DYNAMIC)
         // Swapchain commands are mandatory for every dynamic window-system
         // presenter, not only Horizon. Static-link builds resolve these symbols
@@ -1069,7 +1069,7 @@ namespace
             }
             if (g.pool) vkDestroyCommandPool(DeviceHandle(), g.pool, nullptr);
             if (g.swapchain) vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
-            DeviceHandle()Owner.reset();
+            g.deviceOwner.reset();
             g.pool = VK_NULL_HANDLE;
             g.swapchain = VK_NULL_HANDLE;
             for (auto& frame : g.frames) frame = Frame{};
@@ -1181,7 +1181,7 @@ namespace
 
     bool InitialisePipelineOnPresenterDevice()
     {
-        const vk::device::BorrowedContext context{ g.instance, DeviceHandle()Owner.get() };
+        const vk::device::BorrowedContext context{ g.instance, g.deviceOwner.get() };
         return vk::pipeline::Initialise(&context);
     }
 
