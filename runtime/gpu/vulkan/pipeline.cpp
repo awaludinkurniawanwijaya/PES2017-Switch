@@ -16,6 +16,7 @@ void vk::pipeline::SaveCacheThrottled() {}
 void vk::pipeline::FlushCache() {}
 bool vk::pipeline::Ready() { return false; }
 bool vk::pipeline::GetMemoryProperties(void*, size_t) { return false; }
+bool vk::pipeline::GetDeviceProperties(void*, size_t) { return false; }
 const char* vk::pipeline::DeviceName() { return "none"; }
 void*    vk::pipeline::Instance() { return nullptr; }
 void*    vk::pipeline::Device() { return nullptr; }
@@ -109,6 +110,7 @@ namespace
         VkPhysicalDeviceProperties deviceProperties{};
         VkPhysicalDeviceMemoryProperties memoryProperties{};
         bool memoryPropertiesReady = false;
+        bool devicePropertiesReady = false;
         std::string lastError;
     };
     State g;
@@ -917,6 +919,7 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
     vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memoryProperties);
     g.memoryPropertiesReady = true;
     g.deviceProperties = props;
+    g.devicePropertiesReady = true;
     g.name = props.deviceName;
     // A bug report is read against the driver's known faults.
     if (report::On())
@@ -968,6 +971,8 @@ void vk::pipeline::Shutdown()
     g.physical = VK_NULL_HANDLE;
     g.memoryProperties = {};
     g.memoryPropertiesReady = false;
+    g.deviceProperties = {};
+    g.devicePropertiesReady = false;
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
@@ -979,6 +984,13 @@ bool vk::pipeline::GetMemoryProperties(void* properties, size_t size)
     if (!properties || size != sizeof(VkPhysicalDeviceMemoryProperties) || !g.memoryPropertiesReady)
         return false;
     std::memcpy(properties, &g.memoryProperties, sizeof(g.memoryProperties));
+    return true;
+}
+bool vk::pipeline::GetDeviceProperties(void* properties, size_t size)
+{
+    if (!properties || size != sizeof(VkPhysicalDeviceProperties) || !g.devicePropertiesReady)
+        return false;
+    std::memcpy(properties, &g.deviceProperties, sizeof(g.deviceProperties));
     return true;
 }
 const char* vk::pipeline::DeviceName() { return g.name.c_str(); }

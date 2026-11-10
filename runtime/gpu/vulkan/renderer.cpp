@@ -144,7 +144,8 @@ bool vk::renderer::Initialise()
     if (!vk::pipeline::GetMemoryProperties(&g.memory, sizeof(g.memory)))
     { LOGW("renderer: device memory properties are unavailable"); RollbackInitialise(); return false; }
     VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(g.physical, &properties);
+    if (!vk::pipeline::GetDeviceProperties(&properties, sizeof(properties)))
+    { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
     g.uniformAlignment = uint32_t(std::max<VkDeviceSize>(
         std::max(properties.limits.minUniformBufferOffsetAlignment,
                  properties.limits.minStorageBufferOffsetAlignment), 256));
@@ -212,7 +213,8 @@ bool vk::renderer::Initialise()
     // is lowered until that fits an image of the device's.
     {
         VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(g.physical, &properties);
+        if (!vk::pipeline::GetDeviceProperties(&properties, sizeof(properties)))
+        { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
         const uint32_t asked = uint32_t(std::clamp<uint64_t>(env::Number("PES17_SCALE", 1), 1, 3));
         g.scale = asked;
         while (g.scale > 1 && 4096 * g.scale > properties.limits.maxImageDimension2D) g.scale--;
@@ -339,7 +341,8 @@ bool vk::renderer::Initialise()
     // GPU timing of the render passes (files/gpu_timing).
     {
         VkPhysicalDeviceProperties props{};
-        vkGetPhysicalDeviceProperties(g.physical, &props);
+        if (!vk::pipeline::GetDeviceProperties(&props, sizeof(props)))
+        { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
         g.timestampPeriod = props.limits.timestampPeriod;
         bool wanted = env::Flag("PES17_GPU_TIMING");
 #ifdef PES17_ANDROID

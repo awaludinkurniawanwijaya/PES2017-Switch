@@ -1130,7 +1130,8 @@ bool vk::textures::Initialise()
     if (!vk::pipeline::GetMemoryProperties(&g.memory, sizeof(g.memory)))
     { LOGW("textures: device memory properties are unavailable"); g.device = VK_NULL_HANDLE; return false; }
     VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(g.physical, &properties);
+    if (!vk::pipeline::GetDeviceProperties(&properties, sizeof(properties)))
+    { LOGW("textures: device properties are unavailable"); g.device = VK_NULL_HANDLE; return false; }
     g.maxDimension = properties.limits.maxImageDimension2D;
     // Half the device's own memory, within reason, unless PES17_TEXTURE_BUDGET_MB
     // says otherwise.

@@ -1542,7 +1542,8 @@ std::string vk::PresenterReport()
     if (g.physical)
     {
         VkPhysicalDeviceProperties props{};
-        vkGetPhysicalDeviceProperties(g.physical, &props);
+        if (!vk::pipeline::GetDeviceProperties(&props, sizeof(props)))
+        { add("device: physical-device properties unavailable\\n"); return out; }
         add("device: %s, type %u, vendor 0x%x, device 0x%x\n", props.deviceName, unsigned(props.deviceType),
             props.vendorID, props.deviceID);
         add("vulkan: API %u.%u.%u, driver version 0x%x (%u.%u.%u)\n", VK_API_VERSION_MAJOR(props.apiVersion),
