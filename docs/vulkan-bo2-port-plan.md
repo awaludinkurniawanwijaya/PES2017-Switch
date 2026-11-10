@@ -390,3 +390,13 @@ PES ownership map before extraction:
 | Renderer capability getters and opaque handles | `pipeline.h` | Typed Device/context accessors; Pipeline keeps renderer resource/layout/cache ownership |
 
 Implementation sequence: centralize immutable physical-device and memory properties first; then migrate capability negotiation together with enabled extension/feature state; then transfer device/dispatch lifetime; finally replace consumers and remove duplicate queries. Each step must retain the current two ownership modes (Pipeline-owned headless context vs Presenter-borrowed WSI context), and teardown must continue to stop presentation, destroy renderer/texture resources, then destroy the device and instance. No object extraction has been implemented at this checkpoint; this design is grounded in current call sites and prevents an unsafe bulk move.
+
+### B2.8 — Device metadata consumer audit (2026-11-11)
+
+The first extraction slice was checked against the current call sites rather than inferred from filenames:
+
+- `pipeline.cpp::State` already caches `VkPhysicalDeviceProperties`, while Renderer and Texture Cache repeat physical-device property queries for limits/device metadata.
+- Renderer and Texture Cache each store a local `VkPhysicalDeviceMemoryProperties` snapshot. Frame Generation, Upscaler and Presenter additionally query memory properties during image creation/resizing.
+- All observed memory-property queries feed the same `vk::util::FindMemory` selection algorithm; subsystem-specific required flags remain different (for example device-local versus host-visible/coherent) and must not be collapsed into one hard-coded allocation choice.
+
+**Next implementation boundary:** introduce one device-context-owned immutable memory-properties snapshot, initialized only after a physical device is selected and cleared with that context. Migrate consumers to read the snapshot while leaving allocation policy, resource ownership and failure cleanup in their current subsystems. Check standalone tool targets (`translate-shader` and `upload-texture`) before making the API mandatory, because they compile selected Vulkan sources independently. This checkpoint records analysis only; it does not claim the Device object or metadata migration has been implemented.
