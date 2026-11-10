@@ -508,3 +508,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Added `runtime/gpu/vulkan/device.h` with a non-owning `vk::device::BorrowedContext` that groups instance, physical/logical device, queue and queue-family handles and validates the complete tuple.
 - Pipeline's initialization API now accepts either no context (owned headless bring-up) or one explicit borrowed context (Presenter path). The three Presenter platform branches use one helper to pass the same contract.
 - This is an ownership-boundary step, not yet the BO2 `Device` owner: Presenter still owns the window-path Vulkan handles and Pipeline only borrows them. CI validation pending.
+
+### Device logical-handle ownership object (2026-11-11)
+
+- Added `vk::device::Device`, a non-copyable RAII owner for the logical `VkDevice` plus its selected physical-device, queue and family identity. `VkInstance` remains owned by Provider/Presenter for this transition.
+- Presenter adopts the logical device returned by the existing capability negotiation path into this object; its teardown now releases the Device object after Pipeline/renderer resources have been shut down. Pipeline borrows a `Device` object through `BorrowedContext`, rather than receiving five positional raw handles.
+- Added `device.cpp` to the runtime glob and both explicit offline-tool source lists. The full capability negotiation still lives in Pipeline and will be migrated in a later step. CI validation pending.
