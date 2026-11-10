@@ -116,6 +116,7 @@ namespace
         bool depthStencilResolveSampleZero = false;
         VkPhysicalDeviceFeatures physicalFeatures{};
         bool physicalFeaturesReady = false;
+        VkPhysicalDevice snapshotPhysical = VK_NULL_HANDLE;
         std::string lastError;
     };
     State g;
@@ -217,6 +218,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     }
     g.devicePropertiesReady = false;
     g.physicalFeaturesReady = false;
+    g.snapshotPhysical = VK_NULL_HANDLE;
     VkPhysicalDevice physical = static_cast<VkPhysicalDevice>(physicalDevice);
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
@@ -298,6 +300,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     vkGetPhysicalDeviceFeatures(physical, &supported);
     g.physicalFeatures = supported;
     g.physicalFeaturesReady = true;
+    g.snapshotPhysical = physical;
     VkPhysicalDeviceFeatures enabled{};
     // Robust buffer access, because the vertex fetch path reads the frame arena
     // at indices the guest's own data computes. One index past the end is,
@@ -924,6 +927,11 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
         return false;
     }
 
+    if (g.snapshotPhysical != g.physical)
+    {
+        g.devicePropertiesReady = false;
+        g.physicalFeaturesReady = false;
+    }
     if (!g.devicePropertiesReady)
     {
         vkGetPhysicalDeviceProperties(g.physical, &g.deviceProperties);
@@ -937,6 +945,7 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
         vkGetPhysicalDeviceFeatures(g.physical, &g.physicalFeatures);
         g.physicalFeaturesReady = true;
     }
+    g.snapshotPhysical = g.physical;
     g.deviceProperties = props;
     g.devicePropertiesReady = true;
     g.depthStencilResolveSampleZero = false;
@@ -1007,6 +1016,7 @@ void vk::pipeline::Shutdown()
     g.depthStencilResolveSampleZero = false;
     g.physicalFeatures = {};
     g.physicalFeaturesReady = false;
+    g.snapshotPhysical = VK_NULL_HANDLE;
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
