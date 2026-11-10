@@ -194,6 +194,10 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
                                 const char* const* extraExtensions, uint32_t extraCount,
                                 void** deviceOut, void** queueOut, void* features)
 {
+    // A previous device may have exposed VK_EXT_device_fault. Never carry its
+    // function pointer or handle into a new creation attempt.
+    g_faultInfo.store(nullptr);
+    g_faultDevice.store(VK_NULL_HANDLE);
     if (deviceOut) *deviceOut = nullptr;
     if (queueOut) *queueOut = nullptr;
     if (!physicalDevice || !deviceOut || !queueOut || (extraCount && !extraExtensions))
@@ -935,6 +939,11 @@ void vk::pipeline::Shutdown()
 {
     if (!g.device) return;
     SaveCache();
+    // The fault callback is device-scoped. Clear it before an owned device is
+    // destroyed, and also when the device is borrowed and will be destroyed by
+    // the presenter after pipeline resources have gone away.
+    g_faultInfo.store(nullptr);
+    g_faultDevice.store(VK_NULL_HANDLE);
     if (g.cache) vkDestroyPipelineCache(g.device, g.cache, nullptr);
     if (g.layout) vkDestroyPipelineLayout(g.device, g.layout, nullptr);
     for (VkDescriptorSetLayout& set : g.sets)
