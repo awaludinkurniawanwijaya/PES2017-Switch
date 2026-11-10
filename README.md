@@ -223,13 +223,13 @@ Workflow yang berada di repositori:
 |---|---|---|
 | `main.yml` | Test otomatis di GitHub Actions | Menguji test suite, bukan menjalankan game |
 | `switch-nro.yml` | Build dan verifikasi bootstrap libnx NRO | Membuktikan bootstrap dapat dikompilasi dan dipaketkan |
-| `switch-nvk-spike.yml` | Workflow historis NXVK (cadangan) | Tidak menjadi workflow validasi backend aktif |\n| `switch-vulkan-bo2.yml` (direncanakan) | Build backend Vulkan native bergaya BO2 | Akan menjadi workflow aktif setelah implementasi dan konfigurasi tersedia |
+| `switch-nvk-spike.yml` | Workflow historis NXVK, manual-only | Tidak berjalan otomatis dan bukan workflow validasi backend aktif |\n| `switch-vulkan-bo2.yml` (direncanakan) | Build backend Vulkan native bergaya BO2 | Akan menjadi workflow aktif setelah implementasi dan konfigurasi tersedia |
 
 Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang tersedia.
 
 Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX
+## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX\n\nAudit awal BO2 telah dilakukan dan dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Ini adalah hasil audit, bukan klaim bahwa provider/presenter sudah dipindahkan.
 
 **Keputusan arsitektur:** pengembangan NXVK dihentikan. Tidak ada lagi pekerjaan fitur, debugging, atau penambahan integrasi pada jalur NXVK. Source, konfigurasi, workflow, dan artefak NXVK yang sudah ada wajib dipertahankan sebagai cadangan yang terpisah. Jangan menghapusnya dahulu.
 
@@ -239,10 +239,10 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 
 | Jalur | Kebijakan | Status |
 |---|---|---|
-| NXVK | Bekukan; jangan hapus, jangan tambah fitur, jangan jadikan dependency backend aktif. Simpan source/config/workflow dan histori uji sebagai cadangan. | **Dihentikan — cadangan saja** |
-| Vulkan native (BO2-style) | Satu-satunya jalur grafis aktif. Implementasi dan validasi dilakukan terpisah dari NXVK. | **Arah kerja aktif — tahap audit dan port arsitektur** |
+| NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake masih memiliki tautan NXVK sampai backend pengganti siap. | **Dihentikan — cadangan saja** |
+| Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. Audit BO2 selesai; provider/device/presenter PES belum diimplementasikan. | **Arah kerja aktif — audit selesai, port belum dimulai** |
 
-Branch cadangan NXVK: [backup/nxvk-before-vulkan-bo2-direction](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/tree/backup/nxvk-before-vulkan-bo2-direction).
+Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).\n\nBranch cadangan NXVK: [backup/nxvk-before-vulkan-bo2-direction](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/tree/backup/nxvk-before-vulkan-bo2-direction).
 
 ### 8.2 Referensi BO2 yang wajib dianalisis
 
@@ -262,8 +262,8 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 
 | Tahap | Pekerjaan | Kriteria lulus | Status |
 |---|---|---|---|
-| V0. Audit BO2 dan baseline PES | Audit lima file BO2 di atas; petakan entrypoint, instance/device dispatch, VI surface, swapchain, queue, synchronization, resource, dan presenter ke struktur proyek PES. Catat perbedaan dan dependensi. | Dokumen mapping file/fungsi BO2 → modul PES; tidak ada asumsi tanpa pemeriksaan source. | **Aktif — pertama dikerjakan** |
-| V1. Isolasi NXVK | Tandai NXVK sebagai legacy/backup; pisahkan opsi build, dependency, include/link path, workflow, dan source agar backend Vulkan baru tidak bergantung padanya. Jangan hapus source NXVK. | Build target Vulkan baru tidak mengunduh, mengompilasi, atau menautkan NXVK. Build cadangan lama tetap dapat direproduksi secara terpisah sejauh dependensinya tersedia. | **Belum dikerjakan** |
+| V0. Audit BO2 dan baseline PES | Audit lima file BO2 di atas; petakan entrypoint, instance/device dispatch, VI surface, swapchain, queue, synchronization, resource, dan presenter ke struktur proyek PES. Catat perbedaan dan dependensi. | Dokumen mapping file/fungsi BO2 → modul PES; tidak ada asumsi tanpa pemeriksaan source. | **Selesai — `docs/vulkan-bo2-port-plan.md`** |
+| V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Bekukan workflow otomatis; pertahankan source dan build cadangan. Pisahkan build aktif setelah backend pengganti siap. | Workflow NXVK hanya manual; build backend Vulkan baru tidak mengunduh, mengompilasi, atau menautkan NXVK. | **Sebagian — workflow manual-only; CMake masih menautkan NXVK** |
 | V2. Vulkan native foundation | Implementasikan loader/entrypoint Vulkan dan instance/device dispatch mengikuti pola BO2; buat pemilihan physical device, queue family, logical device, dan lifecycle cleanup. | Log menunjukkan seluruh tahap init sukses pada NRO native tanpa memanggil kode NXVK. | **Belum dikerjakan** |
 | V3. VI surface dan swapchain | Port pola BO2 untuk VI surface, capability/format, swapchain, image enumeration, acquire, synchronization, submit, dan present. | Frame dipresentasikan stabil pada Switch fisik; log per tahap lengkap. | **Belum dikerjakan** |
 | V4. Render target dan framebuffer | Implementasikan image/memory/view, render pass atau dynamic rendering sesuai dukungan, framebuffer, dan resource lifetime dengan dispatch yang benar. | Pembuatan resource dan framebuffer sukses; tidak ada null dispatch atau crash. | **Belum dikerjakan** |
