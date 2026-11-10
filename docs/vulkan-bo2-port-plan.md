@@ -608,3 +608,10 @@ Validation for B2.29 is pending.
 ### Repository cleanup — empty renderer backup (2026-11-11)
 
 - Removed `runtime/gpu/vulkan/.!28804!renderer_resolve.cpp`, a zero-byte hidden editor/merge artifact. It contained no source, was not a CMake or shell-glob build input, and had no value as a rollback copy; the real `renderer_resolve.cpp` remains intact.
+
+
+### B2.34 — Keep Android-only resolve diagnostics out of Switch builds (2026-11-11)
+
+- The first all-renderer SDK compile proved `renderer_draw.cpp` compiled, then exposed two `android::GetPaths()` references in `renderer_resolve.cpp` that sat outside the existing `PES17_ANDROID` guard. They were only intended to read Android app debug-toggle files, but were also compiled for Switch.
+- Wrapped those two file-based diagnostic toggles in `#ifdef PES17_ANDROID`; non-Android targets explicitly keep both toggles false. This preserves Android behavior and removes the accidental Android dependency from Switch/desktop builds.
+- CTest already passed for the workflow/source/doc checkpoints before this final guard. The refreshed full-renderer Switch SDK compile/link probe is queued as [run 42926688441](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926688441). Acceptance remains pending until this run finishes.
