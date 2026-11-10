@@ -229,81 +229,47 @@ Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang 
 
 Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-## 8. Tahapan proyek dan posisi saat ini
+## 8. Tahapan pengerjaan berdasarkan pola pembanding
 
-Tahapan berikut adalah urutan milestone yang dipakai untuk mengendalikan pekerjaan. Status mengacu pada bukti yang benar-benar tersedia; keberhasilan build tidak otomatis berarti runtime atau game sudah berjalan.
+Urutan kerja diperbarui dengan membaca implementasi nyata **BO2-360-NX** (terutama `sdk/src/ui/vulkan/vulkan_presenter.cpp`) dan membandingkannya dengan jalur PES-owned yang sedang dibangun. Referensi dipakai untuk memahami urutan lifecycle renderer—inisialisasi platform/window, Vulkan device dan swapchain, strategi acquire/synchronization, resource, pipeline, draw, lalu present—bukan untuk menyalin seluruh renderer BO2 atau menganggap kodenya langsung kompatibel dengan PES.
 
-| Tahap | Sasaran | Status |
-|---|---|---|
-| 0. Validasi sumber dan recompilation | Mengunci identitas XEX, menghasilkan PPC, mencatat gap analisis | **Sebagian selesai** — XEX tervalidasi dan 1.413 file PPC pernah dihasilkan lokal; 44 word dan 2 dispatch masih perlu ditinjau |
-| 1. Fondasi Switch | Bootstrap libnx, toolchain, input/platform probe, test mandiri CI | **Build CI berhasil** — bukan game dan belum membuktikan runtime game |
-| 2. Kelayakan Vulkan/NVK + VI + GPU clear | Memastikan loader, device, surface, swapchain, acquire, submit, present, dan operasi tulis GPU | **Lulus untuk smoke dasar** — NRO #147 menyelesaikan 120/120 frame dan perubahan warna terlihat pada Switch fisik; smoke graphics pipeline/draw PES-owned kini diimplementasikan dan sedang divalidasi CI |
-| 3. Keputusan arsitektur renderer | Menilai jalur NXVK yang ada dan referensi renderer Vulkan dari proyek BO2-360-NX; menentukan apakah tetap, diadaptasi, atau diganti | **Belum diputuskan** — referensi BO2 adalah bahan evaluasi, bukan bukti kompatibilitas/performa PES dan bukan migrasi yang sudah disetujui |
-| 4. Integrasi backend grafis PES | Menghubungkan resource, shader, texture, render target, command submission, sinkronisasi, dan present dengan backend terpilih | **Belum dimulai sebagai integrasi game yang tervalidasi** — prasyarat GPU clear visual lulus; graphics pipeline/draw smoke menjadi pekerjaan aktif sebelum integrasi renderer game |
-| 5. Runtime kompatibilitas dan loader | Menuntaskan kernel imports prioritas, guest memory/thread, dynamic library/symbol loading, filesystem dan startup path | **Belum lengkap** — 69 kernel import masih tercatat sebagai stub; jumlah dan prioritas perlu diperbarui berdasarkan audit terbaru |
-| 6. Audio, input, dan penyimpanan | Menghubungkan XMA/audio, controller, save dan data persisten | **Belum tervalidasi sebagai satu alur game** |
-| 7. Integrasi full-game | Menggabungkan runtime, backend, dan PPC privat yang cocok menjadi satu full-game NRO | **Belum tersedia** — bootstrap NRO bukan full-game NRO |
-| 8. Validasi akhir di Switch | Membuktikan boot, menu, pertandingan, audio, kontrol, save, stabilitas dan performa | **Belum dilakukan** — ini satu-satunya tahap yang dapat membuktikan status playable pada perangkat sasaran |
+**Keputusan kerja saat ini:** pertahankan NXVK sebagai jalur driver/feasibility yang sedang diuji. Jangan mengganti renderer atau mengulang tes warna. Gunakan hasil yang sudah terbukti sebagai fondasi, lalu naikkan kompleksitas satu lapis pada satu waktu. Pekerjaan recompilation, kernel compatibility, audio, dan input dapat berjalan paralel, tetapi integrasi full-game menunggu prasyaratnya.
 
-### 8.1 Checkpoint aktif: tahap 2 — swapchain Vulkan/NVK
+| Tahap | Pekerjaan dan urutan teknis | Kriteria lulus | Status |
+|---|---|---|---|
+| 0. Kunci sumber dan hasil recompilation | Validasi identitas XEX; hasilkan PPC; audit instruksi dan jump table; jaga kecocokan manifest dengan executable. | XEX cocok, PPC lengkap untuk target, seluruh gap instruksi/dispatch dijelaskan atau ditangani. | **Sebagian selesai** — XEX tervalidasi, 1.413 file PPC pernah dihasilkan lokal; 44 word dan 2 dispatch masih perlu ditinjau. |
+| 1. Fondasi Horizon/libnx | Pastikan toolchain, NRO, lifecycle applet, filesystem, thread/synchronization, HID dan logging dasar. | Bootstrap berjalan dan probe platform lulus pada CI/hardware sesuai jenis uji. | **Build CI berhasil**; belum merupakan game. |
+| 2. Vulkan device dan VI presentation path | Ikuti urutan presenter pembanding: instance, physical device, queue family, logical device, VI surface, capability/format, swapchain, image enumeration, acquire, submit, present. | Seluruh API penting sukses dan frame benar-benar tampil di Switch fisik. | **Lulus** — VI swapchain PES-owned dan 120/120 acquire-submit-present telah diuji pada perangkat. |
+| 3. Sinkronisasi dan jalur present yang stabil | Verifikasi semaphore/fence lifetime, queue ownership, image layout, present mode dan WSI fallback. Bandingkan strategi acquire BO2, termasuk CPU-wait acquire fence sebagai opsi diagnosis bila ada bukti stall; jangan aktifkan tanpa kebutuhan terukur. | Tidak ada deadlock, reuse semaphore yang prematur, atau frame yang gagal dipresentasikan dalam uji berulang. | **Lulus untuk jalur smoke saat ini** — CPU-copy fallback digunakan; optimasi/ketahanan lanjutan tetap perlu diuji saat beban meningkat. |
+| 4. GPU write/clear yang terlihat | Rekam command buffer, transition image, `vkCmdClearColorImage`, submit, present dan tunggu penyelesaian. | Perubahan pixel terlihat di layar dan log menunjukkan semua frame selesai. | **Lulus** — NRO #147, 120/120 frame; tiga fase warna dikonfirmasi terlihat pengguna. |
+| 5. Graphics pipeline dan primitive draw | Buat swapchain image view, render pass, framebuffer per image, shader module, pipeline layout, graphics pipeline; rekam `vkCmdDraw` dan present. Acuan shader/draw: pola `nvk_tri` dari revisi NXVK yang dipatok. | Segitiga RGB benar-benar terlihat di layar Switch; log pipeline, draw, submit dan present konsisten. | **Implementasi sudah dikomit; CI dan konfirmasi visual fisik masih menunggu. Ini checkpoint aktif.** |
+| 6. Resource grafis dasar | Setelah primitive lulus, tambahkan vertex/index buffer, buffer upload, image/texture, sampler, descriptor, depth/stencil, render target dan lifetime resource secara bertahap. | Setiap jenis resource punya smoke test visual/readback tersendiri dan lulus pada perangkat. | **Belum dimulai.** |
+| 7. Validasi shader dan semantik Xenos | Uji translator Xenos-to-SPIR-V dengan shader PES representatif; validasi konstanta, format, texture sampling, blending, depth, render target dan perilaku pipeline terhadap referensi hasil yang diketahui. | Scene/fixture sintetis dan shader representatif menghasilkan output yang dapat dibandingkan; incompatibility dicatat dan ditangani. | **Belum tervalidasi.** |
+| 8. Integrasi renderer PES | Hubungkan command/resource model Xenos, shader, texture, render target dan synchronization ke backend Vulkan yang telah lulus tahap sebelumnya. | Render test PES-owned memakai aset/fixture legal milik pengguna dan menampilkan geometri/texture yang benar, bukan hanya primitive smoke. | **Belum dimulai sebagai integrasi game yang tervalidasi.** |
+| 9. Runtime kompatibilitas dan loader | Secara paralel, prioritaskan kernel imports berdasarkan jalur startup; selesaikan guest memory, thread/event, dynamic library/symbol loading, filesystem dan startup path. | PPC dapat dimuat dan alur startup guest mencapai entry point tanpa import stub kritis atau kegagalan memory/thread. | **Belum lengkap** — catatan terakhir menyebut 69 kernel import masih stub; perlu audit ulang berdasarkan call graph/startup trace. |
+| 10. Audio, input dan penyimpanan | Integrasikan XMA/audio, pemetaan controller, save/data path dan lifecycle suspend/resume. | Audio, kontrol dan penyimpanan berfungsi bersama pada runtime game, bukan hanya probe terpisah. | **Belum tervalidasi sebagai satu alur game.** |
+| 11. Full-game NRO | Gabungkan PPC yang cocok, loader/runtime, backend grafis, platform, audio/input dan data path; build dengan data game privat lokal. | NRO full-game ter-link dan memuat executable/data yang cocok tanpa placeholder atau translation unit kosong. | **Belum tersedia.** |
+| 12. Validasi gameplay di Switch | Uji boot, menu, pertandingan, rendering, audio, kontrol, save, stabilitas, memory pressure, suspend/resume dan sesi panjang. | Bukti visual dan log menunjukkan gameplay berjalan stabil pada Switch fisik. | **Belum dilakukan; status playable belum tercapai.** |
 
-NRO diagnostik PES memanggil `vkCreateSwapchainKHR` secara nyata, memeriksa hasilnya, mencatat handle, dan mengenumerasi swapchain images. Setelah image diperoleh, smoke test kini juga merekam command buffer dengan image barrier dari `VK_IMAGE_LAYOUT_UNDEFINED` ke `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`, mengirimkannya melalui `vkQueueSubmit` dengan acquire semaphore, memberi sinyal semaphore render-complete, lalu memanggil `vkQueuePresentKHR` dengan semaphore tersebut. Semaphore render-complete dibuat per swapchain image agar tidak digunakan ulang sebelum operasi present mengonsumsinya. Ini memperbaiki urutan sinkronisasi yang sebelumnya belum menguji alur submit/present Vulkan yang benar.
+### 8.1 Pola pembanding yang benar-benar diterapkan
 
-Status CI yang terakhir diperiksa pada 9 November 2026:
-- **Switch NVK feasibility spike #121: berhasil.** Semua langkah job selesai dengan sukses: checkout sumber NXVK yang dipatok, instrumentasi NVK, build toolchain, build library NVK, build smoke NRO, dan upload tiga artefak.
-- Commit proyek yang diuji: `656ba14217254343a4ba66577ff704549db3270d`.
-- Revisi NXVK yang digunakan: `c3abea1efde44027b7e3e20b48eb55beeecd5ab4`.
-- [Lihat GitHub Actions Build #121](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047).
-- Artefak NRO diagnostik tunggal: [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670921124). Arsip artefak berukuran 2.836.635 bytes; berisi `pes_loader_smoke.nro`.
-- Artefak kumpulan smoke NRO dan library: [nxvk-switch-smoke-nros-c3abea1](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670288907). Berisi NRO diagnostik PES, NRO smoke upstream, library NVK/support, metadata pkg-config, header Vulkan, dan lisensi.
-- Artefak log/diagnostik build: [nxvk-switch-build-diagnostics](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42610350047/artifacts/13670372644).
+Dari presenter BO2-360-NX, hal yang relevan untuk alur PES adalah pemisahan tanggung jawab window/VI, swapchain, acquire, command submission, dan present. Ada juga strategi opsional `present_wait_acquire_on_cpu`: acquire menggunakan fence lalu CPU menunggu fence tanpa menahan queue lock, sehingga submit tidak bergantung pada acquire semaphore. Strategi ini disimpan sebagai opsi diagnosis untuk kasus stall yang terbukti, bukan perubahan default tanpa pengukuran.
 
-**Pemeriksaan hasil #121:** log build mengonfirmasi toolchain NXVK selesai, `libnvk.a` dan `libnvk_support.a` dihasilkan, dua NRO smoke upstream dibangun, dan NRO diagnostik PES berhasil di-link. Step summary secara eksplisit menyatakan PES runtime link tidak dijalankan, full-game NRO tidak dibangun, dan tes perangkat Switch fisik belum dilakukan. Peringatan compiler tentang aggregate initializer tidak menggagalkan build.
+Untuk tahap grafis, pola `nvk_tri` NXVK menyediakan contoh konkret shader vertex/fragment, pipeline tanpa vertex buffer, dan draw berbasis `gl_VertexIndex`. Pola tersebut kini diadaptasi pada smoke PES-owned. Kode BO2/NXVK tidak otomatis menjadi backend PES: perbedaan API, resource model Xenos, shader, dan perilaku game tetap harus divalidasi.
 
-**Batas bukti:** status success hanya membuktikan kompilasi dan pengemasan. Kode kini memiliki urutan acquire → command buffer/image layout transition → queue submit → render-complete semaphore → present, tetapi keberhasilan pemanggilan API tersebut pada Horizon/NVK belum terbukti sampai NRO dijalankan di Switch dan log runtime diperiksa. Belum ada bukti full-game boot atau gameplay.
+### 8.2 Checkpoint aktif dan langkah setelahnya
 
-**Pembaruan CI 9 November 2026 (commit `a2c67a77b92aab5aced54e6a6a4f2f91c94330b4`):** perbaikan logging diagnostik menggunakan `va_copy` terpisah untuk output file dan layar agar pemanggilan `vfprintf` tidak menghabiskan argumen sebelum `vprintf`. Tiga workflow pada commit ini berhasil:
-- [Tests](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612820154) — **11/11 CTest lulus**.
-- [Nintendo Switch NRO](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812471) — bootstrap NRO berhasil dibangun dan diunggah; ini bukan full-game NRO.
-- [Switch NVK feasibility spike](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430) — seluruh 11 langkah job berhasil, termasuk build toolchain NXVK, library, dan NRO smoke/diagnostik. Artefak terbaru:
-  - [pes-nxvk-properties2-diagnostic-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671866255) — NRO diagnostik PES untuk pengujian di perangkat.
-  - [nxvk-switch-smoke-nros-c3abea1](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671207722) — NRO smoke NXVK dan library/header.
-  - [nxvk-switch-build-diagnostics](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42612812430/artifacts/13671936084) — log dan metadata build.
+Checkpoint aktif adalah **Tahap 5: visible graphics-pipeline draw**. Source sudah membuat image view, render pass/framebuffer, shader module dan graphics pipeline lalu merekam `vkCmdDraw(3, 1, 0, 0)`. Urutan berikutnya bukan mengulang VI atau color-clear: selesaikan CI build NRO ini, jalankan NRO pada Switch, dan terima hanya jika segitiga RGB terlihat secara nyata serta log membuktikan pipeline/draw/submit/present. Jika gagal, perbaiki penyebab yang ditunjuk log lalu build ulang.
 
-Log job terbaru memastikan file NRO diagnostik PES berhasil di-link dan diunggah. Namun step summary tetap menyatakan PES runtime link tidak dijalankan, full-game NRO tidak dibangun, dan tes fisik masih menunggu. Peringatan compiler terkait initializer Vulkan dan deprecation Node tidak menggagalkan build. Perubahan logging juga belum membuktikan hasil Vulkan runtime; tahap 2 tetap menunggu hasil menjalankan NRO diagnostik di Switch.
+Setelah primitive lulus, lanjut ke resource grafis (Tahap 6), kemudian shader Xenos representatif (Tahap 7), dan integrasi renderer PES (Tahap 8). Pekerjaan runtime/recompiler/audio/input tetap berjalan paralel dengan prioritas berdasarkan dependency startup. Full-game NRO baru dirakit setelah jalur grafis, loader, PPC dan subsistem wajib saling terhubung.
 
-**Hasil pengujian perangkat fisik (log yang diterima 9 November 2026):**
-- NXVK static ICD, `vkCreateInstance`, VI surface, enumerasi GPU/physical device, dan `vkCreateDevice` berhasil.
-- GPU terdeteksi sebagai NVIDIA Tegra X1 (NVK gm20b); surface mengiklankan 3 image, extent 1280×720, format 37, dan FIFO.
-- `vkCreateSwapchainKHR` belum kembali. Trace WSI menunjukkan jalur zero-copy gagal lalu fallback CPU-copy berjalan; pembuatan image, alokasi/map memory, bind image, dan awal perekaman command buffer berhasil.
-- Log berhenti setelah marker `[WSI-FINISH] before blit_image_to_buffer`. Karena itu belum ada bukti swapchain berhasil dibuat, enumerasi swapchain image, queue submit, atau present.
-- `nvk_mesa.log` mencatat `nvk wsi: zero-copy FAILED`; pesan ini sendiri bukan diagnosis akhir karena fallback CPU-copy juga dijalankan.
-- Commit diagnostik berikutnya `77d4b2cbc29eb9c717703da1632e43c09a73cdb7` menambahkan marker sebelum/sesudah setiap dispatch Vulkan dalam helper CPU-copy (`CmdPipelineBarrier` dan `CmdCopyImageToBuffer`) untuk mengisolasi titik berhenti pada pengujian ulang.
-- **Catatan CI instrumentasi (9 November 2026):**
-- Percobaan workflow `42657374423` gagal pada langkah instrumentasi, sebelum kompilasi NXVK, karena pencocokan batas helper CPU-copy memakai pola newline yang keliru.
-- Ini adalah kegagalan skrip diagnostik, bukan kegagalan build NVK atau hasil pengujian Switch.
-- Diperbaiki pada commit `a17cdcbbabff61a50213827d991b8d05c8dfc5a1`: sekarang memakai anchor sumber WSI yang persis dan menambahkan marker sebelum/sesudah kedua barrier serta copy-image-to-buffer.
-- Build ulang dari commit perbaikan diperlukan sebelum NRO diagnostik baru dapat dibagikan.
+### 8.3 Aturan bukti dan efisiensi pengujian
 
-**Status tahap 2: belum lulus; menunggu build diagnostik terbaru dan log pengujian ulang.**
-
-**Kriteria lulus tahap 2:** jalankan `pes_loader_smoke.nro` pada Switch; pastikan log menunjukkan pembuatan swapchain sukses, jumlah dan enumerasi image, submit sukses, present sukses, serta tidak ada error NVK/WSI. Simpan log yang dihasilkan NRO dan kirimkan untuk dianalisis. Jika gagal, gunakan trace WSI/NVK dan marker tahap terakhir untuk mengisolasi operasi yang gagal. Setelah runtime present terbukti, baru lanjut ke integrasi backend grafis PES.
-
-### 8.2 Kebijakan pemilihan renderer
-
-NXVK tetap merupakan jalur feasibility yang sedang diukur, bukan keputusan final. Arsitektur Vulkan pada referensi BO2-360-NX dapat dipelajari untuk desain dan pola integrasi, tetapi tidak boleh diasumsikan langsung kompatibel dengan PES atau otomatis lebih cepat. Vulkan adalah API; implementasi driver Vulkan untuk Switch tetap diperlukan. Tidak ada migrasi permanen sampai hasil perbandingan teknis cukup kuat dan keputusan tersebut disetujui.
-
-### 8.3 Cara mengurangi pengujian perangkat
-
-Maksimalkan CI, code review, pemeriksaan statis, build, dan smoke test yang dapat direproduksi. Gabungkan pemeriksaan hardware yang memang tidak dapat dibuktikan CI ke checkpoint NRO diagnostik yang terencana; hindari NRO uji berulang tanpa pertanyaan teknis baru. Pengujian akhir pada Switch tetap diperlukan untuk membuktikan Horizon runtime, driver, VI/present, dan gameplay. Jangan mengklaim playable sebelum tahap 8 selesai.
-
-### 8.4 Pekerjaan subsistem yang berjalan paralel
-
-- **Recompiler:** telusuri 44 word yang belum ter-decode dan dua dispatch jump table; verifikasi batas fungsi serta target branch.
-- **Kernel/services:** audit 69 import stub, prioritaskan jalur startup, lalu implementasikan dan uji thread, event, synchronization, memory, dan file I/O.
-- **Loader/data:** tuntaskan dynamic library loading dan symbol resolution; pastikan struktur SD, validasi executable, update, save dan data persisten.
-- **Grafis:** setelah checkpoint renderer dipilih, uji shader, texture, render target, depth/stencil, format, synchronization, memory, dan present.
-- **Audio/input:** hubungkan XMA/audio, validasi sample rate/buffer/latency, serta controller selama permainan.
+- Jangan mengulang pengujian yang sudah lulus kecuali ada perubahan kode atau pertanyaan teknis baru.
+- Setiap NRO diagnostik harus menguji satu lapisan baru dan memiliki kriteria lulus visual/log yang eksplisit.
+- CI membuktikan build dan packaging; hanya Switch fisik yang membuktikan perilaku Horizon/NVK dan tampilan layar.
+- Jika kegagalan ditemukan, telusuri marker/log sampai penyebab, perbaiki sumbernya, lalu jalankan ulang CI sebelum meminta pengujian fisik lagi.
+- Jangan menyebut game playable sebelum Tahap 12 lulus.
 
 ## 9. Privasi file game dan aturan artefak
 
