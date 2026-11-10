@@ -183,10 +183,10 @@ bool vk::renderer::Initialise()
         VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
         properties2.pNext = &resolve;
         const bool modern = properties.apiVersion >= VK_API_VERSION_1_2;
-        if (modern || vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
+        if (modern || vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
             vkGetPhysicalDeviceProperties2(g.physical, &properties2);
         const bool depthResolve =
-            (modern || vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME)) &&
+            (modern || vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME)) &&
             (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
         g.msaa = !off && depthResolve && (g.sampleCounts & ~VkSampleCountFlags(VK_SAMPLE_COUNT_1_BIT));
         if (g.msaa)
@@ -200,7 +200,7 @@ bool vk::renderer::Initialise()
                  env::Text("PES17_MSAA") ? " (PES17_MSAA)" : "");
         else
             LOGI("renderer: multisampling off (%s): the title's 2x and 4x surfaces are drawn at 1x",
-                 off ? "PES17_NO_MSAA" : !modern && !vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME) ? "the device is Vulkan 1.1 without the depth resolve extension"
+                 off ? "PES17_NO_MSAA" : !modern && !vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME) ? "the device is Vulkan 1.1 without the depth resolve extension"
                      : !depthResolve ? "no first-sample depth resolve"
                      : "the device draws at 1x only");
     }
