@@ -1194,7 +1194,7 @@ namespace
         {
             LOGI("vulkan: %llu validation messages", (unsigned long long)g_validationMessages.load());
             if (auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                    vkGetInstanceProcAddr(g.instance, "vkDestroyDebugUtilsMessengerEXT")))
+                    vkGetInstanceProcAddrFn(g.instance, "vkDestroyDebugUtilsMessengerEXT")))
                 destroy(g.instance, g_messenger, nullptr);
             g_messenger = VK_NULL_HANDLE;
         }
