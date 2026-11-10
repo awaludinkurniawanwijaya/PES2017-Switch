@@ -19,7 +19,9 @@ cp "$NXVK/switch/smoke/nvk_compat.c" "$ROOT/switch/smoke/pes-loader/compat/nvk_c
 echo "==> Clean prior PES-owned smoke objects"
 make -C "$ROOT/switch/smoke/pes-loader" clean
 
-echo "==> Stage the exact upstream nvk_tri SPIR-V headers used by the reference sample"
+echo "==> Compile the exact upstream nvk_tri GLSL shaders to SPIR-V headers"
+bash "$NXVK/switch/smoke/shaders/gen-shaders.sh"
+echo "==> Stage the generated upstream nvk_tri SPIR-V headers"
 mkdir -p "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders"
 cp "$NXVK/switch/smoke/shaders/tri_vert.h" "$NXVK/switch/smoke/shaders/solid_frag.h" \
   "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders/"
