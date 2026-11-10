@@ -18,6 +18,7 @@ bool vk::pipeline::Ready() { return false; }
 bool vk::pipeline::GetMemoryProperties(void*, size_t) { return false; }
 bool vk::pipeline::GetDeviceProperties(void*, size_t) { return false; }
 bool vk::pipeline::DepthStencilResolveSampleZero() { return false; }
+bool vk::pipeline::GetPhysicalDeviceFeatures(void*, size_t) { return false; }
 const char* vk::pipeline::DeviceName() { return "none"; }
 void*    vk::pipeline::Instance() { return nullptr; }
 void*    vk::pipeline::Device() { return nullptr; }
@@ -113,6 +114,8 @@ namespace
         bool memoryPropertiesReady = false;
         bool devicePropertiesReady = false;
         bool depthStencilResolveSampleZero = false;
+        VkPhysicalDeviceFeatures physicalFeatures{};
+        bool physicalFeaturesReady = false;
         std::string lastError;
     };
     State g;
@@ -920,6 +923,8 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
     vkGetPhysicalDeviceProperties(g.physical, &props);
     vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memoryProperties);
     g.memoryPropertiesReady = true;
+    vkGetPhysicalDeviceFeatures(g.physical, &g.physicalFeatures);
+    g.physicalFeaturesReady = true;
     g.deviceProperties = props;
     g.devicePropertiesReady = true;
     g.depthStencilResolveSampleZero = false;
@@ -988,6 +993,8 @@ void vk::pipeline::Shutdown()
     g.deviceProperties = {};
     g.devicePropertiesReady = false;
     g.depthStencilResolveSampleZero = false;
+    g.physicalFeatures = {};
+    g.physicalFeaturesReady = false;
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
@@ -1009,6 +1016,13 @@ bool vk::pipeline::GetDeviceProperties(void* properties, size_t size)
     return true;
 }
 bool vk::pipeline::DepthStencilResolveSampleZero() { return g.depthStencilResolveSampleZero; }
+bool vk::pipeline::GetPhysicalDeviceFeatures(void* features, size_t size)
+{
+    if (!features || size != sizeof(VkPhysicalDeviceFeatures) || !g.physicalFeaturesReady)
+        return false;
+    std::memcpy(features, &g.physicalFeatures, sizeof(g.physicalFeatures));
+    return true;
+}
 const char* vk::pipeline::DeviceName() { return g.name.c_str(); }
 void*    vk::pipeline::Instance() { return g.instance; }
 void*    vk::pipeline::Device() { return g.device; }

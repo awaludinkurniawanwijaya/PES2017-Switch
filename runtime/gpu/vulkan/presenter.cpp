@@ -1551,7 +1551,8 @@ std::string vk::PresenterReport()
             VK_API_VERSION_MAJOR(props.driverVersion), VK_API_VERSION_MINOR(props.driverVersion),
             VK_API_VERSION_PATCH(props.driverVersion));
         VkPhysicalDeviceFeatures features{};
-        vkGetPhysicalDeviceFeatures(g.physical, &features);
+        if (!vk::pipeline::GetPhysicalDeviceFeatures(&features, sizeof(features)))
+        { add("features: physical-device features unavailable\\n"); return out; }
         add("features: textureCompressionBC %d, ASTC_LDR %d, ETC2 %d, sampleRateShading %d, independentBlend %d\n",
             int(features.textureCompressionBC), int(features.textureCompressionASTC_LDR),
             int(features.textureCompressionETC2), int(features.sampleRateShading), int(features.independentBlend));
