@@ -567,3 +567,4 @@ Validation for B2.29 is pending.
 - Follow-up cleanup removed Pipeline's unused duplicate capability flags and memory/core-feature/depth-resolve snapshots. The remaining physical-properties copy exists only for pipeline-cache identity/reporting; all capability reads are made from Device.
 - Device snapshot cleanup removed a redundant second `vkGetPhysicalDeviceFeatures` query and unused physical-device marker. The supported core feature record is captured once per Device creation.
 - Added an idempotency/identity guard: reinitialization succeeds only for the exact same borrowed Provider Device+Instance or the already-owned headless context. A different active Device context is rejected rather than silently reusing stale Pipeline handles.
+- Device extension inventory is enumerated once at `Device::Create` and reused for optional feature/extension decisions, avoiding repeated full driver extension enumeration during a single device bring-up.
