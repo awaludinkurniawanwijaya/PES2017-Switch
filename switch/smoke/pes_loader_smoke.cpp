@@ -58,12 +58,12 @@ static void Log(const char* fmt, ...)
     va_end(ap);
     const bool traceFrameAcquire = fmt && std::strstr(fmt, "[FRAME %u] after acquire") != nullptr;
     if (traceFrameAcquire && g_log) {
-        fputs("[LOG-TRACE] before consoleUpdate after acquire\\n", g_log);
+        fputs("[LOG-TRACE] before consoleUpdate after acquire\n", g_log);
         fflush(g_log);
     }
     consoleUpdate(nullptr);
     if (traceFrameAcquire && g_log) {
-        fputs("[LOG-TRACE] after consoleUpdate after acquire\\n", g_log);
+        fputs("[LOG-TRACE] after consoleUpdate after acquire\n", g_log);
         fflush(g_log);
     }
 }
