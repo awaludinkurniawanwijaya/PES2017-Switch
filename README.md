@@ -529,3 +529,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Removed the duplicate raw `VkDevice` field from Presenter state. All device operations now resolve the handle through `deviceOwner` (`DeviceHandle()`), and the Device object's lifetime is the sole authority for logical-device destruction.
 - Pipeline receives the same owner object through `BorrowedContext`; no raw logical-device tuple is separately cached in Presenter state. Physical device and queue metadata remain transitional fields pending their next consolidation.
 - A mechanical replacement briefly touched the `deviceOwner` identifier; it was corrected before the validated follow-up commit. CI validation pending.
+
+**B2.21 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `5803a69c6d754b592a83d3735055aea6371ce81e`. The SDK probe compiled 26 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. This is not full PES game-link or scene-rendering validation.
