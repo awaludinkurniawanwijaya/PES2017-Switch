@@ -47,10 +47,14 @@ complete game-data launch path.
   completed VI swapchain creation, 120/120 acquire-submit-present cycles, and
   a three-phase `vkCmdClearColorImage` workload on NVK / Tegra X1. The user
   confirmed the changing color background was visible on the physical display.
-  A PES-owned graphics-pipeline path now adapts the pinned upstream
-  `nvk_tri` shaders and `vkCmdDraw` pattern to the VI swapchain. CI build passed
-  on commit `1c4f8e21`; the resulting NRO contains the pipeline and draw paths.
-  Physical visibility validation is the next gate.
+  The PES-owned triangle path now renders to an app-owned offscreen image
+  and copies it to the acquired VI image. The last completed pipeline-source
+  build is run [42792640688](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42792640688).
+  A subsequent source audit corrected queue-family selection so the selected
+  queue must support both graphics and VI presentation (commit
+  `64ea95d015a6fbef1b28910b48a46a0c2f01e84e`); that revision still needs CI
+  and physical validation. The upstream `nvk_tri.nro` is also built by the
+  pinned NXVK workflow and is the independent offscreen/readback reference.
 - The separate libnx bootstrap workflow has successfully built
   `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
   diagnostic app, not the PES game.
@@ -177,7 +181,7 @@ be made until the corresponding test has been run on a physical Switch.
 
 ### Graphics pipeline implementation note (10 November 2026)
 
-The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`) from the same NXVK revision already used by CI. The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The render pass targets the acquired VI swapchain images directly and transitions them to `PRESENT_SRC_KHR`. CI compilation passed on 10 November 2026 (run [42783311807](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42783311807)); the NRO binary includes the pipeline and `vkCmdDraw` diagnostic paths. Physical-console display confirmation remains pending.
+The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`). The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The current PES-owned path renders into a 256x256 application-owned offscreen image and then copies that image into the acquired VI image before present. This differs from the upstream headless `nvk_tri` test, which copies the rendered pixels to a host-visible readback buffer and checks center/corner pixels. The upstream `nvk_tri.nro` is included in the same CI artifact as the PES-owned NRO and should be used as an independent control test.
 
 
 ### Follow-up: framebuffer path adapted from upstream NXVK
@@ -191,4 +195,4 @@ The latest physical log shows that the PES-owned offscreen image, its memory bin
 
 ### Follow-up: framebuffer dispatch mengikuti LOAD_DEV NXVK (10 November 2026)
 
-Log Switch terbaru mempersempit titik macet ke pemanggilan `vkCreateFramebuffer`: image offscreen 256x256 berhasil dibuat, memory berhasil dialokasikan dan di-bind, image view berhasil dibuat, serta render pass berhasil dibuat. Log berhenti setelah marker sebelum pemanggilan framebuffer. Perbandingan langsung dengan pinned NXVK `nvk_gfx.h` menunjukkan semua fungsi device pada contoh diselesaikan melalui `vkGetDeviceProcAddr` ICD (`LOAD_DEV`), bukan melalui dispatch global loader. PES sebelumnya hanya memeriksa pointer global `vkCreateFramebuffer` yang non-null lalu memanggilnya. Commit `2a16da47d6e063b89898c1025622165b7d0cd5b9` sekarang mengambil `vkGetDeviceProcAddr` langsung dari `vk_icdGetInstanceProcAddr`, menyelesaikan `vkCreateFramebuffer` lewat ICD, mencatat kedua pointer, dan memeriksa `VkResult` hasilnya. Host tests (run [42796536086](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42796536086)) dan bootstrap NRO build (run [42796529552](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42796529552)) telah lulus. Workflow NXVK/NRO masih berjalan (run [42796529615](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42796529615)); belum ada klaim bahwa framebuffer atau segitiga sudah berhasil pada perangkat fisik.
+Audit ulang terhadap `runtime/gpu/vulkan/loader.cpp`, `vulkan_functions.inc`, dan `pes_loader_smoke.cpp` mengoreksi dugaan dispatch sebelumnya: `vk::loader::LoadDevice(device)` memang mengisi seluruh pointer fungsi device melalui `vkGetDeviceProcAddr`. Karena itu perbedaan dispatch bukan akar masalah yang sudah terbukti, dan tidak boleh dicatat sebagai penyebab pasti framebuffer macet. Perbandingan dengan `nvk_harness.h` mengonfirmasi pola resolusi fungsi instance dan device, sementara `nvk_gfx.h` menjadi pembanding untuk resource/render-pass/framebuffer. Audit tambahan menemukan pemilihan queue PES sebelumnya hanya mensyaratkan dukungan present dan tidak memeriksa `VK_QUEUE_GRAPHICS_BIT`. Commit `64ea95d015a6fbef1b28910b48a46a0c2f01e84e` sekarang mewajibkan queue family yang sama mendukung GRAPHICS dan VI present, serta mencatat flags, jumlah queue, dan hasil surface-support untuk tiap family. Ini memperbaiki prasyarat yang salah, tetapi belum membuktikan penyebab macetnya framebuffer.
