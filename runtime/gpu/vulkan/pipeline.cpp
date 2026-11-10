@@ -121,6 +121,34 @@ namespace
     };
     State g;
 
+    // Clear all metadata derived from a physical/logical-device bring-up. A failed
+    // creation must not leave capabilities from that attempt visible to a later one.
+    void ResetDeviceSnapshot()
+    {
+        g.physical = VK_NULL_HANDLE;
+        g.preciseQueries = false;
+        g.maxAnisotropy = 1.0f;
+        g.nonSeamlessCubes = false;
+        g.pipelineLibraries = false;
+        g.fastLinking = false;
+        g.hasDynamicRendering = false;
+        g.hasExtendedDynamicState = false;
+        g.legacyMode = false;
+        g.staticStates = false;
+        g.textureCompressionBC = false;
+        std::fill(std::begin(g.bcSampled), std::end(g.bcSampled), false);
+        g.astcSampled = false;
+        g.name = "none";
+        g.deviceProperties = {};
+        g.devicePropertiesReady = false;
+        g.memoryProperties = {};
+        g.memoryPropertiesReady = false;
+        g.depthStencilResolveSampleZero = false;
+        g.physicalFeatures = {};
+        g.physicalFeaturesReady = false;
+        g.snapshotPhysical = VK_NULL_HANDLE;
+    }
+
     const char* Explain(VkResult r)
     {
         switch (r)
@@ -216,9 +244,12 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
         LOGW("vulkan: invalid logical-device creation arguments");
         return false;
     }
-    g.devicePropertiesReady = false;
-    g.physicalFeaturesReady = false;
-    g.snapshotPhysical = VK_NULL_HANDLE;
+    if (g.device)
+    {
+        LOGW("vulkan: refusing to replace an active Pipeline device");
+        return false;
+    }
+    ResetDeviceSnapshot();
     VkPhysicalDevice physical = static_cast<VkPhysicalDevice>(physicalDevice);
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
@@ -591,7 +622,12 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
         info.ppEnabledExtensionNames = extensions.data();
         r = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
     }
-    if (r != VK_SUCCESS) { LOGW("vulkan: no device (%s)", Explain(r)); return false; }
+    if (r != VK_SUCCESS)
+    {
+        LOGW("vulkan: no device (%s)", Explain(r));
+        ResetDeviceSnapshot();
+        return false;
+    }
     if (queue.pNext) LOGI("vulkan: the queue runs at global priority %d", int(globalPriority.globalPriority));
     if (fault.deviceFault)
     {
@@ -615,7 +651,8 @@ namespace
         if (!vk::provider::CreateHeadlessInstance(g.instance)) return false;
         auto abandon = []() {
             vk::provider::DestroyInstance(g.instance);
-            g.physical = VK_NULL_HANDLE;
+            ResetDeviceSnapshot();
+            g.instance = VK_NULL_HANDLE;
             return false;
         };
 
