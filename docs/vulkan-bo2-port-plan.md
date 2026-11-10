@@ -564,3 +564,4 @@ Pipeline now keeps a non-owning pointer to the actual Provider Context's `Device
 Removed the now-obsolete `pipeline::CreateDevice` API and its duplicate device negotiation/logical-device creation implementation. `Device::Create` is the single owner for logical-device creation and device capability policy; Pipeline retains descriptor layouts, pipeline layout/cache and shader-module operations. Device-fault diagnostics now call `Device::ReportFault()` rather than keeping a duplicate dispatch pointer and device handle in Pipeline.
 
 Validation for B2.29 is pending.
+- Follow-up cleanup removed Pipeline's unused duplicate capability flags and memory/core-feature/depth-resolve snapshots. The remaining physical-properties copy exists only for pipeline-cache identity/reporting; all capability reads are made from Device.
