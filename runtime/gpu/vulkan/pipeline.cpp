@@ -581,7 +581,7 @@ namespace
     {
         if (!OpenVulkan()) { LOGW("pipeline: no Vulkan library"); return false; }
 
-            if (!vk::provider::CreateHeadlessInstance(g.instance)) return false;
+        if (!vk::provider::CreateHeadlessInstance(g.instance)) return false;
         auto abandon = []() {
             vk::provider::DestroyInstance(g.instance);
             g.physical = VK_NULL_HANDLE;

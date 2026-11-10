@@ -2,7 +2,6 @@
 
 #include "../../log.h"
 #include "loader.h"
-#include "pipeline.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -212,6 +211,7 @@ bool vk::provider::CreateInstance(VkInstance& instance)
 
 bool vk::provider::CreateHeadlessInstance(VkInstance& instance)
 {
+    instance = VK_NULL_HANDLE;
     VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
     app.pApplicationName = "pes17recomp";
     app.apiVersion = VK_API_VERSION_1_0;
@@ -331,7 +331,7 @@ bool vk::provider::PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& phy
                 return vkEnumeratePhysicalDevices(instance, count, data);
             }, "physical devices"))
         return false;
-    if (devices.empty()) { LOGW("pipeline: no Vulkan device"); return false; }
+    if (devices.empty()) { LOGW("vulkan: no physical devices"); return false; }
 
     uint32_t chosen = 0;
     for (uint32_t i = 0; i < devices.size(); ++i)
@@ -366,45 +366,6 @@ bool vk::provider::PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& phy
     return false;
 }
 
-bool vk::provider::CreatePresentationDevice(VkPhysicalDevice physical, uint32_t queueFamily,
-                                            VkDevice& device, VkQueue& queue, bool& presentWait)
-{
-    std::vector<const char*> extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-    VkPhysicalDevicePresentIdFeaturesKHR presentId{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
-    VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
-    void* features = nullptr;
-    presentWait = false;
-    if (vk::pipeline::DeviceHasExtension(physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
-        vk::pipeline::DeviceHasExtension(physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
-    {
-        presentId.pNext = &presentWaitFeatures;
-        VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-        query.pNext = &presentId;
-        vkGetPhysicalDeviceFeatures2(physical, &query);
-        if (presentId.presentId && presentWaitFeatures.presentWait)
-        {
-            extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-            extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-            presentWaitFeatures.pNext = nullptr;
-            features = &presentId;
-            presentWait = true;
-        }
-    }
-    void* createdDevice = nullptr;
-    void* createdQueue = nullptr;
-    if (!vk::pipeline::CreateDevice(physical, queueFamily, extensions.data(),
-                                    uint32_t(extensions.size()), &createdDevice,
-                                    &createdQueue, features))
-    {
-        presentWait = false;
-        return false;
-    }
-    device = static_cast<VkDevice>(createdDevice);
-    queue = static_cast<VkQueue>(createdQueue);
-    return true;
-}
 VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDeviceCreateInfo& info,
                                         uint32_t queueFamily, VkDevice& device, VkQueue& queue)
 {

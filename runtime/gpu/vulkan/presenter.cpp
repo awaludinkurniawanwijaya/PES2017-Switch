@@ -253,10 +253,42 @@ namespace
     // the way pipeline.cpp makes its own, with the swapchain beside.
     bool CreateDevice()
     {
-        // Provider creates the logical device; Presenter retains WSI dispatch and timing.
-        if (!vk::provider::CreatePresentationDevice(g.physical, g.queueFamily,
-                                                     g.device, g.queue, g.presentWait))
+        // The swapchain and optional present timing are WSI policy, so keep their
+        // extension/feature negotiation beside the presenter rather than Provider.
+        std::vector<const char*> extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        VkPhysicalDevicePresentIdFeaturesKHR presentId{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
+        VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
+        void* features = nullptr;
+        g.presentWait = false;
+        if (vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+            vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+        {
+            presentId.pNext = &presentWaitFeatures;
+            VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+            query.pNext = &presentId;
+            vkGetPhysicalDeviceFeatures2(g.physical, &query);
+            if (presentId.presentId && presentWaitFeatures.presentWait)
+            {
+                extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+                extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+                presentWaitFeatures.pNext = nullptr;
+                features = &presentId;
+                g.presentWait = true;
+            }
+        }
+        void* createdDevice = nullptr;
+        void* createdQueue = nullptr;
+        if (!vk::pipeline::CreateDevice(g.physical, g.queueFamily, extensions.data(),
+                                        uint32_t(extensions.size()), &createdDevice,
+                                        &createdQueue, features))
+        {
+            g.presentWait = false;
             return false;
+        }
+        g.device = static_cast<VkDevice>(createdDevice);
+        g.queue = static_cast<VkQueue>(createdQueue);
 #ifdef __SWITCH__
         if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
             !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
