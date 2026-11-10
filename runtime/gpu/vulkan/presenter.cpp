@@ -1204,7 +1204,11 @@ namespace
             android::SetStatus("Failed to create Vulkan presentation frames");
             return false;
         }
-        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         android::SetStatus((std::string("Running on ") + vk::pipeline::DeviceName()).c_str());
         return true;
 #elif defined(__SWITCH__)
@@ -1221,7 +1225,11 @@ namespace
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
             !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
-        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         return true;
 #else
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
@@ -1250,7 +1258,11 @@ namespace
         // Everything else that touches the GPU -- the texture cache, the
         // renderer -- allocates against this device rather than one of its own,
         // because an image cannot be shared between two.
-        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         return true;
 #endif
     }
