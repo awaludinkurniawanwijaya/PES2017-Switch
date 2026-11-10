@@ -466,3 +466,4 @@ Validation pending.
 Added `ResetDeviceSnapshot()` as the common invalidation path for all physical-device-derived state: immutable properties/memory/core features, depth resolve, BC/ASTC format support, anisotropy, rendering/pipeline-library capabilities and device identity. `CreateDevice` rejects replacing an already active Pipeline device, resets prior metadata before a fresh attempt, and resets the failed attempt if `vkCreateDevice` fails. Headless rollback destroys its instance and resets the same state as one operation. This prevents stale capabilities from a failed/abandoned physical-device attempt from appearing valid during a subsequent bring-up.
 
 Validation for B2.16 is pending.
+- Portability refinement: reset of the fixed BC capability array uses a range-for loop, avoiding an implicit dependency on `std::begin` declarations.
