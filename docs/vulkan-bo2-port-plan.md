@@ -544,3 +544,9 @@ Validation for B2.25 is pending.
 Migrated the window path from separate `instanceOwner`, `deviceOwner`, selected-physical and queue-family fields to one `std::unique_ptr<vk::provider::Context>`. Provider now owns the Instance and Device, selects a physical device compatible with the Presenter surface, creates/adopts the logical Device, and exposes its objects/handles. Presenter retains only the WSI surface, swapchain, frames and present-specific extension/feature policy. Pipeline borrows `Context::InstanceObject()` and `DeviceObject()` through `BorrowedContext`. Shutdown order remains: release swapchain/frame resources → Provider destroys Device → Presenter destroys surface → Provider Context releases Instance.
 
 Validation for B2.26 is pending.
+
+### B2.27 — Headless and Presenter paths converge on Provider Context (2026-11-11)
+
+Replaced Pipeline's separate `ownedInstance` and `ownedDevice` with one `ownedProvider` (`vk::provider::Context`). Headless bring-up now creates a headless Provider Context, selects a graphics-capable physical device, and requests logical-device creation/adoption through that Context. Pipeline stores only non-owning raw handle aliases for renderer operations and retains ownership of descriptor layouts/pipeline cache; its `ownsContext` flag determines whether shutdown releases the Provider Context or merely clears a borrowed Presenter context. Presenter mode uses the same Provider Context class but remains the lifetime owner outside Pipeline. Both paths now share one Instance/Device ownership mechanism.
+
+Validation for B2.27 is pending.
