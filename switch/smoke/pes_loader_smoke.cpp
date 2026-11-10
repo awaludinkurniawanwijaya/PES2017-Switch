@@ -525,10 +525,24 @@ int main(int argc, char** argv)
     renderPassInfo.pDependencies = dependencies;
     Log("[PIPELINE] before vkCreateRenderPass");
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
-    Log("[PIPELINE] render pass created; framebuffer dispatch=%p",
+    Log("[PIPELINE] render pass created; loader framebuffer dispatch=%p",
         reinterpret_cast<void*>(vkCreateFramebuffer));
-    if (!vkCreateFramebuffer) {
-        Log("FAIL vkCreateFramebuffer dispatch pointer is null");
+    // Follow NXVK's LOAD_DEV path exactly: resolve the device entrypoint from
+    // the ICD's vkGetDeviceProcAddr instead of relying on the generic loader
+    // trampoline for this framebuffer call.
+    auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
+        vk_icdGetInstanceProcAddr(instance, "vkGetDeviceProcAddr"));
+    if (!getDeviceProcAddr) {
+        Log("FAIL direct ICD vkGetDeviceProcAddr is null");
+        result = 12;
+        break;
+    }
+    auto createFramebufferDirect = reinterpret_cast<PFN_vkCreateFramebuffer>(
+        getDeviceProcAddr(device, "vkCreateFramebuffer"));
+    Log("[PIPELINE] direct ICD vkCreateFramebuffer dispatch=%p",
+        reinterpret_cast<void*>(createFramebufferDirect));
+    if (!createFramebufferDirect) {
+        Log("FAIL direct ICD vkCreateFramebuffer is null");
         result = 12;
         break;
     }
@@ -541,8 +555,15 @@ int main(int argc, char** argv)
     framebufferInfo.layers = 1;
     Log("[PIPELINE] before app-owned vkCreateFramebuffer view=%p extent=%ux%u format=%u",
         reinterpret_cast<void*>(offscreenView), renderExtent.width, renderExtent.height, unsigned(format.format));
-    CHECK_VK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &offscreenFramebuffer));
-    Log("[PIPELINE] app-owned framebuffer created handle=%p", reinterpret_cast<void*>(offscreenFramebuffer));
+    VkResult framebufferResult = createFramebufferDirect(
+        device, &framebufferInfo, nullptr, &offscreenFramebuffer);
+    if (framebufferResult != VK_SUCCESS) {
+        Log("FAIL direct ICD vkCreateFramebuffer -> %d", int(framebufferResult));
+        result = 12;
+        break;
+    }
+    Log("[PIPELINE] app-owned framebuffer created via direct ICD handle=%p",
+        reinterpret_cast<void*>(offscreenFramebuffer));
 
     VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     shaderInfo.codeSize = sizeof(tri_vert_spv);
