@@ -233,6 +233,7 @@ int main(int argc, char** argv)
     VkDeviceMemory offscreenMemory = VK_NULL_HANDLE;
     VkImageView offscreenView = VK_NULL_HANDLE;
     VkFramebuffer offscreenFramebuffer = VK_NULL_HANDLE;
+    PFN_vkDestroyFramebuffer destroyFramebufferDirect = nullptr;
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
     do {
@@ -539,8 +540,11 @@ int main(int argc, char** argv)
     }
     auto createFramebufferDirect = reinterpret_cast<PFN_vkCreateFramebuffer>(
         getDeviceProcAddr(device, "vkCreateFramebuffer"));
-    Log("[PIPELINE] direct ICD vkCreateFramebuffer dispatch=%p",
-        reinterpret_cast<void*>(createFramebufferDirect));
+    destroyFramebufferDirect = reinterpret_cast<PFN_vkDestroyFramebuffer>(
+        getDeviceProcAddr(device, "vkDestroyFramebuffer"));
+    Log("[PIPELINE] direct ICD framebuffer dispatch create=%p destroy=%p",
+        reinterpret_cast<void*>(createFramebufferDirect),
+        reinterpret_cast<void*>(destroyFramebufferDirect));
     if (!createFramebufferDirect) {
         Log("FAIL direct ICD vkCreateFramebuffer is null");
         result = 12;
@@ -772,7 +776,10 @@ int main(int argc, char** argv)
     if (device) {
         vkDeviceWaitIdle(device);
         if (commandPool) vkDestroyCommandPool(device,commandPool,nullptr);
-        if (offscreenFramebuffer) vkDestroyFramebuffer(device, offscreenFramebuffer, nullptr);
+        if (offscreenFramebuffer && destroyFramebufferDirect)
+            destroyFramebufferDirect(device, offscreenFramebuffer, nullptr);
+        else if (offscreenFramebuffer)
+            vkDestroyFramebuffer(device, offscreenFramebuffer, nullptr);
         if (graphicsPipeline) vkDestroyPipeline(device, graphicsPipeline, nullptr);
         if (pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         if (vertexShader) vkDestroyShaderModule(device, vertexShader, nullptr);
