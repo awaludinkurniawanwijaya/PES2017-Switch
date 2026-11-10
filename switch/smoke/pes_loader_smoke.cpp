@@ -229,8 +229,10 @@ int main(int argc, char** argv)
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkShaderModule vertexShader = VK_NULL_HANDLE;
     VkShaderModule fragmentShader = VK_NULL_HANDLE;
-    std::vector<VkImageView> swapchainViews;
-    std::vector<VkFramebuffer> swapchainFramebuffers;
+    VkImage offscreenImage = VK_NULL_HANDLE;
+    VkDeviceMemory offscreenMemory = VK_NULL_HANDLE;
+    VkImageView offscreenView = VK_NULL_HANDLE;
+    VkFramebuffer offscreenFramebuffer = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     int result = 0;
     do {
@@ -431,21 +433,62 @@ int main(int argc, char** argv)
     CHECK_VK(vkGetSwapchainImagesKHR(device,swapchain,&actualImages,swapchainImages.data()));
     Log("swapchain=%ux%u images=%u format=%u",extent.width,extent.height,actualImages,unsigned(format.format));
 
-    Log("[PIPELINE] creating image views for swapchain images");
-    swapchainViews.resize(actualImages, VK_NULL_HANDLE);
-    swapchainFramebuffers.resize(actualImages, VK_NULL_HANDLE);
-    for (uint32_t i = 0; i < actualImages; ++i) {
-        VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        viewInfo.image = swapchainImages[i];
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = format.format;
-        viewInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-                                VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
-        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        viewInfo.subresourceRange.levelCount = 1;
-        viewInfo.subresourceRange.layerCount = 1;
-        CHECK_VK(vkCreateImageView(device, &viewInfo, nullptr, &swapchainViews[i]));
+    // Follow the pinned NXVK nvk_gfx.h reference: render into an app-owned
+    // optimal-tiled color image, not directly into WSI's CPU-copy swapchain
+    // images. The latter are presentable but their framebuffer path stalls
+    // on this Switch/NVK combination. Copy the completed render target to the
+    // acquired swapchain image before present.
+    VkImageCreateInfo offscreenInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    offscreenInfo.imageType = VK_IMAGE_TYPE_2D;
+    offscreenInfo.format = format.format;
+    offscreenInfo.extent = { extent.width, extent.height, 1 };
+    offscreenInfo.mipLevels = 1;
+    offscreenInfo.arrayLayers = 1;
+    offscreenInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    offscreenInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    offscreenInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    offscreenInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    offscreenInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    Log("[PIPELINE] before app-owned offscreen vkCreateImage");
+    CHECK_VK(vkCreateImage(device, &offscreenInfo, nullptr, &offscreenImage));
+    VkMemoryRequirements offscreenRequirements{};
+    vkGetImageMemoryRequirements(device, offscreenImage, &offscreenRequirements);
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physical, &memoryProperties);
+    uint32_t memoryType = UINT32_MAX;
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+        if ((offscreenRequirements.memoryTypeBits & (1u << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryType = i;
+            break;
+        }
     }
+    if (memoryType == UINT32_MAX) {
+        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+            if (offscreenRequirements.memoryTypeBits & (1u << i)) { memoryType = i; break; }
+        }
+    }
+    if (memoryType == UINT32_MAX) {
+        Log("FAIL no compatible memory type for offscreen color image");
+        result = 14;
+        break;
+    }
+    VkMemoryAllocateInfo offscreenAllocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    offscreenAllocation.allocationSize = offscreenRequirements.size;
+    offscreenAllocation.memoryTypeIndex = memoryType;
+    Log("[PIPELINE] before offscreen vkAllocateMemory size=%llu type=%u",
+        (unsigned long long)offscreenRequirements.size, memoryType);
+    CHECK_VK(vkAllocateMemory(device, &offscreenAllocation, nullptr, &offscreenMemory));
+    CHECK_VK(vkBindImageMemory(device, offscreenImage, offscreenMemory, 0));
+    VkImageViewCreateInfo offscreenViewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    offscreenViewInfo.image = offscreenImage;
+    offscreenViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    offscreenViewInfo.format = format.format;
+    offscreenViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    offscreenViewInfo.subresourceRange.levelCount = 1;
+    offscreenViewInfo.subresourceRange.layerCount = 1;
+    Log("[PIPELINE] before app-owned vkCreateImageView");
+    CHECK_VK(vkCreateImageView(device, &offscreenViewInfo, nullptr, &offscreenView));
 
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = format.format;
@@ -455,7 +498,7 @@ int main(int argc, char** argv)
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     VkAttachmentReference colorReference{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -470,8 +513,9 @@ int main(int argc, char** argv)
     dependencies[1].srcSubpass = 0;
     dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
     dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
     dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     VkRenderPassCreateInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     renderPassInfo.attachmentCount = 1;
     renderPassInfo.pAttachments = &colorAttachment;
@@ -483,34 +527,22 @@ int main(int argc, char** argv)
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
     Log("[PIPELINE] render pass created; framebuffer dispatch=%p",
         reinterpret_cast<void*>(vkCreateFramebuffer));
-
     if (!vkCreateFramebuffer) {
         Log("FAIL vkCreateFramebuffer dispatch pointer is null");
         result = 12;
         break;
     }
-    for (uint32_t i = 0; i < actualImages; ++i) {
-        Log("[PIPELINE] before vkCreateFramebuffer image=%u view=%p extent=%ux%u",
-            i, reinterpret_cast<void*>(swapchainViews[i]), extent.width, extent.height);
-        VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-        framebufferInfo.renderPass = renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = &swapchainViews[i];
-        framebufferInfo.width = extent.width;
-        framebufferInfo.height = extent.height;
-        framebufferInfo.layers = 1;
-        VkResult framebufferResult = vkCreateFramebuffer(device, &framebufferInfo, nullptr,
-                                                               &swapchainFramebuffers[i]);
-        Log("[PIPELINE] vkCreateFramebuffer image=%u returned %d handle=%p",
-            i, int(framebufferResult), reinterpret_cast<void*>(swapchainFramebuffers[i]));
-        if (framebufferResult != VK_SUCCESS) {
-            Log("FAIL vkCreateFramebuffer image=%u result=%d", i, int(framebufferResult));
-            result = 13;
-            break;
-        }
-    }
-    if (result) break;
-    Log("[PIPELINE] framebuffers created count=%u", actualImages);
+    VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.pAttachments = &offscreenView;
+    framebufferInfo.width = extent.width;
+    framebufferInfo.height = extent.height;
+    framebufferInfo.layers = 1;
+    Log("[PIPELINE] before app-owned vkCreateFramebuffer view=%p extent=%ux%u",
+        reinterpret_cast<void*>(offscreenView), extent.width, extent.height);
+    CHECK_VK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &offscreenFramebuffer));
+    Log("[PIPELINE] app-owned framebuffer created handle=%p", reinterpret_cast<void*>(offscreenFramebuffer));
 
     VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     shaderInfo.codeSize = sizeof(tri_vert_spv);
@@ -619,7 +651,7 @@ int main(int argc, char** argv)
         clear.color.float32[3] = 1.0f;
         VkRenderPassBeginInfo passBegin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         passBegin.renderPass = renderPass;
-        passBegin.framebuffer = swapchainFramebuffers[imageIndex];
+        passBegin.framebuffer = offscreenFramebuffer;
         passBegin.renderArea.offset = {0, 0};
         passBegin.renderArea.extent = extent;
         passBegin.clearValueCount = 1;
@@ -635,6 +667,40 @@ int main(int argc, char** argv)
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
         Log("[FRAME %u] after vkCmdDraw", frame);
         vkCmdEndRenderPass(commandBuffer);
+
+        // Copy the app-owned render target into the acquired WSI image. The
+        // render pass leaves offscreenImage in TRANSFER_SRC_OPTIMAL.
+        VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        toTransfer.srcAccessMask = 0;
+        toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.image = swapchainImages[imageIndex];
+        toTransfer.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
+                             1, &toTransfer);
+        VkImageCopy copyRegion{};
+        copyRegion.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        copyRegion.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        copyRegion.extent = { extent.width, extent.height, 1 };
+        vkCmdCopyImage(commandBuffer, offscreenImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                       1, &copyRegion);
+        VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        toPresent.dstAccessMask = 0;
+        toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresent.image = swapchainImages[imageIndex];
+        toPresent.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr,
+                             1, &toPresent);
         VkResult endResult=vkEndCommandBuffer(commandBuffer);
         if (endResult!=VK_SUCCESS) { Log("FAIL end command buffer frame=%u result=%d",frame,int(endResult)); result=9; break; }
 
@@ -672,13 +738,15 @@ int main(int argc, char** argv)
     if (device) {
         vkDeviceWaitIdle(device);
         if (commandPool) vkDestroyCommandPool(device,commandPool,nullptr);
-        for (VkFramebuffer framebuffer : swapchainFramebuffers) if (framebuffer) vkDestroyFramebuffer(device, framebuffer, nullptr);
+        if (offscreenFramebuffer) vkDestroyFramebuffer(device, offscreenFramebuffer, nullptr);
         if (graphicsPipeline) vkDestroyPipeline(device, graphicsPipeline, nullptr);
         if (pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         if (vertexShader) vkDestroyShaderModule(device, vertexShader, nullptr);
         if (fragmentShader) vkDestroyShaderModule(device, fragmentShader, nullptr);
         if (renderPass) vkDestroyRenderPass(device, renderPass, nullptr);
-        for (VkImageView view : swapchainViews) if (view) vkDestroyImageView(device, view, nullptr);
+        if (offscreenView) vkDestroyImageView(device, offscreenView, nullptr);
+        if (offscreenImage) vkDestroyImage(device, offscreenImage, nullptr);
+        if (offscreenMemory) vkFreeMemory(device, offscreenMemory, nullptr);
         for (VkSemaphore semaphore : renderComplete)
             if (semaphore) vkDestroySemaphore(device,semaphore,nullptr);
         if (acquired) vkDestroySemaphore(device,acquired,nullptr);
