@@ -10,7 +10,7 @@ nvk_GetInstanceProcAddr(VkInstance instance, const char* name);
 // Match BO2's Switch instance path: Mesa's static libvulkan.a exports the
 // public Vulkan GIPA directly. The loader pointer is named
 // vkGetInstanceProcAddrFn, so this function symbol does not collide with it.
-extern "C" PFN_vkVoidFunction VKAPI_CALL
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 vkGetInstanceProcAddr(VkInstance instance, const char* name);
 #endif
 
