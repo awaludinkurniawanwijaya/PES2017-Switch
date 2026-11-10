@@ -26,16 +26,6 @@ namespace vk::pipeline
     bool DepthStencilResolveSampleZero();
     bool GetPhysicalDeviceFeatures(void* features, size_t size);
 
-    // Creates the device the runtime draws on, with the features and extensions
-    // the renderer depends on, plus the caller's own (the swapchain, for the
-    // window). Both the presenter's device and the headless one come from here.
-    // Opaque handles: a VkPhysicalDevice in, a VkDevice and its VkQueue out.
-    // `features` is a pNext chain of feature structures the caller's
-    // extensions need, or null.
-    bool CreateDevice(void* physical, uint32_t queueFamily,
-                      const char* const* extraExtensions, uint32_t extraCount,
-                      void** device, void** queue, void* features = nullptr);
-
     const char* DeviceName();
     // Opaque, so this header stays free of the Vulkan headers: a VkInstance,
     // VkDevice, VkPhysicalDevice and VkQueue, and the queue's family index.
