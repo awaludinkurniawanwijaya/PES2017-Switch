@@ -496,3 +496,9 @@ Validation for B2.20 is pending.
 - Compile correction: `provider::DestroyLogicalDevice` takes `VkDevice&`, not a temporary. The Device destructor and adoption rollback now use local lvalue handles; the first B2.20 SDK attempt exposed this signature mismatch, and the corrected commit awaits a fresh CI run.
 
 **B2.20 validation completed:** corrected implementation commit `3aa565024700e5999b0e33ecfd9b2858f49f6240` passed CTest and the Switch BO2 Mesa SDK probe. The SDK job compiled 26 Vulkan runtime TUs, including `device.cpp`; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13800372412`, ZIP SHA256 `d9dad4840b2c33f78dc0d346a3b94bae83cbff87b604f1d44c9c9784021a53fe`. The initial `VkDevice&` destroy signature mismatch was corrected before the successful run. Full-game linking and scene rendering remain unvalidated.
+
+### B2.21 — Clear snapshots when Pipeline never adopted the Device (2026-11-11)
+
+Closed a failure-path gap after introducing the RAII Device owner. Presenter creates the logical Device before Pipeline initialization; if a later WSI step fails before Pipeline adopts the borrowed context, `pipeline::Shutdown()` previously returned immediately because `g.device` was null, leaving capability snapshots from the failed attempt cached. The no-device branch now clears fault dispatch pointers, instance/queue/family copies and all physical-device-derived metadata via `ResetDeviceSnapshot()`. The regular shutdown path also uses the shared reset helper rather than duplicating each field reset.
+
+Validation for B2.21 is pending.
