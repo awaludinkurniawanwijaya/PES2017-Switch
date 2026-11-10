@@ -39,7 +39,7 @@ extern "C"
 {
     // The one that is not loaded from anything else: it comes out of the
     // library, and everything else comes out of it.
-    extern PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+    extern PFN_vkGetInstanceProcAddr vkGetInstanceProcAddrFn;
 
 #define PES17_VK_GLOBAL(name)   extern PFN_##name name;
 #define PES17_VK_INSTANCE(name) extern PFN_##name name;
