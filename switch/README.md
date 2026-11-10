@@ -47,8 +47,9 @@ complete game-data launch path.
   completed VI swapchain creation, 120/120 acquire-submit-present cycles, and
   a three-phase `vkCmdClearColorImage` workload on NVK / Tegra X1. The user
   confirmed the changing color background was visible on the physical display.
-  This validates WSI, queue submission, and visible GPU transfer-clear, but not
-  a graphics-pipeline draw, the PES renderer, or game boot.
+  A new PES-owned graphics-pipeline path now adapts the pinned upstream
+  `nvk_tri` shaders and `vkCmdDraw` pattern to the VI swapchain; CI and physical
+  visibility validation are pending.
 - The separate libnx bootstrap workflow has successfully built
   `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
   diagnostic app, not the PES game.
@@ -56,8 +57,9 @@ complete game-data launch path.
 Host tests passed (11/11), and the bootstrap NRO was packaged successfully (about 759 KiB before compression).
 The runtime XInput translation unit still needs generated PPC headers for its
 full syntax check. The physical VI/GPU-clear smoke test proves that the PES-owned loader can
-acquire, submit, present, and visibly change swapchain pixels; it does **not**
-prove that a graphics pipeline, the PES renderer, or PES 2017 boot works.
+acquire, submit, present, and visibly change swapchain pixels. The newly
+committed triangle pipeline is not yet hardware-validated; neither the PES
+renderer nor PES 2017 boot has been proven.
 
 ## Bootstrap build
 
@@ -151,11 +153,7 @@ PPC output.
    recorded `vkCmdClearColorImage` in three 40-frame color phases; all 120
    frames submitted, presented, and passed `vkDeviceWaitIdle`. The user
    confirmed that the changing color background was visible on the display.
-4. **Graphics pipeline and real draw on the PES-owned VI path — next.** Use
-   the upstream `nvk_tri` sample as the implementation reference, adapt its
-   tested shader/pipeline/draw pattern to the PES-owned swapchain, and verify
-   that an actual rendered primitive appears on screen. This is the next step
-   beyond color clearing; it is not yet PES game-scene rendering.
+4. **Graphics pipeline and real draw on the PES-owned VI path — implementation committed, CI pending.** The PES smoke source now stages the upstream `nvk_tri` vertex/fragment SPIR-V headers, creates swapchain image views, render pass/framebuffers and a minimal graphics pipeline, then issues `vkCmdDraw(3, 1, 0, 0)`. The build must pass first; then a physical Switch run must confirm the RGB triangle is visible. This remains a graphics smoke test, not PES game-scene rendering.
 5. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
 6. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
    install, and generated PPC sources with the correct libnx/NXVK dependencies.
@@ -181,3 +179,8 @@ PPC output.
 A green host test or NRO compilation is not a hardware test. No claim of
 playable status, working game rendering, audio quality, or frame rate should
 be made until the corresponding test has been run on a physical Switch.
+
+
+### Graphics pipeline implementation note (10 November 2026)
+
+The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`) from the same NXVK revision already used by CI. The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The render pass targets the acquired VI swapchain images directly and transitions them to `PRESENT_SRC_KHR`. CI compilation and physical-console display confirmation remain pending.
