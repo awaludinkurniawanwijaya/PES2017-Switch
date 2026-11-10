@@ -291,6 +291,13 @@ void vk::provider::DestroyInstance(VkInstance& instance)
 bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
                                              VkPhysicalDevice& physical, uint32_t& queueFamily)
     {
+        physical = VK_NULL_HANDLE;
+        queueFamily = 0;
+        if (!instance || !surface || !vkGetPhysicalDeviceSurfaceSupportKHR)
+        {
+            LOGW("vulkan: physical-device selection has no valid instance, surface, or surface-support entry point");
+            return false;
+        }
         std::vector<VkPhysicalDevice> devices;
         if (!EnumerateVector(devices,
                 [instance](uint32_t* count, VkPhysicalDevice* data) {
@@ -348,6 +355,13 @@ bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
 bool vk::provider::PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& physical,
                                               uint32_t& queueFamily)
 {
+    physical = VK_NULL_HANDLE;
+    queueFamily = 0;
+    if (!instance)
+    {
+        LOGW("vulkan: headless physical-device selection has no instance");
+        return false;
+    }
     std::vector<VkPhysicalDevice> devices;
     if (!EnumerateVector(devices,
             [instance](uint32_t* count, VkPhysicalDevice* data) {
