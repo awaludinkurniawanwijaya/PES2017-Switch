@@ -1167,6 +1167,12 @@ namespace
     }
 #endif
 
+    bool InitialisePipelineOnPresenterDevice()
+    {
+        const vk::device::BorrowedContext context{ g.instance, g.physical, g.device, g.queue, g.queueFamily };
+        return vk::pipeline::Initialise(&context);
+    }
+
     bool Bring()
     {
 #ifdef PES17_ANDROID
@@ -1208,7 +1214,7 @@ namespace
             android::SetStatus("Failed to create Vulkan presentation frames");
             return false;
         }
-        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        if (!InitialisePipelineOnPresenterDevice())
         {
             LOGW("vulkan: renderer pipeline initialization failed");
             return false;
@@ -1229,7 +1235,7 @@ namespace
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
             !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
-        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        if (!InitialisePipelineOnPresenterDevice())
         {
             LOGW("vulkan: renderer pipeline initialization failed");
             return false;
@@ -1262,7 +1268,7 @@ namespace
         // Everything else that touches the GPU -- the texture cache, the
         // renderer -- allocates against this device rather than one of its own,
         // because an image cannot be shared between two.
-        if (!vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance))
+        if (!InitialisePipelineOnPresenterDevice())
         {
             LOGW("vulkan: renderer pipeline initialization failed");
             return false;

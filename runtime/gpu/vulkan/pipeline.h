@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <mutex>
+#include "device.h"
 
 // The Vulkan device the runtime draws on, the pipeline layout every translated
 // shader is built against, and the pipeline cache. The translator emits a fixed
@@ -14,9 +15,8 @@ namespace vk::pipeline
     // the offline tools use to put a translated shader in front of a real driver.
     // A borrowed device comes with its instance, which RenderDoc needs to name
     // the device a capture is of; it stays the lender's to destroy.
-    bool Initialise(void* device = nullptr, void* physical = nullptr,
-                    void* queue = nullptr, uint32_t queueFamily = 0,
-                    void* instance = nullptr);
+    // No context creates an owned headless Device; a context is borrowed.
+    bool Initialise(const device::BorrowedContext* borrowed = nullptr);
     void Shutdown();
     bool Ready();
     // Copies the immutable memory-property snapshot captured for the active device.

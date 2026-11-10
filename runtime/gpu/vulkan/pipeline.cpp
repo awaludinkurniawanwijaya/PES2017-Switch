@@ -9,7 +9,7 @@
 #ifndef PES17_HAVE_VULKAN
 // No loader, so nothing here can be built. The callers all tolerate a device
 // that never comes up, because that is what a machine with no GPU gives them.
-bool vk::pipeline::Initialise(void*, void*, void*, uint32_t, void*) { return false; }
+bool vk::pipeline::Initialise(const vk::device::BorrowedContext*) { return false; }
 void vk::pipeline::Shutdown() {}
 void vk::pipeline::SaveCache() {}
 void vk::pipeline::SaveCacheThrottled() {}
@@ -935,28 +935,25 @@ namespace
     }
 }
 
-bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_t queueFamily,
-                              void* instance)
+bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext)
 {
     if (g.device) return true;
 
     // A borrowed device is an all-or-nothing tuple. Falling through to the
     // headless path when only some handles were supplied would silently ignore
     // the caller's device and could create a second, unrelated GPU context.
-    const bool borrowed = device || physical || queue || instance;
-    if (borrowed && (!device || !physical || !queue || !instance))
+    if (borrowedContext && !borrowedContext->Complete())
     {
         LOGW("pipeline: incomplete borrowed Vulkan device context");
         return false;
     }
-
-    if (borrowed)
+    if (borrowedContext)
     {
-        g.instance = static_cast<VkInstance>(instance);
-        g.device = static_cast<VkDevice>(device);
-        g.physical = static_cast<VkPhysicalDevice>(physical);
-        g.queue = static_cast<VkQueue>(queue);
-        g.family = queueFamily;
+        g.instance = static_cast<VkInstance>(borrowedContext->instance);
+        g.device = static_cast<VkDevice>(borrowedContext->logical);
+        g.physical = static_cast<VkPhysicalDevice>(borrowedContext->physical);
+        g.queue = static_cast<VkQueue>(borrowedContext->queue);
+        g.family = borrowedContext->queueFamily;
         g.ownsDevice = false;
     }
     else if (!BringUpHeadless())
