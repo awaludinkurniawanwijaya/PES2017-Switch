@@ -246,6 +246,20 @@ if(PES17_SWITCH)
             message(FATAL_ERROR
                 "Mesa Horizon SDK Vulkan headers not found under '${PES17_SWITCH_VULKAN_SDK}/include'")
         endif()
+        # BO2's build_mesa.sh produces libvulkan.a; its separate
+        # build_zstd_switch.sh step installs libzstd.a into this same SDK.
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/lib/libzstd.a")
+            message(FATAL_ERROR
+                "Mesa Horizon SDK is missing lib/libzstd.a. Run BO2 tools/build_zstd_switch.sh after build_mesa.sh.")
+        endif()
+        foreach(_PES17_SWITCH_ARCHIVE IN ITEMS
+                "${DEVKITPRO}/portlibs/switch/lib/libexpat.a"
+                "${DEVKITPRO}/portlibs/switch/lib/libz.a"
+                "${DEVKITPRO}/libnx/lib/libnx.a")
+            if(NOT EXISTS "${_PES17_SWITCH_ARCHIVE}")
+                message(FATAL_ERROR "Required devkitPro Switch archive is missing: ${_PES17_SWITCH_ARCHIVE}")
+            endif()
+        endforeach()
         enable_language(C)
         target_sources(pes17 PRIVATE "${CMAKE_SOURCE_DIR}/switch/mesa/elf_stubs.c")
         target_include_directories(pes17 PRIVATE "${PES17_SWITCH_VULKAN_SDK}/include")
