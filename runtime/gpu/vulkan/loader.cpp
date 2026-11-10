@@ -8,9 +8,11 @@
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
 #elif defined(__SWITCH__)
-// NXVK is linked statically on Horizon. The function-pointer variable
-// vkGetInstanceProcAddr is declared by loader.h; do not redeclare it as a
-// function (the loader owns the variable and initializes it from the ICD).
+// NXVK's static Mesa ICD exports this public adapter entry point. The
+// vk_icdGetInstanceProcAddr symbol is loader-private and must not be used
+// as the runtime's public vkGetInstanceProcAddr implementation.
+extern "C" PFN_vkVoidFunction VKAPI_CALL
+nvk_GetInstanceProcAddr(VkInstance instance, const char* name);
 #else
 #include <dlfcn.h>
 #endif
@@ -69,7 +71,7 @@ bool vk::loader::Open(std::string& error)
 #elif defined(__SWITCH__)
     // NXVK exports the ICD entry point directly; there is no Vulkan loader
     // on Horizon. It has the same instance/name dispatch contract needed here.
-    entry = reinterpret_cast<void*>(vkGetInstanceProcAddr);
+    entry = reinterpret_cast<void*>(nvk_GetInstanceProcAddr);
     g_description = "NXVK static ICD";
 #else
     // A desktop build with dynamic loading asked for: the system's loader.
