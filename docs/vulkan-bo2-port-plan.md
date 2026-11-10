@@ -372,3 +372,21 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 ### B2.6n — Swapchain gate scoped to dynamic dispatch (2026-11-11)
 
 - Refined B2.6m so runtime null-pointer checks compile only for `PES17_VULKAN_DYNAMIC`. Dynamic loaders on Switch/Android/SDL validate WSI dispatch at startup; statically linked Vulkan builds rely on the linker to resolve those symbols and do not emit meaningless always-non-null function-address checks.
+
+
+### B2.7 — BO2 VulkanDevice extraction map (design checkpoint, 2026-11-11)
+
+Pinned BO2 `VulkanDevice` is a cohesive owner, not a handle facade. Its relevant responsibilities include physical-device identity/properties, supported/enabled features and extensions, logical device, loaded device functions, queue-family/queue objects and memory-type information.
+
+PES ownership map before extraction:
+
+| Responsibility | Current location | Migration target |
+|---|---|---|
+| Physical/logical handles, selected queue/family, device properties/name | `pipeline.cpp::State` | Device context |
+| Feature/extension negotiation and renderer capability flags (BC/ASTC, dynamic rendering/state, pipeline libraries, anisotropy, precise queries, non-seamless cubes) | `pipeline.cpp::CreateDevice` + `State` | Device capability negotiation/state |
+| Logical-device creation/destruction and dynamic dispatch rollback | `provider.cpp` + `loader.cpp` | Device owns logical-device lifetime/dispatch; Provider retains instance operations |
+| Surface, swapchain, present-capable queue choice and present extensions | `presenter.cpp::Presenter` | Remains Presenter (supplies WSI requirements to Device) |
+| Physical memory properties | duplicated queries in `renderer.cpp`, `texture_cache.cpp`, `framegen.cpp`, `upscaler.cpp` | Cached Device properties/accessor |
+| Renderer capability getters and opaque handles | `pipeline.h` | Typed Device/context accessors; Pipeline keeps renderer resource/layout/cache ownership |
+
+Implementation sequence: centralize immutable physical-device and memory properties first; then migrate capability negotiation together with enabled extension/feature state; then transfer device/dispatch lifetime; finally replace consumers and remove duplicate queries. Each step must retain the current two ownership modes (Pipeline-owned headless context vs Presenter-borrowed WSI context), and teardown must continue to stop presentation, destroy renderer/texture resources, then destroy the device and instance. No object extraction has been implemented at this checkpoint; this design is grounded in current call sites and prevents an unsafe bulk move.

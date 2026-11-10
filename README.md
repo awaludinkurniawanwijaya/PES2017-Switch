@@ -399,3 +399,16 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 ### Swapchain gate scoped to dynamic dispatch (2026-11-11)
 
 - Scoped the cross-platform WSI pointer check to `PES17_VULKAN_DYNAMIC`. Dynamic Switch, Android and SDL loader paths validate the five commands; static-link builds rely on link-time symbol resolution and avoid testing non-null function designators at runtime.
+
+
+### BO2 VulkanDevice extraction — ownership map (2026-11-11)
+
+The next architectural milestone is deliberately **not** a thin `Device` wrapper. The pinned BO2 `VulkanDevice` groups physical-device identity/properties, supported and enabled features/extensions, logical-device lifetime, device dispatch, queue-family/queue objects, and memory-type information. PES currently distributes those responsibilities:
+
+- `pipeline.cpp::State`: physical/logical device handles, selected queue/family, cached `VkPhysicalDeviceProperties`, device name, renderer feature/format capabilities, and headless-vs-borrowed ownership.
+- `provider.cpp`: instance lifecycle, physical-device selection, extension enumeration, logical-device creation/destruction and dynamic device-dispatch load/rollback.
+- `presenter.cpp::Presenter`: WSI surface/swapchain, selected present-capable graphics family, and its device/queue handles; the worker stops separately from final teardown so renderer resources can die before the device.
+- `renderer.cpp` and `texture_cache.cpp`: each independently query physical-device memory properties and selected physical-device properties; `framegen.cpp` and `upscaler.cpp` also query physical memory properties for allocations.
+- `pipeline.h`: exposes opaque context handles and renderer capability getters consumed by renderer/texture code.
+
+Extraction order: (1) centralize physical-device properties, memory properties and queue-family metadata in a real device context; (2) move supported/enabled feature and extension negotiation with the corresponding state; (3) move logical-device handle and dispatch ownership under a single destruction contract; (4) adapt Pipeline and Presenter through typed accessors while preserving borrowed/headless ownership; (5) remove duplicated physical-device queries only after all consumers use the context. The surface/swapchain and present policy stay in Presenter. This mapping is the baseline; no Device object extraction is claimed complete yet.
