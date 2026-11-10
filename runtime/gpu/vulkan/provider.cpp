@@ -2,6 +2,7 @@
 
 #include "../../log.h"
 #include "loader.h"
+#include "pipeline.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -281,3 +282,42 @@ bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
         LOGI("vulkan: %s", info.deviceName);
         return true;
     }
+bool vk::provider::CreatePresentationDevice(VkPhysicalDevice physical, uint32_t queueFamily,
+                                            VkDevice& device, VkQueue& queue, bool& presentWait)
+{
+    std::vector<const char*> extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    VkPhysicalDevicePresentIdFeaturesKHR presentId{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
+    VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
+    void* features = nullptr;
+    presentWait = false;
+    if (vk::pipeline::DeviceHasExtension(physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+        vk::pipeline::DeviceHasExtension(physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+    {
+        presentId.pNext = &presentWaitFeatures;
+        VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+        query.pNext = &presentId;
+        vkGetPhysicalDeviceFeatures2(physical, &query);
+        if (presentId.presentId && presentWaitFeatures.presentWait)
+        {
+            extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+            presentWaitFeatures.pNext = nullptr;
+            features = &presentId;
+            presentWait = true;
+        }
+    }
+    void* createdDevice = nullptr;
+    void* createdQueue = nullptr;
+    if (!vk::pipeline::CreateDevice(physical, queueFamily, extensions.data(),
+                                    uint32_t(extensions.size()), &createdDevice,
+                                    &createdQueue, features))
+    {
+        presentWait = false;
+        return false;
+    }
+    device = static_cast<VkDevice>(createdDevice);
+    queue = static_cast<VkQueue>(createdQueue);
+    return true;
+}
