@@ -5,7 +5,7 @@
 Repositori ini mengembangkan jalur recompilation PowerPC, runtime kompatibilitas Xbox 360, lapisan platform libnx, serta backend grafis Vulkan melalui NXVK. Target akhirnya adalah menjalankan PES 2017 sebagai aplikasi homebrew Nintendo Switch (NRO), bukan menjalankan emulator Xbox 360.
 
 > [!WARNING]
-> **Status per 10 November 2026: belum playable.** Selain recompilation lokal dan bootstrap libnx, smoke test yang memakai loader PES sendiri kini berhasil menjalankan NVK pada Tegra X1, membuat VI swapchain, serta menyelesaikan 120 siklus acquire–submit–present pada Switch fisik. Ini membuktikan jalur loader/WSI dasar, bukan rendering game atau boot PES 2017.
+> **Status per 10 November 2026: belum playable.** Selain recompilation lokal dan bootstrap libnx, smoke test yang memakai loader PES sendiri kini berhasil menjalankan NVK pada Tegra X1, membuat VI swapchain, serta menyelesaikan 120 siklus acquire–submit–present pada Switch fisik. Ini membuktikan jalur loader/WSI dasar. Pada 10 November 2026, CI juga berhasil membangun NRO PES-owned dengan graphics pipeline dan `vkCmdDraw(3, 1, 0, 0)` menggunakan shader RGB dari contoh `nvk_tri`; binary sudah diverifikasi memuat jalur pipeline/draw. Hasil gambar segitiga pada Switch fisik masih menunggu pengujian, sehingga ini belum membuktikan renderer game atau boot PES 2017.
 
 ---
 
@@ -59,7 +59,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 | Analisis jump table | Masih ada pekerjaan | 2 dispatch terlewat pada laporan analisis |
 | Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
 | Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
-| NXVK / VI WSI + GPU clear | Berhasil pada Switch fisik | 120/120 frame acquire-submit-present; `vkCmdClearColorImage` tiga fase warna; pengguna mengonfirmasi perubahan warna terlihat. Belum menguji graphics pipeline/draw atau renderer PES |
+| NXVK / VI WSI + GPU clear | Berhasil pada Switch fisik | 120/120 frame acquire-submit-present; `vkCmdClearColorImage` tiga fase warna; pengguna mengonfirmasi perubahan warna terlihat. CI graphics pipeline + `vkCmdDraw` berhasil dibangun (NRO PES-owned tersedia); visibilitas segitiga pada Switch fisik dan renderer PES belum diverifikasi |
 | Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
 | PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
