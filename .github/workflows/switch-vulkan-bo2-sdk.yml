@@ -67,6 +67,22 @@ jobs:
               test -x "$compiler-gcc"
               test -x "$compiler-g++"
               common="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -ffunction-sections -fdata-sections"
+              # Compile every PES Vulkan runtime translation unit against the same
+              # pinned BO2 Mesa headers used by the standalone static-link probe.
+              mkdir -p /tmp/pes-vulkan-runtime-objects
+              for source in runtime/gpu/vulkan/*.cpp; do
+                object="/tmp/pes-vulkan-runtime-objects/$(basename "${source%.cpp}").o"
+                echo "Compile PES Vulkan runtime: $source"
+                "$compiler-g++" -std=c++20 -O2 $common -pthread \
+                  -D__SWITCH__=1 -DPES17_VULKAN_DYNAMIC=1 -DPES17_HAVE_VULKAN=1 \
+                  -D_GNU_SOURCE=1 -D_DEFAULT_SOURCE=1 -DPES17_DIAGNOSTICS=0 \
+                  -DPES17_NO_LOGGING=1 -include cstdint \
+                  -Iruntime -Iswitch/source -Iswitch/include \
+                  -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
+                  -I/opt/devkitpro/portlibs/switch/include \
+                  -c "$source" -o "$object"
+              done
+              echo "PASS: all PES Vulkan runtime translation units compiled for Switch"
               "$compiler-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
               "$compiler-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
                 -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
