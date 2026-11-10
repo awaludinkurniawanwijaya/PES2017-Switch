@@ -245,7 +245,7 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 | Jalur | Kebijakan | Status |
 |---|---|---|
 | NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake hanya memilih jalur NXVK jika `PES17_SWITCH_USE_LEGACY_NXVK=ON`. | **Dihentikan — opsi legacy eksplisit saja** |
-| Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. SDK statis BO2 dipakai oleh workflow link-probe dan kini workflow juga mengompilasi seluruh translation unit Vulkan runtime PES untuk target Switch. Provider/device/presenter PES belum dipisahkan. | **Arah kerja aktif — gate kompilasi runtime ditambahkan; hasil CI gate baru menunggu** |
+| Vulkan native (BO2-style) | SDK statis BO2 dipakai oleh probe dan gate compile seluruh translation unit Vulkan runtime. Gate menemukan deklarasi dispatch belum dipaksa-include; CMake dan workflow kini memasang `runtime/gpu/vulkan/loader.h` sebelum source runtime. Provider/device/presenter PES belum dipisahkan. | **Arah kerja aktif — koreksi dispatch preinclude dikirim; hasil CI ulang menunggu** |
 
 Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).
 
