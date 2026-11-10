@@ -394,3 +394,8 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 
 - Moved the required swapchain entry-point check out of the Switch-only compile guard. Android and SDL dynamic-loader paths now reject a device with missing `VK_KHR_swapchain` commands before attempting swapchain creation or presentation, just as the Switch path already did.
 - The generic loader continues to require core device dispatch; the Presenter validates WSI dispatch because swapchain is a presenter-owned extension. This is consistent with BO2's separation of device function availability and presentation responsibilities.
+
+
+### Swapchain gate scoped to dynamic dispatch (2026-11-11)
+
+- Scoped the cross-platform WSI pointer check to `PES17_VULKAN_DYNAMIC`. Dynamic Switch, Android and SDL loader paths validate the five commands; static-link builds rely on link-time symbol resolution and avoid testing non-null function designators at runtime.

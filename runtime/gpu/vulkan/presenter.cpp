@@ -289,15 +289,17 @@ namespace
         }
         g.device = static_cast<VkDevice>(createdDevice);
         g.queue = static_cast<VkQueue>(createdQueue);
-        // Swapchain commands are mandatory for every window-system presenter,
-        // not only Horizon. Dynamic Android/desktop drivers need the same early
-        // failure instead of a null dispatch call in CreateSwapchain/DrawOneFrame.
+#if defined(PES17_VULKAN_DYNAMIC)
+        // Swapchain commands are mandatory for every dynamic window-system
+        // presenter, not only Horizon. Static-link builds resolve these symbols
+        // at link time; dynamic drivers must be checked before WSI calls.
         if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
             !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
         {
             LOGW("vulkan: the selected implementation is missing required swapchain dispatch functions");
             return false;
         }
+#endif
         if (g.presentWait)
         {
             g.waitForPresent = reinterpret_cast<PFN_vkWaitForPresentKHR>(

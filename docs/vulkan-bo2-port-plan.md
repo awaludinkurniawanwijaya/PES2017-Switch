@@ -367,3 +367,8 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 
 - The Presenter now validates the five required `VK_KHR_swapchain` commands on every window-system platform after logical-device creation, not only Switch. A dynamic Android/SDL driver missing one of these commands fails cleanly before swapchain or present calls can dereference a null dispatch pointer.
 - Dispatch validation responsibilities are explicit: Loader checks mandatory core commands, Provider rolls back a device with incomplete core dispatch, and Presenter checks the WSI extension it enabled. Optional present-wait remains independently gated.
+
+
+### B2.6n — Swapchain gate scoped to dynamic dispatch (2026-11-11)
+
+- Refined B2.6m so runtime null-pointer checks compile only for `PES17_VULKAN_DYNAMIC`. Dynamic loaders on Switch/Android/SDL validate WSI dispatch at startup; statically linked Vulkan builds rely on the linker to resolve those symbols and do not emit meaningless always-non-null function-address checks.
