@@ -207,11 +207,12 @@ Pemeriksaan source terhadap seluruh daftar translation unit Vulkan menemukan dua
 
 Workflow sekarang menandai dua file tersebut sebagai **DEFERRED** dan tetap mengompilasi translation unit Vulkan lain terhadap SDK BO2 yang dipin. Tidak dibuat header PPC tiruan. Gate ini adalah pemeriksaan parsial yang eksplisit, bukan klaim bahwa seluruh runtime telah terkompilasi.
 
-Percobaan CI setelah perubahan isolasi juga menemukan kesalahan ekspansi variabel compiler pada skrip bash (`$compiler-g++`/`$compiler-gcc` diubah menjadi `${compiler}-g++`/`${compiler}-gcc`). Perbaikan tersebut dikirim pada commit `c1702dd15355c3a001ea9a9ba5987ffe532be7e3`; hasil validasi run baru masih harus diperiksa.
+Percobaan pertama setelah isolasi gagal sebelum kompilasi dimulai karena ekspansi nama variabel compiler di bash; skrip kini menggunakan `${compiler}-g++` dan `${compiler}-gcc`. Perbaikannya divalidasi oleh CI run `42864142164` pada commit `8bab73a0d124000f48c26cf7c82ec6fc58bf1e9f`.
 
 ### Batas pembuktian saat ini
 
-- SDK BO2: checksum dan manifest rilis sudah diverifikasi pada run sebelumnya.
-- PES Vulkan translation units: 13 file sudah pernah berhasil dikompilasi sebelum titik pertama yang membutuhkan PPC; hasil gate parsial baru akan diketahui setelah retry.
-- `renderer_draw.cpp` dan `renderer_resolve.cpp`: belum dikompilasi pada target Switch karena header PPC privat tidak tersedia di CI publik.
+- SDK BO2: checksum dan manifest rilis diverifikasi ulang pada run `42864142164`.
+- PES Vulkan translation units: **24 dari 26 berhasil dikompilasi** untuk ARM64 Switch pada run `42864142164`; dua file secara eksplisit deferred karena input PPC privat.
+- `renderer_draw.cpp` dan `renderer_resolve.cpp`: belum dikompilasi pada target Switch karena `ppc/ppc_recomp_shared.h` tidak tersedia di CI publik.
+- Probe GIPA/instance/physical-device berhasil dibangun, ditautkan, dan dipaketkan sebagai NRO pada run tersebut; output diagnostik API pada Switch fisik belum dilaporkan.
 - Full PES link, device/WSI, segitiga RGB, dan rendering game: belum terbukti.
