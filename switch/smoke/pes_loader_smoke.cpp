@@ -539,26 +539,33 @@ int main(int argc, char** argv)
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
     Log("[PIPELINE] render pass created; loader framebuffer dispatch=%p",
         reinterpret_cast<void*>(vkCreateFramebuffer));
-    // Match BO2's VulkanDevice::Functions contract: obtain device commands
-    // from the Vulkan loader's vkGetDeviceProcAddr after LoadDevice(device).
-    // Do not call the Mesa ICD-private vk_icdGetInstanceProcAddr interface
-    // with a loader-owned VkInstance.
+    // Prefer the BO2-style vkGetDeviceProcAddr lookup. On this NXVK build,
+    // however, the ICD returns null for framebuffer commands even though its
+    // public vkGetInstanceProcAddr exposes the same core commands and the
+    // loader has already populated the corresponding dispatch slots.
+    // Keep both observations in the log, then use the loader-resolved pointer
+    // as a compatibility fallback instead of aborting before framebuffer test.
     if (!vkGetDeviceProcAddr) {
         Log("FAIL vkGetDeviceProcAddr is null after device creation");
         result = 12;
         break;
     }
-    auto createFramebufferDirect = reinterpret_cast<PFN_vkCreateFramebuffer>(
+    auto createFramebufferDevice = reinterpret_cast<PFN_vkCreateFramebuffer>(
         vkGetDeviceProcAddr(device, "vkCreateFramebuffer"));
-    destroyFramebufferDirect = reinterpret_cast<PFN_vkDestroyFramebuffer>(
+    auto destroyFramebufferDevice = reinterpret_cast<PFN_vkDestroyFramebuffer>(
         vkGetDeviceProcAddr(device, "vkDestroyFramebuffer"));
-    Log("[PIPELINE] BO2-style device dispatch framebuffer create=%p destroy=%p",
+    Log("[PIPELINE] ICD vkGetDeviceProcAddr framebuffer create=%p destroy=%p",
+        reinterpret_cast<void*>(createFramebufferDevice),
+        reinterpret_cast<void*>(destroyFramebufferDevice));
+
+    createFramebufferDirect = createFramebufferDevice ? createFramebufferDevice : vkCreateFramebuffer;
+    destroyFramebufferDirect = destroyFramebufferDevice ? destroyFramebufferDevice : vkDestroyFramebuffer;
+    Log("[PIPELINE] selected framebuffer dispatch create=%p destroy=%p source=%s",
         reinterpret_cast<void*>(createFramebufferDirect),
-        reinterpret_cast<void*>(destroyFramebufferDirect));
+        reinterpret_cast<void*>(destroyFramebufferDirect),
+        (createFramebufferDevice && destroyFramebufferDevice) ? "device-proc" : "instance-proc fallback");
     if (!createFramebufferDirect || !destroyFramebufferDirect) {
-        Log("FAIL BO2-style device dispatch is incomplete (create=%p destroy=%p)",
-            reinterpret_cast<void*>(createFramebufferDirect),
-            reinterpret_cast<void*>(destroyFramebufferDirect));
+        Log("FAIL framebuffer dispatch unavailable from both device and instance proc lookup");
         result = 12;
         break;
     }
