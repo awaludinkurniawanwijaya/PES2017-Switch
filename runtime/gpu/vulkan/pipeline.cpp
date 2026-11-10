@@ -215,6 +215,8 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
         LOGW("vulkan: invalid logical-device creation arguments");
         return false;
     }
+    g.devicePropertiesReady = false;
+    g.physicalFeaturesReady = false;
     VkPhysicalDevice physical = static_cast<VkPhysicalDevice>(physicalDevice);
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &familyCount, nullptr);
@@ -233,6 +235,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     VkPhysicalDeviceProperties physicalProperties{};
     vkGetPhysicalDeviceProperties(physical, &physicalProperties);
     g.deviceProperties = physicalProperties;
+    g.devicePropertiesReady = true;
     g.physical = physical;
 
     const float priority = 1.0f;
@@ -293,6 +296,8 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
 
     VkPhysicalDeviceFeatures supported{};
     vkGetPhysicalDeviceFeatures(physical, &supported);
+    g.physicalFeatures = supported;
+    g.physicalFeaturesReady = true;
     VkPhysicalDeviceFeatures enabled{};
     // Robust buffer access, because the vertex fetch path reads the frame arena
     // at indices the guest's own data computes. One index past the end is,
@@ -919,12 +924,19 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
         return false;
     }
 
-    VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(g.physical, &props);
+    if (!g.devicePropertiesReady)
+    {
+        vkGetPhysicalDeviceProperties(g.physical, &g.deviceProperties);
+        g.devicePropertiesReady = true;
+    }
+    const VkPhysicalDeviceProperties props = g.deviceProperties;
     vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memoryProperties);
     g.memoryPropertiesReady = true;
-    vkGetPhysicalDeviceFeatures(g.physical, &g.physicalFeatures);
-    g.physicalFeaturesReady = true;
+    if (!g.physicalFeaturesReady)
+    {
+        vkGetPhysicalDeviceFeatures(g.physical, &g.physicalFeatures);
+        g.physicalFeaturesReady = true;
+    }
     g.deviceProperties = props;
     g.devicePropertiesReady = true;
     g.depthStencilResolveSampleZero = false;
