@@ -560,8 +560,10 @@ int main(int argc, char** argv)
     Log("[PIPELINE] BO2-style device dispatch framebuffer create=%p destroy=%p",
         reinterpret_cast<void*>(createFramebufferDirect),
         reinterpret_cast<void*>(destroyFramebufferDirect));
-    if (!createFramebufferDirect) {
-        Log("FAIL vkGetDeviceProcAddr did not return vkCreateFramebuffer");
+    if (!createFramebufferDirect || !destroyFramebufferDirect) {
+        Log("FAIL BO2-style device dispatch is incomplete (create=%p destroy=%p)",
+            reinterpret_cast<void*>(createFramebufferDirect),
+            reinterpret_cast<void*>(destroyFramebufferDirect));
         result = 12;
         break;
     }
@@ -577,11 +579,11 @@ int main(int argc, char** argv)
     VkResult framebufferResult = createFramebufferDirect(
         device, &framebufferInfo, nullptr, &offscreenFramebuffer);
     if (framebufferResult != VK_SUCCESS) {
-        Log("FAIL direct ICD vkCreateFramebuffer -> %d", int(framebufferResult));
+        Log("FAIL BO2-style vkGetDeviceProcAddr(vkCreateFramebuffer) -> %d", int(framebufferResult));
         result = 12;
         break;
     }
-    Log("[PIPELINE] app-owned framebuffer created via direct ICD handle=%p",
+    Log("[PIPELINE] app-owned framebuffer created via BO2-style device dispatch handle=%p",
         reinterpret_cast<void*>(offscreenFramebuffer));
 
     VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
