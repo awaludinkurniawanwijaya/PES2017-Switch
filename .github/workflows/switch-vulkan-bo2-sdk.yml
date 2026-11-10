@@ -70,7 +70,7 @@ jobs:
               common="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -ffunction-sections -fdata-sections"
               # Compile every Vulkan TU that is independent of generated PPC output.
               # renderer_draw.cpp and renderer_resolve.cpp include runtime/kernel/kernel.h,
-              # which requires ppc/ppc_recomp_shared.h generated from the user's private
+              # which requires ppc/ppc_recomp_shared.h generated from private
               # default.xex. Defer only those TUs; never fabricate a substitute PPC header.
               mkdir -p /tmp/pes-vulkan-runtime-objects
               deferred=0
