@@ -8,10 +8,9 @@
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
 #elif defined(__SWITCH__)
-// NXVK is linked statically on Horizon; follow BO2 and use its public
-// vkGetInstanceProcAddr export, not Mesa's ICD-private entry point.
-extern "C" PFN_vkVoidFunction VKAPI_CALL
-vkGetInstanceProcAddr(VkInstance instance, const char* name);
+// NXVK is linked statically on Horizon. The function-pointer variable
+// vkGetInstanceProcAddr is declared by loader.h; do not redeclare it as a
+// function (the loader owns the variable and initializes it from the ICD).
 #else
 #include <dlfcn.h>
 #endif
