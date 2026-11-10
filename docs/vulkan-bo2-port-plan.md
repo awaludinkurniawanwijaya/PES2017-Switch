@@ -162,3 +162,13 @@ The workflow completed successfully for commit `8231466c8df55fcff6aac210ed49e2dd
 - Not yet verified: whether the preceding diagnostic printed `GIPA: PASS` or `FAIL`, exact Vulkan API version, instance creation, device creation, VI surface/swapchain, or any rendered frame.
 
 The probe source prints the GIPA/API-version result before the HOME prompt. Preserve this distinction in progress reports. The next software task is full PES runtime compile/link against the exact same SDK; do not mark triangle rendering or game rendering complete.
+
+
+## B2.3 — Extended runtime probe build (2026-11-10)
+
+- Source commit: `4f72f70afd6319c5aae76ac4cd0b71703073e38b`.
+- CI: [run 42859421857](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42859421857), completed successfully; compile, BO2-order static link, NRO packaging, and artifact upload all passed.
+- Artifact: `pes17-vulkan-bo2-probe`, ID `13783778138`, ZIP SHA-256 `8d987da09824ae3a9c7e455f444041b9eb140767f2bd96851e520f68470c427e`.
+- Probe source now checks public GIPA, optional API version query, `vkCreateInstance`, `vkEnumeratePhysicalDevices`, and first GPU properties/name. It prints explicit PASS/FAIL diagnostics before the HOME exit prompt.
+- Physical Switch result for this extended probe: not yet reported. The prior report applies only to the earlier probe build and must not be reused as evidence for this extended test.
+- Full PES runtime integration, logical-device creation, surface/swapchain, presentation, triangle, and game rendering remain unverified.
