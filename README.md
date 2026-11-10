@@ -583,3 +583,11 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Keep Presenter's swapchain/present-ID/present-wait negotiation in Presenter. Keep Pipeline's descriptor-set layouts, pipeline layout/cache and shader-module/pipeline resource operations in Pipeline. Move only device discovery/creation/capability ownership into Device, then make Provider Context call Device::Create directly.
 
 **B2.27 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `d1868eb23cbf26879432155a485a6fbe15b730e1`. The SDK job compiled 27 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42898842463/artifacts/13800489828 (ZIP SHA256 `059bc5209216400aebbbd8013cd427302fb87c7b8858a0d7e49e4ff2c225c7ed`). This is not full PES linking or scene rendering.
+
+### Pipeline now consumes Device-owned capability snapshots (2026-11-11)
+
+- Pipeline retains a non-owning `Device` pointer alongside its raw operational handles. Both headless Provider-owned and Presenter-borrowed paths set this pointer from the actual Provider Context.
+- Physical-device properties used by Pipeline Cache and crash diagnostics are copied from the Device snapshot. Memory properties, core physical features, depth-resolve support, device name, BC/ASTC support, anisotropy, precise queries, dynamic rendering/state, pipeline-library and legacy/static-state capability accessors now delegate to Device.
+- Removed the superseded `pipeline::CreateDevice` API and its duplicate 400-line device creation/capability negotiation implementation. Device::Create is now the single logical-device creation and capability owner; Pipeline remains responsible for descriptor/pipeline layout, cache and shader modules.
+- Device fault reports now delegate to `Device::ReportFault()`; the duplicate Pipeline-level device-fault dispatch cache was removed.
+- CI validation for this migration is pending.
