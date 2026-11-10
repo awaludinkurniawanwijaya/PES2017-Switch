@@ -26,6 +26,7 @@ bool vk::renderer::DumpingDraws() { return false; }
 #else
 
 #include "renderer_state.h"
+#include "provider.h"
 #include "../../frame_rate.h"
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
