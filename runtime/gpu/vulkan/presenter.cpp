@@ -1092,7 +1092,6 @@ namespace
         }
 #endif
         g.surface = VK_NULL_HANDLE;
-        g.providerOwner.reset();
     }
 
 #ifdef __SWITCH__
@@ -1215,7 +1214,7 @@ namespace
             android::SetStatus("Failed to create Vulkan surface for Android window");
             return false;
         }
-        if (!g.providerOwner && g.providerOwner->SelectPresentationDevice(g.surface)) {
+        if (!g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface)) {
             android::SetStatus("No Vulkan physical device found");
             return false;
         }
@@ -1250,7 +1249,7 @@ namespace
             return false;
         }
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
-            !g.providerOwner && g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            !g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         if (!InitialisePipelineOnPresenterDevice())
         {
@@ -1278,7 +1277,7 @@ namespace
             LOGW("vulkan: no surface (%s)", SDL_GetError());
             return false;
         }
-        if (!g.providerOwner && g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+        if (!g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         SDL_ShowWindow(g.window);
         SDL_RaiseWindow(g.window);
