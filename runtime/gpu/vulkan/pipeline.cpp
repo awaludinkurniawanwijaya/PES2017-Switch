@@ -548,8 +548,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     info.pEnabledFeatures = &enabled;
     VkDevice device = VK_NULL_HANDLE;
     VkQueue made = VK_NULL_HANDLE;
-    const bool created = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
-    VkResult r = created ? VK_SUCCESS : VK_ERROR_INITIALIZATION_FAILED;
+    VkResult r = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
     if ((r == VK_ERROR_NOT_PERMITTED_KHR || r == VK_ERROR_INITIALIZATION_FAILED) && queue.pNext)
     {
         // The priority was refused (Android lets an app have some levels and not others).
@@ -559,8 +558,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
         extensions.erase(std::remove(extensions.begin(), extensions.end(), priorityExtension), extensions.end());
         info.enabledExtensionCount = uint32_t(extensions.size());
         info.ppEnabledExtensionNames = extensions.data();
-        const bool retried = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
-        r = retried ? VK_SUCCESS : VK_ERROR_INITIALIZATION_FAILED;
+        r = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
     }
     if (r != VK_SUCCESS) { LOGW("vulkan: no device (%s)", Explain(r)); return false; }
     if (queue.pNext) LOGI("vulkan: the queue runs at global priority %d", int(globalPriority.globalPriority));
