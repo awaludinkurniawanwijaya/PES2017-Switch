@@ -334,3 +334,9 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 - Reset the optional `VK_EXT_device_fault` function pointer and its associated `VkDevice` at the start of each `pipeline::CreateDevice` attempt. If the next driver/device does not enable that extension, diagnostics cannot accidentally call the previous device's dispatch against a destroyed handle.
 - Clear the pair during `pipeline::Shutdown` after renderer cache/layout teardown and before Provider destroys an owned logical device. For borrowed presenter devices, clearing occurs before Pipeline returns control to Presenter, which then performs the device destruction.
 - Architectural comparison against pinned BO2 commit `dd189961e8876079087d6f0843af8013bd154277`: BO2 `VulkanDevice` is the real capability/ownership object (physical-device properties, enabled features/extensions, queue families, device and function dispatch). PES still has a deliberate split: Provider handles Vulkan instance/device low-level lifetime; Pipeline owns renderer capability and feature policy; Presenter owns WSI. Do not mark the object extraction complete or make a thin facade; the next extraction must move coherent capability state and its negotiation together.
+
+
+### B2.6i — Borrowed-device context invalidation (2026-11-11)
+
+- After releasing Pipeline-owned cache/layout resources, `pipeline::Shutdown` now clears all cached Vulkan context handles and queue-family state regardless of ownership. It still calls Provider destruction only for a Pipeline-owned headless context; a borrowed Presenter device/instance remain owned by Presenter.
+- This prevents `Instance`, `PhysicalDevice`, `Queue`, `QueueFamily` and related accessors from returning stale borrowed handles after Pipeline shutdown, without changing the BO2-inspired ownership boundary.

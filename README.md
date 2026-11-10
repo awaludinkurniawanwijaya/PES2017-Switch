@@ -362,3 +362,9 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 - The renderer Pipeline's optional `VK_EXT_device_fault` diagnostic dispatch and device handle are now cleared at the beginning of every logical-device creation attempt, preventing a new device that lacks the extension from inheriting a stale pointer from an earlier device.
 - Pipeline shutdown clears both values after its cache/resources are released and before the owned device is destroyed (or before control returns to Presenter for destruction of a borrowed device). This preserves the existing ownership split: Pipeline owns renderer resources; Provider owns device destruction; Presenter owns the window/swapchain lifetime.
 - This is a targeted lifetime correction, not yet the BO2 `VulkanDevice` extraction. BO2's reference object owns physical-device properties, feature/extension negotiation, enabled device, queue families and dispatch; PES currently keeps renderer capability policy in Pipeline and low-level instance/device lifecycle in Provider. The extraction remains staged to avoid moving feature policy into WSI or changing ownership accidentally.
+
+
+### Borrowed-device context invalidation (2026-11-11)
+
+- `pipeline::Shutdown` now clears its local instance, physical-device, queue and queue-family copies for both owned headless devices and borrowed Presenter devices. Borrowed handles are not destroyed by Pipeline; they are merely invalidated locally after renderer resources are released, so Pipeline accessors cannot expose stale context after shutdown.
+- The ownership contract remains explicit: Pipeline destroys the logical device and instance only when it created the headless context; Presenter remains responsible for its own surface/device/instance teardown.

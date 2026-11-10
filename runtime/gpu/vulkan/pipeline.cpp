@@ -955,9 +955,15 @@ void vk::pipeline::Shutdown()
         vk::provider::DestroyLogicalDevice(g.device);
         vk::provider::DestroyInstance(g.instance);
     }
+    // Pipeline keeps only a borrowed copy of Presenter-owned handles. Clear
+    // those copies too: after Shutdown no accessor may expose a dead/stale
+    // context, even though Pipeline must not destroy the presenter's objects.
     g.device = VK_NULL_HANDLE;
+    g.instance = VK_NULL_HANDLE;
     g.physical = VK_NULL_HANDLE;
     g.queue = VK_NULL_HANDLE;
+    g.family = 0;
+    g.ownsDevice = false;
 }
 
 bool vk::pipeline::Ready() { return g.device != VK_NULL_HANDLE; }
