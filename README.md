@@ -435,3 +435,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - This is the first implemented Device-metadata extraction slice, not a complete VulkanDevice object. CI compilation and tests are required before treating it as validated.
 
 **Validation update:** CTest for `53b464bb8145e24e9499ae519eae948155d4eae5` passed. The Switch BO2 Mesa SDK probe job remains in progress, so this change is not yet marked fully validated.
+
+**Validation completed:** CTest passed and the BO2 Mesa Switch SDK probe job passed for implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5`. The SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. The diagnostic NRO was packaged as artifact `13795401108` (ZIP SHA256 `739048ccefe61e156b403851535e19e5352d8aafa2e568584f88c5aa6eb222b8`). This validates the SDK probe and listed TUs, not a complete PES game link or scene rendering.
