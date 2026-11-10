@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <memory>
+#include "device.h"
 
 namespace vk::provider
 {
@@ -23,4 +25,39 @@ namespace vk::provider
     // Selects a graphics-capable device without requiring presentation support.
     bool PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& physical,
                             uint32_t& queueFamily);
+}
+
+
+#include <memory>
+#include "device.h"
+
+// BO2-style owner for one Vulkan context. It owns Instance first and Device
+// second, so destruction always releases the logical device before the instance.
+namespace vk::provider
+{
+    class Context final
+    {
+    public:
+        static std::unique_ptr<Context> Create(bool headless);
+        bool SelectHeadlessDevice();
+        bool SelectPresentationDevice(VkSurfaceKHR surface);
+        bool CreateLogicalDevice(const char* const* extraExtensions, uint32_t extraCount,
+                                 void* features = nullptr);
+
+        const vk::instance::Instance* InstanceObject() const { return instance_.get(); }
+        const vk::device::Device* DeviceObject() const { return device_.get(); }
+        VkInstance InstanceHandle() const;
+        VkPhysicalDevice PhysicalHandle() const;
+        VkDevice LogicalHandle() const;
+        VkQueue QueueHandle() const;
+        uint32_t QueueFamily() const;
+
+    private:
+        explicit Context(std::unique_ptr<vk::instance::Instance> instance)
+            : instance_(std::move(instance)) {}
+        std::unique_ptr<vk::instance::Instance> instance_;
+        std::unique_ptr<vk::device::Device> device_;
+        VkPhysicalDevice selectedPhysical_ = VK_NULL_HANDLE;
+        uint32_t selectedQueueFamily_ = 0;
+    };
 }

@@ -1,4 +1,5 @@
 #include "provider.h"
+#include "pipeline.h"
 
 #include "../../log.h"
 #include "loader.h"
@@ -529,4 +530,80 @@ void vk::provider::DestroyLogicalDevice(VkDevice& device)
     vk::loader::ForgetDevice();
 #endif
     device = VK_NULL_HANDLE;
+}
+
+
+std::unique_ptr<vk::provider::Context> vk::provider::Context::Create(bool headless)
+{
+    VkInstance handle = VK_NULL_HANDLE;
+    const bool made = headless ? CreateHeadlessInstance(handle) : CreateInstance(handle);
+    if (!made) return nullptr;
+    auto instance = vk::instance::Instance::Adopt(handle);
+    if (!instance)
+    {
+        DestroyInstance(handle);
+        return nullptr;
+    }
+    return std::unique_ptr<Context>(new Context(std::move(instance)));
+}
+
+bool vk::provider::Context::SelectHeadlessDevice()
+{
+    if (!instance_ || device_) return false;
+    selectedPhysical_ = VK_NULL_HANDLE;
+    selectedQueueFamily_ = 0;
+    return PickGraphicsDevice(static_cast<VkInstance>(instance_->Handle()),
+                              selectedPhysical_, selectedQueueFamily_);
+}
+
+bool vk::provider::Context::SelectPresentationDevice(VkSurfaceKHR surface)
+{
+    if (!instance_ || !surface || device_) return false;
+    selectedPhysical_ = VK_NULL_HANDLE;
+    selectedQueueFamily_ = 0;
+    return PickPhysicalDevice(static_cast<VkInstance>(instance_->Handle()), surface,
+                              selectedPhysical_, selectedQueueFamily_);
+}
+
+bool vk::provider::Context::CreateLogicalDevice(const char* const* extraExtensions,
+                                                uint32_t extraCount, void* features)
+{
+    if (!instance_ || device_ || !selectedPhysical_ || (extraCount && !extraExtensions))
+        return false;
+    void* logical = nullptr;
+    void* queue = nullptr;
+    if (!vk::pipeline::CreateDevice(selectedPhysical_, selectedQueueFamily_,
+                                    extraExtensions, extraCount, &logical, &queue, features))
+        return false;
+    device_ = vk::device::Device::Adopt(selectedPhysical_, logical, queue, selectedQueueFamily_);
+    if (!device_)
+    {
+        VkDevice orphan = static_cast<VkDevice>(logical);
+        DestroyLogicalDevice(orphan);
+        return false;
+    }
+    selectedPhysical_ = VK_NULL_HANDLE;
+    selectedQueueFamily_ = 0;
+    return true;
+}
+
+VkInstance vk::provider::Context::InstanceHandle() const
+{
+    return instance_ ? static_cast<VkInstance>(instance_->Handle()) : VK_NULL_HANDLE;
+}
+VkPhysicalDevice vk::provider::Context::PhysicalHandle() const
+{
+    return device_ ? static_cast<VkPhysicalDevice>(device_->Physical()) : selectedPhysical_;
+}
+VkDevice vk::provider::Context::LogicalHandle() const
+{
+    return device_ ? static_cast<VkDevice>(device_->Logical()) : VK_NULL_HANDLE;
+}
+VkQueue vk::provider::Context::QueueHandle() const
+{
+    return device_ ? static_cast<VkQueue>(device_->Queue()) : VK_NULL_HANDLE;
+}
+uint32_t vk::provider::Context::QueueFamily() const
+{
+    return device_ ? device_->QueueFamily() : selectedQueueFamily_;
 }
