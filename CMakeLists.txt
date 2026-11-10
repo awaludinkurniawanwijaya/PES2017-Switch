@@ -214,11 +214,11 @@ if(PES17_SWITCH)
     target_link_directories(pes17 PRIVATE
         "$ENV{DEVKITPRO}/portlibs/switch/lib"
         "$ENV{DEVKITPRO}/libnx/lib")
-    # The upstream nxvk.pc wraps libnvk.a in --whole-archive. That is not
-    # needed here: force the ICD entry point, then let the linker pull only
-    # referenced driver objects. The smoke link verified this layout.
+    # The nxvk.pc package wraps the statically linked Mesa NVK driver. Keep
+    # only the public adapter entrypoint referenced by switch_driver.cpp;
+    # vk_icdGetInstanceProcAddr is ICD-private and is not the app's GIPA.
     # NVK has read-only-section dynamic relocations; NRO startup applies them.
-    target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,vk_icdGetInstanceProcAddr)
+    target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,nvk_GetInstanceProcAddr)
     target_link_libraries(pes17 PRIVATE
         nvk
         "-Wl,--start-group" nvk_support z expat "-Wl,--end-group"
