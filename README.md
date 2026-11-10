@@ -563,3 +563,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Added `vk::provider::Context`, an aggregate RAII owner for an `Instance` and optional `Device`, with deterministic Device-before-Instance destruction.
 - Context supports a staged window flow (create presentation-capable Instance → select a surface-compatible physical device → create/adopt logical Device) and a headless selection path. It exposes the owned objects and their handles for Pipeline/Presenter borrowing.
 - This commit establishes the owner/API; current Presenter and Pipeline paths have not yet been switched to it. Device capability negotiation still delegates to the existing Pipeline implementation. CI validation pending.
+
+### Presenter now delegates Vulkan context ownership to Provider (2026-11-11)
+
+- Presenter State now owns one `vk::provider::Context` instead of separate Instance and Device owners plus duplicate physical-device/queue-family selection fields.
+- Provider Context now performs surface-compatible physical-device selection, logical-device creation/adoption, and Device teardown. Presenter retains only WSI surface/swapchain/frame policy and obtains handles through Context accessors.
+- `BorrowedContext` passes Provider's Instance and Device objects to Pipeline. Presenter teardown asks Provider to destroy Device after swapchain resources, destroys the surface, then releases Provider/Instance. CI validation pending.
