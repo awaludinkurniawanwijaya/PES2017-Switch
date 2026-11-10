@@ -193,6 +193,39 @@ namespace
         return false;
     }
 
+    // Vulkan enumeration is allowed to return VK_INCOMPLETE when the list
+    // changes between the count and data calls. Retry the pair instead of
+    // silently accepting a truncated device/extension list.
+    template <typename T, typename Enumerate>
+    bool EnumerateVector(std::vector<T>& values, Enumerate&& enumerate, const char* what)
+    {
+        constexpr unsigned kMaxAttempts = 8;
+        for (unsigned attempt = 0; attempt < kMaxAttempts; ++attempt)
+        {
+            uint32_t count = 0;
+            VkResult result = enumerate(&count, nullptr);
+            if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+            {
+                LOGW("vulkan: %s count failed (%d)", what, int(result));
+                return false;
+            }
+            values.resize(count);
+            if (!count) return true;
+
+            result = enumerate(&count, values.data());
+            if (result == VK_INCOMPLETE) continue;
+            if (result != VK_SUCCESS)
+            {
+                LOGW("vulkan: %s enumeration failed (%d)", what, int(result));
+                return false;
+            }
+            values.resize(count);
+            return true;
+        }
+        LOGW("vulkan: %s kept changing during enumeration", what);
+        return false;
+    }
+
     // Under VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation, what the layer
     // reports goes into this log. Left to itself it prints to stdout, which
     // is block-buffered into a file and never flushed at this runtime's exit:
@@ -223,14 +256,14 @@ namespace
     // (VK_KHR_get_physical_device_properties2, VK_KHR_maintenance1 ...).
     bool InstanceHasExtension(const char* name)
     {
-        uint32_t count = 0;
+        std::vector<VkExtensionProperties> offered;
         // The first parameter is a layer name, not an extension name.
         // Pass nullptr to enumerate extensions exposed by the Vulkan
         // implementation itself (including the platform surface extensions).
-        if (vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) != VK_SUCCESS || !count)
-            return false;
-        std::vector<VkExtensionProperties> offered(count);
-        if (vkEnumerateInstanceExtensionProperties(nullptr, &count, offered.data()) != VK_SUCCESS)
+        if (!EnumerateVector(offered,
+                [](uint32_t* count, VkExtensionProperties* data) {
+                    return vkEnumerateInstanceExtensionProperties(nullptr, count, data);
+                }, "instance extensions"))
             return false;
         for (const auto& e : offered)
             if (std::strcmp(e.extensionName, name) == 0) return true;
@@ -350,21 +383,26 @@ namespace
 
     bool PickDevice()
     {
-        uint32_t count = 0;
-        vkEnumeratePhysicalDevices(g.instance, &count, nullptr);
-        if (!count) { LOGW("vulkan: no physical devices"); return false; }
-        std::vector<VkPhysicalDevice> devices(count);
-        vkEnumeratePhysicalDevices(g.instance, &count, devices.data());
+        std::vector<VkPhysicalDevice> devices;
+        if (!EnumerateVector(devices,
+                [](uint32_t* count, VkPhysicalDevice* data) {
+                    return vkEnumeratePhysicalDevices(g.instance, count, data);
+                }, "physical devices"))
+            return false;
+        if (devices.empty()) { LOGW("vulkan: no physical devices"); return false; }
 
         // Prefer a discrete device, but take whatever can present.
         VkPhysicalDevice fallback = VK_NULL_HANDLE;
         uint32_t fallbackFamily = 0;
         for (VkPhysicalDevice candidate : devices)
         {
-            uint32_t families = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, nullptr);
-            std::vector<VkQueueFamilyProperties> properties(families);
-            vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, properties.data());
+            std::vector<VkQueueFamilyProperties> properties;
+            if (!EnumerateVector(properties,
+                    [candidate](uint32_t* count, VkQueueFamilyProperties* data) {
+                        vkGetPhysicalDeviceQueueFamilyProperties(candidate, count, data);
+                        return VK_SUCCESS;
+                    }, "queue families"))
+                continue;
 
             for (uint32_t i = 0; i < families; i++)
             {
@@ -488,11 +526,12 @@ namespace
         }
         if (!g.extent.width || !g.extent.height) return false;   // minimised: nothing to make
 
-        uint32_t formatCount = 0;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, &formatCount, nullptr);
-        if (!formatCount) return false;
-        std::vector<VkSurfaceFormatKHR> formats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, &formatCount, formats.data());
+        std::vector<VkSurfaceFormatKHR> formats;
+        if (!EnumerateVector(formats,
+                [](uint32_t* count, VkSurfaceFormatKHR* data) {
+                    return vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, count, data);
+                }, "surface formats") || formats.empty())
+            return false;
         VkSurfaceFormatKHR chosen = formats[0];
         for (const auto& f : formats)
             if (f.format == VK_FORMAT_B8G8R8A8_UNORM) { chosen = f; break; }
