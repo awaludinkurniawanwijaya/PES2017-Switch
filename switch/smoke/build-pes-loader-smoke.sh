@@ -20,11 +20,11 @@ echo "==> Clean prior PES-owned smoke objects"
 make -C "$ROOT/switch/smoke/pes-loader" clean
 
 echo "==> Stage the exact upstream nvk_tri SPIR-V headers used by the reference sample"
-mkdir -p "$ROOT/switch/smoke/pes-loader/build/shaders"
+mkdir -p "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders"
 cp "$NXVK/switch/smoke/shaders/tri_vert.h" "$NXVK/switch/smoke/shaders/solid_frag.h" \
-  "$ROOT/switch/smoke/pes-loader/build/shaders/"
-test -s "$ROOT/switch/smoke/pes-loader/build/shaders/tri_vert.h"
-test -s "$ROOT/switch/smoke/pes-loader/build/shaders/solid_frag.h"
+  "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders/"
+test -s "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders/tri_vert.h"
+test -s "$ROOT/switch/smoke/pes-loader/generated-shaders/shaders/solid_frag.h"
 
 echo "==> Build PES-owned VI graphics-pipeline triangle smoke using standard libnx switch_rules"
 make -C "$ROOT/switch/smoke/pes-loader" all
