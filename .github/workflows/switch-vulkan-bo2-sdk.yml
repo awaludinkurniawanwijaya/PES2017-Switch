@@ -68,10 +68,19 @@ jobs:
               test -x "$compiler-gcc"
               test -x "$compiler-g++"
               common="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -ffunction-sections -fdata-sections"
-              # Compile every PES Vulkan runtime translation unit against the same
-              # pinned BO2 Mesa headers used by the standalone static-link probe.
+              # Compile every Vulkan TU that is independent of generated PPC output.
+              # renderer_draw.cpp includes runtime/kernel/kernel.h, which requires
+              # ppc/ppc_recomp_shared.h generated from the user's private default.xex.
+              # Defer that TU explicitly; never fabricate a substitute PPC header.
               mkdir -p /tmp/pes-vulkan-runtime-objects
+              deferred=0
+              compiled=0
               for source in runtime/gpu/vulkan/*.cpp; do
+                if [[ "$source" == "runtime/gpu/vulkan/renderer_draw.cpp" ]]; then
+                  echo "DEFERRED (private XenonRecomp output required): $source"
+                  deferred=$((deferred + 1))
+                  continue
+                fi
                 object="/tmp/pes-vulkan-runtime-objects/$(basename "${source%.cpp}").o"
                 echo "Compile PES Vulkan runtime: $source"
                 "$compiler-g++" -std=c++20 -O2 $common -pthread \
@@ -84,8 +93,9 @@ jobs:
                   -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
                   -I/opt/devkitpro/portlibs/switch/include \
                   -c "$source" -o "$object"
+                compiled=$((compiled + 1))
               done
-              echo "PASS: all PES Vulkan runtime translation units compiled for Switch"
+              echo "PARTIAL PASS: $compiled Vulkan runtime TUs compiled; $deferred TU deferred for private PPC output"
               "$compiler-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
               "$compiler-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
                 -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
