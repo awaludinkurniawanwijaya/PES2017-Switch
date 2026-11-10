@@ -544,25 +544,24 @@ int main(int argc, char** argv)
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
     Log("[PIPELINE] render pass created; loader framebuffer dispatch=%p",
         reinterpret_cast<void*>(vkCreateFramebuffer));
-    // Follow NXVK's LOAD_DEV path exactly: resolve the device entrypoint from
-    // the ICD's vkGetDeviceProcAddr instead of relying on the generic loader
-    // trampoline for this framebuffer call.
-    auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
-        vk_icdGetInstanceProcAddr(instance, "vkGetDeviceProcAddr"));
-    if (!getDeviceProcAddr) {
-        Log("FAIL direct ICD vkGetDeviceProcAddr is null");
+    // Match BO2's VulkanDevice::Functions contract: obtain device commands
+    // from the Vulkan loader's vkGetDeviceProcAddr after LoadDevice(device).
+    // Do not call the Mesa ICD-private vk_icdGetInstanceProcAddr interface
+    // with a loader-owned VkInstance.
+    if (!vkGetDeviceProcAddr) {
+        Log("FAIL vkGetDeviceProcAddr is null after device creation");
         result = 12;
         break;
     }
     auto createFramebufferDirect = reinterpret_cast<PFN_vkCreateFramebuffer>(
-        getDeviceProcAddr(device, "vkCreateFramebuffer"));
+        vkGetDeviceProcAddr(device, "vkCreateFramebuffer"));
     destroyFramebufferDirect = reinterpret_cast<PFN_vkDestroyFramebuffer>(
-        getDeviceProcAddr(device, "vkDestroyFramebuffer"));
-    Log("[PIPELINE] direct ICD framebuffer dispatch create=%p destroy=%p",
+        vkGetDeviceProcAddr(device, "vkDestroyFramebuffer"));
+    Log("[PIPELINE] BO2-style device dispatch framebuffer create=%p destroy=%p",
         reinterpret_cast<void*>(createFramebufferDirect),
         reinterpret_cast<void*>(destroyFramebufferDirect));
     if (!createFramebufferDirect) {
-        Log("FAIL direct ICD vkCreateFramebuffer is null");
+        Log("FAIL vkGetDeviceProcAddr did not return vkCreateFramebuffer");
         result = 12;
         break;
     }
