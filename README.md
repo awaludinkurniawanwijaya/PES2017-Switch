@@ -460,3 +460,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - This change is committed; CTest and Switch SDK validation are pending.
 
 **Validation completed for B2.12:** CTest and the BO2 Mesa Switch SDK probe passed for `6404803a77719e7edb629f79866df4e4c5ee94ce`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. This does not validate full PES game linking or scene rendering.
+
+**Validation completed for B2.13:** CTest and the BO2 Mesa Switch SDK probe passed for `ec82f9e71fc92924ec587ed7d84107cc4a9ab0fd`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact `13795297981`, ZIP SHA256 `ab5e114ca6dfc542b66a1be9c1fe1a8f5e27f67e5cb1a73556ea27e6c633e942`. No full PES game link or scene rendering is claimed.
