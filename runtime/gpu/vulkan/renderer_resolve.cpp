@@ -933,8 +933,15 @@ void vk::renderer::Swap(uint32_t frontBuffer)
             }
 #endif
             g_drawLo = lo; g_drawHi = hi;
+#ifdef PES17_ANDROID
             g_noWriteBackCap = access((android::GetPaths().external + "/no_writeback_cap").c_str(), F_OK) == 0;
             g_noVertexReuse = access((android::GetPaths().external + "/no_vertex_reuse").c_str(), F_OK) == 0;
+#else
+            // These per-device diagnostic toggles are files in the Android app's
+            // external directory. Other platforms leave the workarounds disabled.
+            g_noWriteBackCap = false;
+            g_noVertexReuse = false;
+#endif
         }
     }
 #ifdef PES17_ANDROID
