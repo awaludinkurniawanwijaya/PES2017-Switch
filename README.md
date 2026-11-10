@@ -417,3 +417,5 @@ The next diagnostic build instruments the Horizon WSI acquire path in `wsi_switc
 - Log PES berhenti setelah `[FRAME 0] after acquire result=0 image=1`. Belum ada marker reset/begin command buffer, submit, atau present.
 - Karena marker sesudah acquire yang seharusnya tercatat belum muncul, penyebab belum boleh ditetapkan sebagai masalah `vkResetCommandBuffer`. Commit diagnostik `a033cd4665657b6d903f2dbee22f0206a2d58e65` menambahkan trace di sekitar `consoleUpdate` pada log acquire serta sebelum/sesudah pemeriksaan batas `imageIndex`, untuk membedakan apakah eksekusi tertahan saat pembaruan konsol atau tepat setelahnya.
 - Tahap 2 masih belum lulus: belum ada bukti queue submit dan present sukses pada Switch fisik.
+
+- Follow-up commit `b480a65ba260f43a1804f3a9a35b6c931bb7c29d` corrects the diagnostic marker newline escapes and verifies that both `[LOG-TRACE]` strings are present as separate log lines. This is a source-level correction; it is not a runtime result or proof of a successful build.
