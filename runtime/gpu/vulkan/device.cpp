@@ -25,6 +25,10 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Adopt(
 vk::device::Device::~Device()
 {
     if (logical_)
-        vk::provider::DestroyLogicalDevice(static_cast<VkDevice>(logical_));
+    {
+        VkDevice logical = static_cast<VkDevice>(logical_);
+        vk::provider::DestroyLogicalDevice(logical);
+        logical_ = nullptr;
+    }
 }
 #endif

@@ -292,7 +292,8 @@ namespace
         g.deviceOwner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
         if (!g.deviceOwner)
         {
-            vk::provider::DestroyLogicalDevice(static_cast<VkDevice>(createdDevice));
+            VkDevice orphan = static_cast<VkDevice>(createdDevice);
+            vk::provider::DestroyLogicalDevice(orphan);
             g.presentWait = false;
             return false;
         }
