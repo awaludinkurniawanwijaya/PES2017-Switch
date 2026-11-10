@@ -502,3 +502,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Verified shutdown ordering in `gpu::backend::Shutdown`: `StopPresenting` joins the WSI worker first; Renderer and Texture Cache release their resources next; Pipeline releases descriptor/pipeline-layout/cache state and clears its borrowed Device handles; only then `vk::Stop` calls Presenter `Teardown` to destroy the logical device, surface and instance.
 - Presenter `Worker` failure path calls `Teardown` for a partially created WSI/device graph and reports headless fallback. Normal worker exit does not destroy the device; this preserves the required two-phase stop/destroy order.
 - This confirms the intended borrow boundary: Pipeline must never destroy Presenter-owned device/instance; Presenter teardown must remain after Pipeline resource shutdown. Headless Pipeline-owned device teardown remains separate.
+
+### Explicit borrowed Device context boundary (2026-11-11)
+
+- Added `runtime/gpu/vulkan/device.h` with a non-owning `vk::device::BorrowedContext` that groups instance, physical/logical device, queue and queue-family handles and validates the complete tuple.
+- Pipeline's initialization API now accepts either no context (owned headless bring-up) or one explicit borrowed context (Presenter path). The three Presenter platform branches use one helper to pass the same contract.
+- This is an ownership-boundary step, not yet the BO2 `Device` owner: Presenter still owns the window-path Vulkan handles and Pipeline only borrows them. CI validation pending.
