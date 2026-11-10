@@ -100,6 +100,7 @@ namespace
 
 bool vk::provider::CreateInstance(VkInstance& instance)
     {
+        instance = VK_NULL_HANDLE;
         std::vector<const char*> extensions;
 #if defined(PES17_ANDROID)
         // Android has one window system and it is always there.
@@ -196,6 +197,10 @@ bool vk::provider::CreateInstance(VkInstance& instance)
             !vkGetPhysicalDeviceSurfacePresentModesKHR)
         {
             LOGW("vulkan: the selected Switch Vulkan implementation is missing required VI surface dispatch functions");
+            // Instance dispatch has already been installed. Roll the instance and
+            // loader state back here rather than leaving a half-created provider
+            // for Presenter::Teardown (which may not run after initialization fails).
+            DestroyInstance(instance);
             return false;
         }
 #endif
