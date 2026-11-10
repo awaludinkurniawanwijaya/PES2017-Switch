@@ -569,3 +569,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Presenter State now owns one `vk::provider::Context` instead of separate Instance and Device owners plus duplicate physical-device/queue-family selection fields.
 - Provider Context now performs surface-compatible physical-device selection, logical-device creation/adoption, and Device teardown. Presenter retains only WSI surface/swapchain/frame policy and obtains handles through Context accessors.
 - `BorrowedContext` passes Provider's Instance and Device objects to Pipeline. Presenter teardown asks Provider to destroy Device after swapchain resources, destroys the surface, then releases Provider/Instance. CI validation pending.
+
+### Headless Pipeline now uses Provider Context (2026-11-11)
+
+- Replaced Pipeline's separate headless Instance/Device owners with one `vk::provider::Context`, matching the Presenter path.
+- Headless Pipeline now requests a headless Instance, selects a graphics-capable physical device, and asks Provider Context to create/adopt the logical Device. Pipeline borrows raw handles from the Provider Context while retaining renderer-facing descriptor layouts/cache.
+- Pipeline owns the Context only in headless mode; presentation mode continues to borrow Presenter-owned Provider Context. Both paths now share the same Instance/Device lifetime implementation. CI validation pending.
