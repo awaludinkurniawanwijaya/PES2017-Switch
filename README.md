@@ -546,3 +546,4 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Added `vk::instance::Instance`, a non-copyable RAII owner for the Vulkan instance. Presenter no longer stores a duplicate raw `VkInstance`; surface creation/destruction and physical-device selection use `InstanceHandle()` from the owner.
 - `BorrowedContext` now carries both the owning Instance object and Device object. Pipeline receives their handles but does not own either on the presentation path.
 - Presenter teardown destroys surface, then Device, then Instance. The headless Pipeline path still owns its existing raw instance path and is intentionally not migrated in this step. CI validation pending.
+- Clarified the split: `Instance` owns `VkInstance`; `Device` owns `VkDevice` and borrows the instance lifetime.
