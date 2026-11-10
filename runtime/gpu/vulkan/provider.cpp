@@ -346,37 +346,55 @@ bool vk::provider::PickGraphicsDevice(VkInstance instance, VkPhysicalDevice& phy
         return false;
     if (devices.empty()) { LOGW("vulkan: no physical devices"); return false; }
 
-    uint32_t chosen = 0;
-    for (uint32_t i = 0; i < devices.size(); ++i)
+    // Prefer a discrete GPU, but only after proving it has a graphics queue.
+    // Keep the first usable non-discrete device as a fallback.
+    VkPhysicalDevice fallback = VK_NULL_HANDLE;
+    uint32_t fallbackFamily = 0;
+    for (VkPhysicalDevice candidate : devices)
     {
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(devices[i], &properties);
-        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
-            properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-        {
-            chosen = i;
-            break;
-        }
-    }
-    physical = devices[chosen];
+        std::vector<VkQueueFamilyProperties> families;
+        if (!EnumerateVector(families,
+                [candidate](uint32_t* count, VkQueueFamilyProperties* data) {
+                    vkGetPhysicalDeviceQueueFamilyProperties(candidate, count, data);
+                    return VK_SUCCESS;
+                }, "queue families"))
+            continue;
 
-    std::vector<VkQueueFamilyProperties> families;
-    if (!EnumerateVector(families,
-            [physical](uint32_t* count, VkQueueFamilyProperties* data) {
-                vkGetPhysicalDeviceQueueFamilyProperties(physical, count, data);
-                return VK_SUCCESS;
-            }, "queue families"))
-        return false;
-    for (uint32_t i = 0; i < families.size(); ++i)
-    {
-        if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        uint32_t graphicsFamily = UINT32_MAX;
+        for (uint32_t i = 0; i < families.size(); ++i)
         {
-            queueFamily = i;
+            if (families[i].queueCount &&
+                (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT))
+            {
+                graphicsFamily = i;
+                break;
+            }
+        }
+        if (graphicsFamily == UINT32_MAX) continue;
+
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(candidate, &properties);
+        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        {
+            physical = candidate;
+            queueFamily = graphicsFamily;
+            LOGI("vulkan: headless device %s", properties.deviceName);
             return true;
         }
+        if (!fallback)
+        {
+            fallback = candidate;
+            fallbackFamily = graphicsFamily;
+        }
     }
-    LOGW("pipeline: no graphics queue");
-    return false;
+
+    if (!fallback) { LOGW("vulkan: no graphics-capable device"); return false; }
+    physical = fallback;
+    queueFamily = fallbackFamily;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physical, &properties);
+    LOGI("vulkan: headless device %s", properties.deviceName);
+    return true;
 }
 
 VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDeviceCreateInfo& info,
