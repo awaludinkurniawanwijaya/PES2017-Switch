@@ -10,24 +10,110 @@ vkGetInstanceProcAddr(VkInstance instance, const char* name);
 int main()
 {
     consoleInit(nullptr);
-    std::printf("PES2017 BO2 Mesa Vulkan SDK probe\n");
+    std::printf("PES2017 BO2 Mesa Vulkan runtime probe\\n");
+    std::printf("Stage 1: public vkGetInstanceProcAddr\\n");
 
-    const auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
-        vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
-    if (!enumerate)
+    const auto gipa = &vkGetInstanceProcAddr;
+    if (!gipa)
     {
-        printf("FAIL: vkGetInstanceProcAddr did not return vkEnumerateInstanceVersion\n");
+        std::printf("FAIL: public GIPA symbol is null\\n");
+        goto wait_for_exit;
+    }
+
+    const auto enumerateVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        gipa(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+    uint32_t apiVersion = VK_API_VERSION_1_0;
+    if (enumerateVersion)
+    {
+        const VkResult versionResult = enumerateVersion(&apiVersion);
+        std::printf("vkEnumerateInstanceVersion: result=%d API=%u.%u.%u\\n",
+                    int(versionResult), VK_API_VERSION_MAJOR(apiVersion),
+                    VK_API_VERSION_MINOR(apiVersion), VK_API_VERSION_PATCH(apiVersion));
+        if (versionResult != VK_SUCCESS)
+        {
+            std::printf("FAIL: Vulkan API version query\\n");
+            goto wait_for_exit;
+        }
     }
     else
     {
-        uint32_t version = VK_API_VERSION_1_0;
-        const VkResult result = enumerate(&version);
-        printf("GIPA: PASS; vkEnumerateInstanceVersion result=%d API=%u.%u.%u\n",
-               int(result), VK_API_VERSION_MAJOR(version),
-               VK_API_VERSION_MINOR(version), VK_API_VERSION_PATCH(version));
+        std::printf("Vulkan 1.0 fallback (version query unavailable)\\n");
     }
 
-    printf("Press HOME to exit.\n");
+    const auto createInstance = reinterpret_cast<PFN_vkCreateInstance>(
+        gipa(VK_NULL_HANDLE, "vkCreateInstance"));
+    if (!createInstance)
+    {
+        std::printf("FAIL: vkCreateInstance entrypoint unavailable\\n");
+        goto wait_for_exit;
+    }
+
+    VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    appInfo.pApplicationName = "PES2017 Vulkan probe";
+    appInfo.applicationVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
+    appInfo.pEngineName = "PES2017 Switch";
+    appInfo.engineVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
+    appInfo.apiVersion = apiVersion;
+
+    VkInstanceCreateInfo instanceInfo{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    instanceInfo.pApplicationInfo = &appInfo;
+
+    VkInstance instance = VK_NULL_HANDLE;
+    const VkResult createResult = createInstance(&instanceInfo, nullptr, &instance);
+    std::printf("vkCreateInstance: result=%d\\n", int(createResult));
+    if (createResult != VK_SUCCESS || instance == VK_NULL_HANDLE)
+    {
+        std::printf("FAIL: Vulkan instance creation\\n");
+        goto wait_for_exit;
+    }
+
+    const auto enumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+        gipa(instance, "vkEnumeratePhysicalDevices"));
+    const auto getPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
+        gipa(instance, "vkGetPhysicalDeviceProperties"));
+    const auto destroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
+        gipa(instance, "vkDestroyInstance"));
+
+    if (!enumeratePhysicalDevices || !getPhysicalDeviceProperties || !destroyInstance)
+    {
+        std::printf("FAIL: required instance dispatch entrypoint unavailable\\n");
+        if (destroyInstance) destroyInstance(instance, nullptr);
+        goto wait_for_exit;
+    }
+
+    uint32_t deviceCount = 0;
+    VkResult deviceResult = enumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    std::printf("vkEnumeratePhysicalDevices(count): result=%d count=%u\\n",
+                int(deviceResult), deviceCount);
+    if (deviceResult != VK_SUCCESS || deviceCount == 0)
+    {
+        std::printf("FAIL: no Vulkan physical device enumerated\\n");
+        destroyInstance(instance, nullptr);
+        goto wait_for_exit;
+    }
+
+    VkPhysicalDevice physicalDevices[8]{};
+    if (deviceCount > 8) deviceCount = 8;
+    deviceResult = enumeratePhysicalDevices(instance, &deviceCount, physicalDevices);
+    if (deviceResult != VK_SUCCESS || deviceCount == 0)
+    {
+        std::printf("FAIL: physical-device list query\\n");
+        destroyInstance(instance, nullptr);
+        goto wait_for_exit;
+    }
+
+    VkPhysicalDeviceProperties properties{};
+    getPhysicalDeviceProperties(physicalDevices[0], &properties);
+    std::printf("GPU: %s\\n", properties.deviceName);
+    std::printf("GPU API: %u.%u.%u\\n",
+                VK_API_VERSION_MAJOR(properties.apiVersion),
+                VK_API_VERSION_MINOR(properties.apiVersion),
+                VK_API_VERSION_PATCH(properties.apiVersion));
+    destroyInstance(instance, nullptr);
+    std::printf("RESULT: PASS - GIPA, instance, and physical-device enumeration\\n");
+
+wait_for_exit:
+    std::printf("Press HOME to exit.\\n");
     while (appletMainLoop())
     {
         consoleUpdate(nullptr);
