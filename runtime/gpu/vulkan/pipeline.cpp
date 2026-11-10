@@ -949,7 +949,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
     }
     if (borrowedContext)
     {
-        g.instance = static_cast<VkInstance>(borrowedContext->instance);
+        g.instance = static_cast<VkInstance>(borrowedContext->instance->Handle());
         g.device = static_cast<VkDevice>(borrowedContext->device->Logical());
         g.physical = static_cast<VkPhysicalDevice>(borrowedContext->device->Physical());
         g.queue = static_cast<VkQueue>(borrowedContext->device->Queue());

@@ -95,7 +95,7 @@ namespace
         ANativeWindow* nativeWindow = nullptr;
         uint64_t generation = 0;
 #endif
-        VkInstance instance = VK_NULL_HANDLE;
+        std::unique_ptr<vk::instance::Instance> instanceOwner;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         VkPhysicalDevice selectedPhysical = VK_NULL_HANDLE;
         uint32_t selectedQueueFamily = 0;
@@ -187,6 +187,11 @@ namespace
 
     Presenter g;
 
+    VkInstance InstanceHandle()
+    {
+        return g.instanceOwner ? static_cast<VkInstance>(g.instanceOwner->Handle()) : VK_NULL_HANDLE;
+    }
+
     VkDevice DeviceHandle()
     {
         return g.deviceOwner ? static_cast<VkDevice>(g.deviceOwner->Logical()) : VK_NULL_HANDLE;
@@ -262,7 +267,15 @@ namespace
 
     bool CreateInstance()
     {
-        return vk::provider::CreateInstance(g.instance);
+        VkInstance instance = VK_NULL_HANDLE;
+        if (!vk::provider::CreateInstance(instance)) return false;
+        g.instanceOwner = vk::instance::Instance::Adopt(instance);
+        if (!g.instanceOwner)
+        {
+            vk::provider::DestroyInstance(instance);
+            return false;
+        }
+        return true;
     }
 
 
@@ -1085,8 +1098,8 @@ namespace
             g.swapchain = VK_NULL_HANDLE;
             for (auto& frame : g.frames) frame = Frame{};
         }
-        if (g.surface) vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
-        vk::provider::DestroyInstance(g.instance);
+        if (g.surface) vkDestroySurfaceKHR(InstanceHandle(), g.surface, nullptr);
+        g.instanceOwner.reset();
 #ifdef PES17_USE_SDL
         if (g.window) SDL_DestroyWindow(g.window);
         g.window = nullptr;
@@ -1100,7 +1113,7 @@ namespace
         }
 #endif
         g.surface = VK_NULL_HANDLE;
-        g.instance = VK_NULL_HANDLE;
+        g.instanceOwner.reset();
         g.selectedPhysical = VK_NULL_HANDLE;
         g.selectedQueueFamily = 0;
     }
@@ -1119,7 +1132,7 @@ namespace
 #endif
         VkViSurfaceCreateInfoNN info{ VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN };
         info.window = nwindowGetDefault();
-        return Check(vkCreateViSurfaceNN(g.instance, &info, nullptr, &g.surface),
+        return Check(vkCreateViSurfaceNN(InstanceHandle(), &info, nullptr, &g.surface),
                      "vkCreateViSurfaceNN");
     }
 #endif
@@ -1139,7 +1152,7 @@ namespace
 #endif
         VkAndroidSurfaceCreateInfoKHR info{ VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
         info.window = g.nativeWindow;
-        return Check(vkCreateAndroidSurfaceKHR(g.instance, &info, nullptr, &g.surface),
+        return Check(vkCreateAndroidSurfaceKHR(InstanceHandle(), &info, nullptr, &g.surface),
                      "vkCreateAndroidSurfaceKHR");
     }
 
@@ -1170,7 +1183,7 @@ namespace
         }
         if (g.surface)
         {
-            vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
+            vkDestroySurfaceKHR(InstanceHandle(), g.surface, nullptr);
             g.surface = VK_NULL_HANDLE;
         }
         if (g.nativeWindow)
@@ -1194,7 +1207,7 @@ namespace
 
     bool InitialisePipelineOnPresenterDevice()
     {
-        const vk::device::BorrowedContext context{ g.instance, g.deviceOwner.get() };
+        const vk::device::BorrowedContext context{ g.instanceOwner.get(), g.deviceOwner.get() };
         return vk::pipeline::Initialise(&context);
     }
 
@@ -1223,7 +1236,7 @@ namespace
             android::SetStatus("Failed to create Vulkan surface for Android window");
             return false;
         }
-        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily)) {
+        if (!vk::provider::PickPhysicalDevice(InstanceHandle(), g.surface, g.selectedPhysical, g.selectedQueueFamily)) {
             android::SetStatus("No Vulkan physical device found");
             return false;
         }
@@ -1258,7 +1271,7 @@ namespace
             return false;
         }
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
-            !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            !vk::provider::PickPhysicalDevice(InstanceHandle(), g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         if (!InitialisePipelineOnPresenterDevice())
         {
@@ -1281,12 +1294,12 @@ namespace
                                     (g.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
         if (!g.window) { LOGW("vulkan: no window (%s)", SDL_GetError()); return false; }
         if (!CreateInstance()) return false;
-        if (!SDL_Vulkan_CreateSurface(g.window, g.instance, nullptr, &g.surface))
+        if (!SDL_Vulkan_CreateSurface(g.window, InstanceHandle(), nullptr, &g.surface))
         {
             LOGW("vulkan: no surface (%s)", SDL_GetError());
             return false;
         }
-        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+        if (!vk::provider::PickPhysicalDevice(InstanceHandle(), g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         SDL_ShowWindow(g.window);
         SDL_RaiseWindow(g.window);

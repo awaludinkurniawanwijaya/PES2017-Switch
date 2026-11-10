@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include "instance.h"
 
 namespace vk::device
 {
@@ -27,11 +28,11 @@ namespace vk::device
         uint32_t queueFamily_ = 0;
     };
 
-    // Pipeline borrows this Device; the instance is separately held by Presenter and managed through Provider.
+    // Pipeline borrows the Presenter-owned Instance and Device as one context.
     struct BorrowedContext
     {
-        void* instance = nullptr;
+        const vk::instance::Instance* instance = nullptr;
         const Device* device = nullptr;
-        bool Complete() const { return instance && device && device->Complete(); }
+        bool Complete() const { return instance && instance->Handle() && device && device->Complete(); }
     };
 }
