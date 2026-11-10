@@ -229,7 +229,7 @@ Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang 
 
 Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX\n\nAudit awal BO2 telah dilakukan dan dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Ini adalah hasil audit, bukan klaim bahwa provider/presenter sudah dipindahkan.
+## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX\n\nAudit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
 
 **Keputusan arsitektur:** pengembangan NXVK dihentikan. Tidak ada lagi pekerjaan fitur, debugging, atau penambahan integrasi pada jalur NXVK. Source, konfigurasi, workflow, dan artefak NXVK yang sudah ada wajib dipertahankan sebagai cadangan yang terpisah. Jangan menghapusnya dahulu.
 
@@ -263,8 +263,8 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 | Tahap | Pekerjaan | Kriteria lulus | Status |
 |---|---|---|---|
 | V0. Audit BO2 dan baseline PES | Audit lima file BO2 di atas; petakan entrypoint, instance/device dispatch, VI surface, swapchain, queue, synchronization, resource, dan presenter ke struktur proyek PES. Catat perbedaan dan dependensi. | Dokumen mapping file/fungsi BO2 → modul PES; tidak ada asumsi tanpa pemeriksaan source. | **Selesai — `docs/vulkan-bo2-port-plan.md`** |
-| V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Bekukan workflow otomatis; pertahankan source dan build cadangan. Pisahkan build aktif setelah backend pengganti siap. | Workflow NXVK hanya manual; build backend Vulkan baru tidak mengunduh, mengompilasi, atau menautkan NXVK. | **Sebagian — workflow manual-only; CMake masih menautkan NXVK** |
-| V2. Vulkan native foundation | Implementasikan loader/entrypoint Vulkan dan instance/device dispatch mengikuti pola BO2; buat pemilihan physical device, queue family, logical device, dan lifecycle cleanup. | Log menunjukkan seluruh tahap init sukses pada NRO native tanpa memanggil kode NXVK. | **Belum dikerjakan** |
+| V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Pisahkan adapter driver dari loader generik. Pertahankan source dan build cadangan. | Workflow lama manual-only; entrypoint driver terisolasi; dependency driver tercatat secara eksplisit. | **Sebagian — adapter driver terpisah; CMake masih memakai paket driver bernama `nxvk` dan menautkan NVK** |
+| V2. Vulkan native foundation | Ekstrak loader/entrypoint Vulkan dan instance/device dispatch menjadi komponen berorientasi objek mengikuti pola BO2; buat pemilihan physical device, queue family, logical device, dan lifecycle cleanup. | Instance/device memiliki ownership dan dispatch terpisah seperti BO2; init NRO berhasil dengan log per tahap. | **Belum dimulai — adapter GIPA Switch sudah dipisah, lifecycle masih monolitik** |
 | V3. VI surface dan swapchain | Port pola BO2 untuk VI surface, capability/format, swapchain, image enumeration, acquire, synchronization, submit, dan present. | Frame dipresentasikan stabil pada Switch fisik; log per tahap lengkap. | **Belum dikerjakan** |
 | V4. Render target dan framebuffer | Implementasikan image/memory/view, render pass atau dynamic rendering sesuai dukungan, framebuffer, dan resource lifetime dengan dispatch yang benar. | Pembuatan resource dan framebuffer sukses; tidak ada null dispatch atau crash. | **Belum dikerjakan** |
 | V5. Shader, pipeline, dan draw | Buat shader vertex/fragment sederhana, pipeline layout, graphics pipeline, viewport/scissor, dan `vkCmdDraw(3,1,0,0)`. | Segitiga RGB benar-benar terlihat di layar Switch; log pipeline, draw, submit, dan present sukses. | **Belum dikerjakan** |
@@ -274,7 +274,7 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 | V9. Integrasi runtime game | Selesaikan loader, kernel imports kritis, guest memory, thread/event, filesystem, input, audio, dan startup path secara paralel. | Jalur startup game melewati entry point dan subsistem kritis tanpa stub/failure. | **Belum lengkap** |
 | V10. Full-game NRO dan gameplay | Gabungkan PPC, runtime, renderer, platform, audio/input, dan data game privat. Uji menu, pertandingan, save, stabilitas, dan sesi panjang. | PES 2017 boot dan gameplay terbukti berjalan di Switch fisik. | **Belum dimulai** |
 
-### 8.4 Aturan kerja dan pembuktian
+### 8.4 Progress implementasi terbaru\n\n- `runtime/gpu/vulkan/switch_driver.h/.cpp` sekarang menjadi batas khusus platform untuk entrypoint driver statis Switch.\n- `runtime/gpu/vulkan/loader.cpp` tidak lagi mendeklarasikan simbol Mesa Switch secara langsung; ia meminta entrypoint melalui adapter.\n- CMake dan toolchain kini menjelaskan bahwa arsitektur Vulkan BO2-style dan implementasi driver NVK adalah dua lapisan berbeda.\n- `presenter.cpp` menggunakan pesan diagnostik generik untuk implementasi Vulkan Switch.\n- **Batasan yang belum selesai:** `pkg-config nxvk`, library `nvk`/`nvk_support`, serta monolit `CreateInstance`/`CreateDevice` di `presenter.cpp` masih ada. Ini sengaja belum dihapus karena BO2 juga memakai NVK statis dan port instance/device PES belum selesai.\n\n### 8.5 Aturan kerja dan pembuktian
 
 1. Jangan kembali mengulang eksperimen NXVK sebagai jalur utama.
 2. Jangan menghapus NXVK atau artefaknya selama backend Vulkan native belum mencapai target render PES yang stabil.
@@ -284,7 +284,7 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 6. Setelah satu checkpoint lulus, lanjutkan ke checkpoint berikutnya tanpa kembali ke tahap warna/background yang sudah terbukti.
 7. Tujuan akhirnya mengikuti arah BO2: aplikasi native Switch dengan Vulkan presenter dan renderer yang nyata. BO2 adalah target arsitektur; implementasi game-specific tetap harus sesuai PES/Xenos.
 
-### 8.5 Pemisahan catatan progres NXVK dan Vulkan
+### 8.6 Pemisahan catatan progres NXVK dan Vulkan
 
 - **NXVK:** catat hanya hasil historis, commit, workflow, dan artefak yang dipertahankan. Status tetap dihentikan/cadangan.
 - **Vulkan native:** catat audit BO2, port source, perubahan dependency/build, hasil CI, log perangkat, dan bukti visual di bagian tersendiri. Jangan gabungkan hasil NXVK lama sebagai bukti keberhasilan Vulkan native.
