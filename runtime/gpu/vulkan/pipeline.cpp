@@ -1,4 +1,5 @@
 #include "pipeline.h"
+#include "provider.h"
 #include "bindings.h"
 #include "bc_decoder.h"
 #include "../../env.h"
@@ -546,7 +547,9 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     info.ppEnabledExtensionNames = extensions.data();
     info.pEnabledFeatures = &enabled;
     VkDevice device = VK_NULL_HANDLE;
-    VkResult r = vkCreateDevice(physical, &info, nullptr, &device);
+    VkQueue made = VK_NULL_HANDLE;
+    const bool created = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
+    VkResult r = created ? VK_SUCCESS : VK_ERROR_INITIALIZATION_FAILED;
     if ((r == VK_ERROR_NOT_PERMITTED_KHR || r == VK_ERROR_INITIALIZATION_FAILED) && queue.pNext)
     {
         // The priority was refused (Android lets an app have some levels and not others).
@@ -556,23 +559,17 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
         extensions.erase(std::remove(extensions.begin(), extensions.end(), priorityExtension), extensions.end());
         info.enabledExtensionCount = uint32_t(extensions.size());
         info.ppEnabledExtensionNames = extensions.data();
-        r = vkCreateDevice(physical, &info, nullptr, &device);
+        const bool retried = vk::provider::CreateLogicalDevice(physical, info, family, device, made);
+        r = retried ? VK_SUCCESS : VK_ERROR_INITIALIZATION_FAILED;
     }
     if (r != VK_SUCCESS) { LOGW("vulkan: no device (%s)", Explain(r)); return false; }
     if (queue.pNext) LOGI("vulkan: the queue runs at global priority %d", int(globalPriority.globalPriority));
-#if defined(PES17_VULKAN_DYNAMIC)
-    // From here on the device's entry points come from the driver itself
-    // rather than through the loader's dispatch (loader.h).
-    vk::loader::LoadDevice(device);
-#endif
     if (fault.deviceFault)
     {
         g_faultInfo = reinterpret_cast<PFN_vkGetDeviceFaultInfoEXT>(vkGetDeviceProcAddr(device, "vkGetDeviceFaultInfoEXT"));
         g_faultDevice = device;
         LOGI("vulkan: device fault reports %s", g_faultInfo.load() ? "on" : "unavailable");
     }
-    VkQueue made = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, family, 0, &made);
     *deviceOut = device;
     *queueOut = made;
     return true;
