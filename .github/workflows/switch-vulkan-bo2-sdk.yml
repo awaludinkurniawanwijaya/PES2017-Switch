@@ -1,0 +1,91 @@
+name: Switch Vulkan BO2 Mesa SDK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/switch-libnx-platform
+    paths:
+      - "switch/mesa/**"
+      - "runtime/gpu/vulkan/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/switch-vulkan-bo2-sdk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mesa-sdk-link-probe:
+    name: Link BO2 Mesa Vulkan SDK probe NRO
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PES2017 source
+        uses: actions/checkout@v4
+
+      - name: Download the pinned BO2 Switch build kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/AlvaroEPena/bo2-360-nx/releases/download/Release-1.1.0/bo2-360-nx-release-1.1.0-switch%2Bwindows-build-kit.zip"
+          archive="$RUNNER_TEMP/bo2-switch-build-kit.zip"
+          curl --fail --location --retry 3 "$url" --output "$archive"
+          echo "5c973a38b0921650ebfddf47fd9064f46f5aefa60d019a84371cfb0af328a26f  $archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/bo2-kit"
+          unzip -q "$archive" \
+            "bo2-360-nx/runtime/manifest.json" \
+            "bo2-360-nx/runtime/switch/portlibs/*" \
+            -d "$RUNNER_TEMP/bo2-kit"
+          python3 - "$RUNNER_TEMP/bo2-kit/bo2-360-nx/runtime/manifest.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              manifest = json.load(f)
+          assert manifest["commit"] == "dd189961e8876079087d6f0843af8013bd154277", manifest.get("commit")
+          assert manifest["mesa"]["base"] == "danfromtico/mesa-switch 1a8c1a66d6f", manifest.get("mesa")
+          print("Verified BO2 runtime manifest:", manifest["commit"], manifest["mesa"]["base"])
+          PY
+          sdk="$RUNNER_TEMP/bo2-kit/bo2-360-nx/runtime/switch/portlibs"
+          test -s "$sdk/lib/libvulkan.a"
+          test -s "$sdk/lib/libzstd.a"
+          test -s "$sdk/include/vulkan/vulkan.h"
+          echo "BO2_MESA_SDK=$sdk" >> "$GITHUB_ENV"
+
+      - name: Build and package the Vulkan entrypoint probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull devkitpro/devkita64:latest
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$BO2_MESA_SDK:/mesa-sdk:ro" \
+            -w /work \
+            devkitpro/devkita64:latest \
+            bash -euc '
+              export DEVKITPRO=/opt/devkitpro
+              common="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -ffunction-sections -fdata-sections"
+              aarch64-none-elf-gcc $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
+              aarch64-none-elf-g++ -std=c++20 -O2 $common -D__SWITCH__=1 \
+                -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
+                -c switch/mesa/vulkan_link_probe.cpp -o /tmp/pes-vulkan-probe.o
+              aarch64-none-elf-g++ -specs=/opt/devkitpro/libnx/switch.specs $common \
+                -Wl,--gc-sections -Wl,-z,notext -Wl,-u,vkGetInstanceProcAddr -pthread \
+                -L/mesa-sdk/lib -L/opt/devkitpro/portlibs/switch/lib -L/opt/devkitpro/libnx/lib \
+                -o /work/pes17-vulkan-bo2-probe.elf \
+                /tmp/pes-vulkan-probe.o /tmp/pes-elf-stubs.o \
+                -lvulkan -lexpat -lzstd -lz -lnx \
+                -lvulkan -lexpat -lzstd -lz -lnx -lstdc++ -lm
+              /opt/devkitpro/tools/bin/nacptool --create "PES Vulkan Probe" "PES2017-Switch" "0.1.0" /work/pes17-vulkan-bo2-probe.nacp
+              /opt/devkitpro/tools/bin/elf2nro /work/pes17-vulkan-bo2-probe.elf /work/pes17-vulkan-bo2-probe.nro \
+                --icon=/opt/devkitpro/libnx/default_icon.jpg --nacp=/work/pes17-vulkan-bo2-probe.nacp
+              test -s /work/pes17-vulkan-bo2-probe.nro
+              ls -lh /work/pes17-vulkan-bo2-probe.nro
+            '
+
+      - name: Upload BO2 Mesa Vulkan probe NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes17-vulkan-bo2-probe
+          path: |
+            pes17-vulkan-bo2-probe.nro
+            pes17-vulkan-bo2-probe.elf
+            pes17-vulkan-bo2-probe.nacp
+          if-no-files-found: error
