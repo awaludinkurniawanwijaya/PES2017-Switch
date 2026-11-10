@@ -59,7 +59,8 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 | Analisis jump table | Masih ada pekerjaan | 2 dispatch terlewat pada laporan analisis |
 | Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
 | Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
-| NXVK (cadangan) | Eksperimen dihentikan | Source dan hasil lama dipertahankan pada branch backup; tidak menjadi jalur pengembangan aktif |\n| Vulkan native (jalur aktif) | Belum dimulai/diport secara terverifikasi | Mengikuti arsitektur BO2-360-NX; wajib membuktikan segitiga RGB di Switch fisik sebelum integrasi renderer PES |
+| NXVK (cadangan) | Eksperimen dihentikan | Jalur lama dipertahankan sebagai opsi legacy; tidak menjadi jalur build default |
+| Vulkan native (jalur aktif) | CMake diarahkan ke SDK Mesa Horizon statis gaya BO2 | Build default meminta SDK Mesa hasil `tools/build_mesa.sh`; integrasi provider/device/presenter dan verifikasi build masih belum selesai |
 | Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
 | PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
@@ -223,13 +224,16 @@ Workflow yang berada di repositori:
 |---|---|---|
 | `main.yml` | Test otomatis di GitHub Actions | Menguji test suite, bukan menjalankan game |
 | `switch-nro.yml` | Build dan verifikasi bootstrap libnx NRO | Membuktikan bootstrap dapat dikompilasi dan dipaketkan |
-| `switch-nvk-spike.yml` | Workflow historis NXVK, manual-only | Tidak berjalan otomatis dan bukan workflow validasi backend aktif |\n| `switch-vulkan-bo2.yml` (direncanakan) | Build backend Vulkan native bergaya BO2 | Akan menjadi workflow aktif setelah implementasi dan konfigurasi tersedia |
+| `switch-nvk-spike.yml` | Workflow historis NXVK, manual-only | Tidak berjalan otomatis dan bukan workflow validasi backend aktif |
+
 
 Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang tersedia.
 
 Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimpulkan keberhasilan boot pada Switch fisik hanya dari status workflow CI.
 
-## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX\n\nAudit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
+## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX
+
+Audit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
 
 **Keputusan arsitektur:** pengembangan NXVK dihentikan. Tidak ada lagi pekerjaan fitur, debugging, atau penambahan integrasi pada jalur NXVK. Source, konfigurasi, workflow, dan artefak NXVK yang sudah ada wajib dipertahankan sebagai cadangan yang terpisah. Jangan menghapusnya dahulu.
 
@@ -242,7 +246,9 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 | NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake masih memiliki tautan NXVK sampai backend pengganti siap. | **Dihentikan — cadangan saja** |
 | Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. CMake kini default ke SDK Mesa Horizon statis; provider/device/presenter PES belum diimplementasikan. | **Arah kerja aktif — jalur SDK mulai dimigrasikan, belum dibuild** |
 
-Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).\n\nBranch cadangan NXVK: [backup/nxvk-before-vulkan-bo2-direction](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/tree/backup/nxvk-before-vulkan-bo2-direction).
+Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).
+
+Branch cadangan NXVK: [backup/nxvk-before-vulkan-bo2-direction](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/tree/backup/nxvk-before-vulkan-bo2-direction).
 
 ### 8.2 Referensi BO2 yang wajib dianalisis
 
