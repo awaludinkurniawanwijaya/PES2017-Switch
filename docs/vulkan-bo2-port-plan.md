@@ -467,3 +467,9 @@ Added `ResetDeviceSnapshot()` as the common invalidation path for all physical-d
 
 Validation for B2.16 is pending.
 - Portability refinement: reset of the fixed BC capability array uses a range-for loop, avoiding an implicit dependency on `std::begin` declarations.
+
+### B2.17 — BO2 Device abstraction ownership audit (2026-11-11)
+
+Audited the pinned BO2 `VulkanDevice` header/implementation against PES2017's Provider, Presenter and Pipeline. BO2's Device owns physical/logical device, negotiated properties/features/extensions, device function table, queues and memory-type summary; Provider owns its lifetime; Presenter receives it and owns only WSI-specific state. PES2017 currently splits actual device handles between Presenter and Pipeline while `pipeline::State` combines device creation/capability negotiation with descriptor layouts and pipeline cache. A mechanical extraction would create double-destruction or stale borrowed handles, especially in headless bring-up and Presenter worker rollback.
+
+**Migration contract for the next stage:** Provider/Device owns instance, selected physical device, logical device and queue; Presenter borrows Device for surface/swapchain/present operations; Pipeline borrows the Device context while retaining renderer-specific descriptor/pipeline-layout/cache resources. The headless offline path must use the same Device owner without a surface. Migrate lifecycle and rollback first, then move capability negotiation; do not move `CreateDevice` as an isolated code-copy.
