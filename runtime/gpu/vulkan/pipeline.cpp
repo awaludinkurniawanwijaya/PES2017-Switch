@@ -975,6 +975,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
     }
     g.devicePropertiesReady = true;
     g.name = g.deviceContext->Name();
+    const VkPhysicalDeviceProperties props = g.deviceProperties;
 
     // A bug report is read against the driver's known faults.
     if (report::On())
