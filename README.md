@@ -313,3 +313,7 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 - Run `42866248741` menghasilkan artefak probe NRO, tetapi SHA-256 NRO `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3` identik dengan probe tahap 2 sebelumnya. Karena isi probe tidak berubah, artefak ini bukan checkpoint baru untuk diuji ulang di Switch.
 - Enumerasi Vulkan pada presenter diperkeras: daftar instance extension, physical device, queue family, surface format, dan swapchain image menggunakan pola count/data dengan retry terbatas untuk `VK_INCOMPLETE`; kegagalan query surface-support kini dicatat dan tidak dianggap sebagai queue yang valid.
 - Ini memperbaiki ketahanan enumerasi, tetapi belum memecah ownership instance/device menjadi kelas terpisah seperti BO2. Belum ada klaim full-link PES, startup PES, atau hasil render game.
+
+#### Vulkan/BO2 architecture progress
+
+The active Switch path is being reorganized toward BO2's provider/device/presenter boundaries. The first PES-owned instance-provider boundary now lives in `runtime/gpu/vulkan/provider.h/.cpp`; `presenter.cpp` delegates instance creation and teardown to it while retaining VI surface, device selection, swapchain and presentation. This first extraction is awaiting the Switch SDK compile workflow. It does not establish full PES linking, physical Vulkan device creation, or game rendering. NXVK source remains preserved as a separate legacy backup.
