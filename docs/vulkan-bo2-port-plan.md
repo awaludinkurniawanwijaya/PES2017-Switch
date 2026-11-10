@@ -532,3 +532,9 @@ The offline/headless Pipeline path now creates an `Instance` owner and adopts th
 Validation for B2.24 is pending.
 
 **B2.24 validation completed:** CTest and the Switch BO2 Mesa SDK probe passed for `436f3293dd2d4687bbd6f01d7eb882ecebb73595`. SDK result: 27 Vulkan runtime TUs compiled; two private PPC-dependent renderer TUs remain deferred. Diagnostic NRO artifact `13800529967`, ZIP SHA256 `048b5c0df00748be31a1c86b55d6692c7867b4179eaa279fb86e49bc8fc6a9b0`. Full-game linking and scene rendering remain unvalidated.
+
+### B2.25 — BO2-style Provider context owner foundation (2026-11-11)
+
+Added `vk::provider::Context` as an aggregate RAII owner for `Instance` and optional `Device`, with member declaration/destruction order guaranteeing Device teardown before Instance. It provides staged window bring-up (`Create(false)` → `SelectPresentationDevice(surface)` → `CreateLogicalDevice(...)`) and a headless selection path (`Create(true)` → `SelectHeadlessDevice()` → `CreateLogicalDevice(...)`). Accessors expose the owned objects and handles so Presenter and Pipeline can borrow them. This establishes the Provider owner/API but does not yet migrate existing Presenter/Pipeline call sites; the actual device capability negotiation still delegates to `pipeline::CreateDevice` pending the next extraction.
+
+Validation for B2.25 is pending.
