@@ -698,7 +698,8 @@ namespace
     {
         auto& o = g.overlay;
         VkPhysicalDeviceMemoryProperties memory{};
-        vkGetPhysicalDeviceMemoryProperties(g.physical, &memory);
+        if (!vk::pipeline::GetMemoryProperties(&memory, sizeof(memory)))
+        { LOGW("presenter: device memory properties are unavailable"); return false; }
 
         VkImageCreateInfo image{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
         image.imageType = VK_IMAGE_TYPE_2D;

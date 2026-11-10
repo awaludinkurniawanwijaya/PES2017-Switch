@@ -1127,7 +1127,8 @@ bool vk::textures::Initialise()
         g.device = VK_NULL_HANDLE;
         return false;
     }
-    vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memory);
+    if (!vk::pipeline::GetMemoryProperties(&g.memory, sizeof(g.memory)))
+    { LOGW("textures: device memory properties are unavailable"); g.device = VK_NULL_HANDLE; return false; }
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(g.physical, &properties);
     g.maxDimension = properties.limits.maxImageDimension2D;

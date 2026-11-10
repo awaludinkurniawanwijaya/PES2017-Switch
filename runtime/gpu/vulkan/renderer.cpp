@@ -141,7 +141,8 @@ bool vk::renderer::Initialise()
     if (!g.device || !g.queue) { RollbackInitialise(); return false; }
     if (!vk::textures::Initialise()) { RollbackInitialise(); return false; }
 
-    vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memory);
+    if (!vk::pipeline::GetMemoryProperties(&g.memory, sizeof(g.memory)))
+    { LOGW("renderer: device memory properties are unavailable"); RollbackInitialise(); return false; }
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(g.physical, &properties);
     g.uniformAlignment = uint32_t(std::max<VkDeviceSize>(

@@ -10,6 +10,7 @@
 #include <string>
 #include <unistd.h>
 #include "util.h"
+#include "pipeline.h"
 #include "../../env.h"
 #include "../../log.h"
 #ifdef PES17_ANDROID
@@ -273,7 +274,8 @@ namespace
         VkMemoryRequirements needs{};
         vkGetImageMemoryRequirements(device, out.image, &needs);
         VkPhysicalDeviceMemoryProperties memory{};
-        vkGetPhysicalDeviceMemoryProperties(physical, &memory);
+        if (!vk::pipeline::GetMemoryProperties(&memory, sizeof(memory)))
+        { LOGW("upscaler: device memory properties are unavailable"); return false; }
         VkMemoryAllocateInfo allocate{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         allocate.allocationSize = needs.size;
         allocate.memoryTypeIndex = vk::util::FindMemory(memory, needs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);

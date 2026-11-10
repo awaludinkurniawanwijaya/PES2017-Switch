@@ -19,6 +19,9 @@ namespace vk::pipeline
                     void* instance = nullptr);
     void Shutdown();
     bool Ready();
+    // Copies the immutable memory-property snapshot captured for the active device.
+    // `properties` must point to VkPhysicalDeviceMemoryProperties and `size` must match.
+    bool GetMemoryProperties(void* properties, size_t size);
 
     // Creates the device the runtime draws on, with the features and extensions
     // the renderer depends on, plus the caller's own (the swapchain, for the

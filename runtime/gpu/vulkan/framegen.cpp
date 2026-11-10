@@ -9,6 +9,7 @@
 #include <mutex>
 #include <unistd.h>
 #include "upscaler.h"
+#include "pipeline.h"
 #include "util.h"
 #include "../../env.h"
 #include "../../log.h"
@@ -285,7 +286,8 @@ namespace
         DestroyImages(device);
 
         VkPhysicalDeviceMemoryProperties memory{};
-        vkGetPhysicalDeviceMemoryProperties(physical, &memory);
+        if (!vk::pipeline::GetMemoryProperties(&memory, sizeof(memory)))
+        { LOGW("framegen: device memory properties are unavailable"); return false; }
         // SAMPLED on the colour images also lets the window's upscaler read them.
         const VkImageUsageFlags colour = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         for (uint32_t i = 0; i < 2; i++)

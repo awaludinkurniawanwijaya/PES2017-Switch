@@ -15,6 +15,7 @@ void vk::pipeline::SaveCache() {}
 void vk::pipeline::SaveCacheThrottled() {}
 void vk::pipeline::FlushCache() {}
 bool vk::pipeline::Ready() { return false; }
+bool vk::pipeline::GetMemoryProperties(void*, size_t) { return false; }
 const char* vk::pipeline::DeviceName() { return "none"; }
 void*    vk::pipeline::Instance() { return nullptr; }
 void*    vk::pipeline::Device() { return nullptr; }
@@ -106,6 +107,8 @@ namespace
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkPipelineCache cache = VK_NULL_HANDLE;
         VkPhysicalDeviceProperties deviceProperties{};
+        VkPhysicalDeviceMemoryProperties memoryProperties{};
+        bool memoryPropertiesReady = false;
         std::string lastError;
     };
     State g;
@@ -911,6 +914,8 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
 
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(g.physical, &props);
+    vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memoryProperties);
+    g.memoryPropertiesReady = true;
     g.deviceProperties = props;
     g.name = props.deviceName;
     // A bug report is read against the driver's known faults.
@@ -961,12 +966,21 @@ void vk::pipeline::Shutdown()
     g.device = VK_NULL_HANDLE;
     g.instance = VK_NULL_HANDLE;
     g.physical = VK_NULL_HANDLE;
+    g.memoryProperties = {};
+    g.memoryPropertiesReady = false;
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
 }
 
 bool vk::pipeline::Ready() { return g.device != VK_NULL_HANDLE; }
+bool vk::pipeline::GetMemoryProperties(void* properties, size_t size)
+{
+    if (!properties || size != sizeof(VkPhysicalDeviceMemoryProperties) || !g.memoryPropertiesReady)
+        return false;
+    std::memcpy(properties, &g.memoryProperties, sizeof(g.memoryProperties));
+    return true;
+}
 const char* vk::pipeline::DeviceName() { return g.name.c_str(); }
 void*    vk::pipeline::Instance() { return g.instance; }
 void*    vk::pipeline::Device() { return g.device; }
