@@ -288,12 +288,12 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 - Jalur default CMake sekarang memakai `PES17_SWITCH_VULKAN_SDK` dan `libvulkan.a`, dengan urutan dependensi statis yang disalin dari `sdk/cmake/rexglue_switch.cmake` BO2. NXVK hanya dipilih melalui `PES17_SWITCH_USE_LEGACY_NXVK=ON`.
 - `switch_driver.cpp` pada jalur aktif meminta simbol publik `vkGetInstanceProcAddr` yang diekspor Mesa, sesuai `sdk/src/ui/vulkan/vulkan_instance.cpp` BO2.
 - Stub libelf PES disertakan pada target SDK baru, mengikuti fungsi stub BO2.
-- Ditambahkan `switch/mesa/vulkan_link_probe.cpp` untuk memanggil GIPA publik dan mengambil versi API dari `vkEnumerateInstanceVersion`.
+- `switch/mesa/vulkan_link_probe.cpp` diperluas: GIPA publik, versi API, `vkCreateInstance`, enumerasi physical device, dan nama GPU.
 - Workflow `.github/workflows/switch-vulkan-bo2-sdk.yml` memverifikasi SHA-256 build kit BO2 rilis `Release-1.1.0`, memeriksa manifest Mesa, menautkan static archive dengan urutan BO2, lalu mengemas probe NRO.
 - Workflow historis NXVK sudah benar-benar manual-only; pemicu otomatis `push` dihapus.
 - CMake dan toolchain kini menjelaskan bahwa arsitektur Vulkan BO2-style dan implementasi driver NVK adalah dua lapisan berbeda.
 - `presenter.cpp` menggunakan pesan diagnostik generik untuk implementasi Vulkan Switch.
-- **Batasan yang belum selesai:** workflow probe baru belum menghasilkan status Actions atau NRO terverifikasi. Probe ini hanya menguji entrypoint dan linking SDK; bukan full runtime PES dan bukan bukti fungsi Vulkan di Switch fisik. Build full runtime PES terhadap `libvulkan.a` belum dilakukan, dan monolit `CreateInstance`/`CreateDevice` di `presenter.cpp` belum dipecah menjadi objek BO2-style.
+- **Checkpoint terverifikasi:** workflow run `42859421857` berhasil membangun dan mengemas probe yang diperluas; artefak `pes17-vulkan-bo2-probe` ID `13783778138`. NRO sudah diunduh dan diperiksa: berisi NRO/ELF/NACP. Pengujian fisik tahap sebelumnya hanya memastikan aplikasi terbuka dan mencapai prompt HOME; hasil GIPA/API/device enumeration dari probe terbaru masih menunggu laporan konsol. Ini bukan full runtime PES atau bukti render. Build full runtime PES terhadap `libvulkan.a` belum dilakukan, dan monolit `CreateInstance`/`CreateDevice` di `presenter.cpp` belum dipecah menjadi objek BO2-style.
 
 ### 8.5 Aturan kerja dan pembuktian
 
