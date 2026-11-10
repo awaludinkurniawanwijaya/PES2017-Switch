@@ -283,3 +283,14 @@ Next: validate the new translation unit and presenter compile together; fix any 
 
 
 CI artifact note: run `42867472597` uploaded artifact `pes17-vulkan-bo2-probe` (artifact ID `13787687844`). Its NRO is byte-identical to the earlier stage-2 probe, so do not ask for another device test until the diagnostic code or behavior changes.
+
+### B2.6c/d — Physical-device and presentation-device provider extraction (2026-11-11; CI passed)
+
+- `provider.cpp/.h` now own `PickPhysicalDevice` and `CreatePresentationDevice`. Physical-device selection accepts the presenter's live `VkSurfaceKHR`, preserving the fact that present support is WSI-specific and avoiding provider ownership of VI/Android surfaces.
+- Logical-device creation now receives the selected physical device and queue family, enables `VK_KHR_swapchain`, and conditionally enables the paired `VK_KHR_present_id` / `VK_KHR_present_wait` extensions and feature chain only when both are advertised and supported.
+- `presenter.cpp` delegates logical-device creation to the provider. It still validates Switch swapchain dispatch and resolves `vkWaitForPresentKHR`; swapchain, VI surface, frame synchronization, acquire, submit, and present remain presenter-owned.
+- The existing `vk::pipeline::CreateDevice` is intentionally retained as the common renderer device policy and device-dispatch path. This avoids duplicating device-global state or breaking its headless/offline tools. A fully independent `VulkanDevice` object is not yet implemented.
+- Final commit `dd6faa3c1011586177736e50d911a4244f0552cd` passed workflow [42869421006](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42869421006). The Switch compile gate built 25 Vulkan runtime TUs; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private generated PPC output. The static BO2 Mesa SDK probe linked and packaged successfully.
+- The final artifact `pes17-vulkan-bo2-probe` (ID `13788841794`) was downloaded and inspected. ZIP SHA-256: `f13218ba55c82c7090971d7a0f7401feb98a784e6821ddc1f6cda6c5c3f8a597`; NRO SHA-256: `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3`, identical to the previous stage-2 probe. No new physical test is warranted.
+- A transient intermediate workflow failed because the provider implementation commit was built before its header declaration commit reached the branch; the final branch commit contains all three changes and passed. This was a commit-order race, not a remaining source compile failure.
+- This validates a partial source compile and static SDK probe only. It does not validate full PES linking, physical Switch Vulkan initialization, a visible triangle, or PES game rendering.
