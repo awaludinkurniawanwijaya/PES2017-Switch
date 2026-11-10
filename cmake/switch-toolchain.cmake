@@ -1,5 +1,5 @@
 # Cross-compilation toolchain for the native Nintendo Switch runtime.
-# Requires devkitPro devkitA64, libnx, switch-tools, and the NXVK portlib.
+# Requires devkitPro devkitA64, libnx, switch-tools, and the statically linked Switch Vulkan/NVK driver portlib.
 if(NOT DEFINED ENV{DEVKITPRO})
     message(FATAL_ERROR "DEVKITPRO must point to the devkitPro installation")
 endif()
@@ -34,6 +34,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
-# pkg-config itself runs on the build host; its NXVK .pc file describes the
-# target-side static archives in devkitPro's Switch portlibs directory.
+# pkg-config itself runs on the build host; the Switch Vulkan driver package's
+# .pc file describes target-side static archives in devkitPro's portlibs. This
+# is the Vulkan implementation dependency, not the app/provider/presenter design.
 set(ENV{PKG_CONFIG_PATH} "${DEVKITPRO}/portlibs/switch/lib/pkgconfig")
