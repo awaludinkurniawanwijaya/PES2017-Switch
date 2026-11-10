@@ -442,3 +442,5 @@ Pipeline device initialization now snapshots core `VkPhysicalDeviceFeatures` and
 Validation for B2.13 is pending.
 
 **Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `6404803a77719e7edb629f79866df4e4c5ee94ce`; 25 runtime TUs compiled, with `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private PPC output. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. This is not full-game or scene-rendering validation.
+
+**Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `ec82f9e71fc92924ec587ed7d84107cc4a9ab0fd`; 25 runtime TUs compiled, with `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private PPC output. Diagnostic NRO artifact `13795297981`, ZIP SHA256 `ab5e114ca6dfc542b66a1be9c1fe1a8f5e27f67e5cb1a73556ea27e6c633e942`. This is not full-game or scene-rendering validation.
