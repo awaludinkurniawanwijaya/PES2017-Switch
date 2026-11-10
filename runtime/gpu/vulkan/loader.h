@@ -68,6 +68,8 @@ namespace vk::loader
     // The device is about to be destroyed: its entry points go back to the
     // instance's, which stay valid.
     void ForgetDevice();
+    // The instance is gone: reset instance/device dispatch to global entry points.
+    void ForgetInstance();
 
     // What was opened, for the log ("the system's libvulkan.so", a driver's
     // file name).

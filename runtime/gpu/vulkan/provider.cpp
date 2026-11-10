@@ -276,6 +276,9 @@ void vk::provider::DestroyInstance(VkInstance& instance)
         g_messenger = VK_NULL_HANDLE;
     }
     if (instance) vkDestroyInstance(instance, nullptr);
+#if defined(PES17_VULKAN_DYNAMIC)
+    vk::loader::ForgetInstance();
+#endif
     instance = VK_NULL_HANDLE;
 }
 

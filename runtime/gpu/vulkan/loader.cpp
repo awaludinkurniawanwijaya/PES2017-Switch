@@ -181,4 +181,19 @@ void vk::loader::ForgetDevice()
 #undef PES17_VK_DEVICE
 }
 
+
+void vk::loader::ForgetInstance()
+{
+    std::lock_guard lock(g_lock);
+    if (!g_instance) return;
+#define PES17_VK_GLOBAL(name)
+#define PES17_VK_INSTANCE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(VK_NULL_HANDLE, #name));
+#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(VK_NULL_HANDLE, #name));
+#include "vulkan_functions.inc"
+#undef PES17_VK_GLOBAL
+#undef PES17_VK_INSTANCE
+#undef PES17_VK_DEVICE
+    g_instance = VK_NULL_HANDLE;
+}
+
 #endif  // PES17_VULKAN_DYNAMIC && PES17_HAVE_VULKAN
