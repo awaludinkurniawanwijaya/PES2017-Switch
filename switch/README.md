@@ -30,9 +30,9 @@ complete game-data launch path.
 
 ### Vulkan / NVK progress
 
-- The project Vulkan loader has a Switch static-ICD path that resolves
-  `vk_icdGetInstanceProcAddr` from the linked NXVK archive instead of trying
-  to open `libvulkan.so`.
+- The project Vulkan loader has a Switch static-NXVK path that resolves the
+  public `vkGetInstanceProcAddr` export directly, matching BO2's Horizon
+  bootstrap rather than using Mesa's ICD-private entry point.
 - The project's Vulkan presenter has a Switch VI path using
   `VK_KHR_surface`, `VK_NN_vi_surface`, and `nwindowGetDefault()`.
 - Required VI surface and swapchain dispatch functions, transfer-destination
