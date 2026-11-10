@@ -78,3 +78,15 @@ failure.
 3. Keep physical-console results separate from CI compilation/link checks.
 4. Record firmware, Atmosphère, and pinned NXVK build revisions on the next
    hardware test.
+
+
+## PES-owned GPU clear result (10 November 2026)
+
+Physical Switch log from the PES-owned NRO #147:
+
+- `vkCmdClearColorImage` was recorded for frames 0–119, cycling through three clear-color phases.
+- Each frame completed `vkQueueSubmit`, `vkQueuePresentKHR`, and `vkDeviceWaitIdle` with success.
+- The run ended `presented 120 / 120`, `PES-OWNED LOADER + VI SWAPCHAIN PASSED`, and `exit=0`.
+- NVK reported `zero-copy FAILED`; the run used the supported CPU-copy WSI fallback.
+
+This is stronger than a swapchain-only test: it demonstrates that the transfer-clear workload was submitted and completed on the physical Tegra X1. The text log does not independently establish what colors were visible on the display. It is not yet a graphics-pipeline draw test and does not demonstrate PES game rendering.
