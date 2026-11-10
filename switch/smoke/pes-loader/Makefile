@@ -15,7 +15,7 @@ INCLUDES := ../../../runtime
 
 APP_TITLE := PES 2017 NXVK Loader Smoke
 APP_AUTHOR := PES2017-Switch contributors
-APP_VERSION := 0.2.0
+APP_VERSION := 0.3.0
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fdata-sections $(ARCH) $(DEFINES)
