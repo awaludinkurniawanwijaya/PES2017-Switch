@@ -403,3 +403,10 @@ Build workflow untuk commit instrumentasi belum menghasilkan job build yang dapa
 The latest Switch log confirms that the PES-owned Vulkan loader, NVK physical-device initialization, VI surface creation, three-image swapchain creation, CPU-copy WSI image allocation, and NVK copy-engine command dispatch all return successfully. The log then stops immediately after `[FRAME 0] before acquire`; no matching `after acquire` marker is present. This localizes the current stall to the first `vkAcquireNextImageKHR` call, before queue submission or presentation.
 
 The next diagnostic build instruments the Horizon WSI acquire path in `wsi_switch.c`, including the selected libnx dequeue path and the underlying buffer-queue dequeue. This will distinguish a block inside `nwindowDequeueBuffer` from a problem in the event-driven dequeue path. This remains a diagnostic milestone, not evidence that PES 2017 is playable.
+
+
+**Pembaruan WSI acquire trace build #140 (10 November 2026):**
+- Run [Switch NVK feasibility spike #140](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42755100046) berhasil melewati pemasangan seluruh tracepoint dan build toolchain NXVK, tetapi kompilasi `wsi_switch.c` berhenti karena format `%u` dipakai untuk field `u64` (`nw->slots_configured`) pada tracepoint dequeue.
+- Diperbaiki pada commit [5543174](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/commit/5543174e379b855a8f8a33dae37c00b2e3d0d3ea) dengan `%llu` dan cast `unsigned long long`.
+- Build ulang otomatis berjalan sebagai [run #141](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42755914370); status terakhir saat pembaruan ini ditulis: **queued**. Belum ada NRO baru untuk pengujian.
+- Titik runtime yang hendak diisolasi tetap `vkAcquireNextImageKHR` pada frame pertama. Jangan menganggap kegagalan format trace ini sebagai kegagalan WSI di Switch; tahap 2 tetap menunggu NRO build baru dan log fisik.
