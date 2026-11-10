@@ -5,7 +5,7 @@
 Repositori ini mengembangkan jalur recompilation PowerPC, runtime kompatibilitas Xbox 360, lapisan platform libnx, serta backend grafis Vulkan native mengikuti arsitektur BO2-360-NX. Eksperimen NXVK dihentikan dan dipertahankan sebagai cadangan. Target akhirnya adalah menjalankan PES 2017 sebagai aplikasi homebrew Nintendo Switch (NRO), bukan menjalankan emulator Xbox 360.
 
 > [!WARNING]
-> **Status per 10 November 2026: belum playable.** Selain recompilation lokal dan bootstrap libnx, smoke test yang memakai loader PES sendiri kini berhasil menjalankan NVK pada Tegra X1, membuat VI swapchain, serta menyelesaikan 120 siklus acquire–submit–present pada Switch fisik. Ini membuktikan jalur loader/WSI dasar. Pada 10 November 2026, CI juga berhasil membangun NRO PES-owned dengan graphics pipeline dan `vkCmdDraw(3, 1, 0, 0)` menggunakan shader RGB dari contoh `nvk_tri`; binary sudah diverifikasi memuat jalur pipeline/draw. Hasil gambar segitiga pada Switch fisik masih menunggu pengujian, sehingga ini belum membuktikan renderer game atau boot PES 2017.
+> **Status per 10 November 2026: belum playable.** Hasil historis VI swapchain dan GPU color-clear pada Switch fisik berasal dari eksperimen NXVK/NVK yang kini dibekukan sebagai cadangan; hasil tersebut tidak membuktikan jalur Vulkan aktif bergaya BO2. Jalur aktif saat ini memakai SDK Mesa statis dari build kit BO2 yang dipatok. Probe NRO berhasil dibangun di CI dan pengguna mengonfirmasi NRO terbuka sampai prompt HOME, tetapi hasil diagnostik GIPA/instance/device belum tercatat. Gate kompilasi runtime sedang dipisahkan secara jujur: file yang memerlukan `ppc/ppc_recomp_shared.h` hasil XenonRecomp privat ditunda, bukan diganti header palsu. Belum ada bukti segitiga RGB pada jalur aktif, renderer PES, atau boot PES 2017.
 
 ---
 
@@ -60,7 +60,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 | Kernel imports | 281 teridentifikasi | 212 sudah memiliki implementasi; 69 masih stub |
 | Bootstrap libnx | Build CI berhasil | Aplikasi uji platform dan controller, bukan game |
 | NXVK (cadangan) | Eksperimen dihentikan | Jalur lama dipertahankan sebagai opsi legacy; tidak menjadi jalur build default |
-| Vulkan native (jalur aktif) | Probe NRO BO2 Mesa berhasil dibangun dan berhasil dijalankan pada Switch | CI memverifikasi SDK, static link, dan packaging; pengguna melaporkan probe tampil dan menunggu HOME untuk keluar. Hasil teks `GIPA: PASS/FAIL` belum dicatat, jadi keberhasilan pemanggilan Vulkan belum terkonfirmasi |
+| Vulkan native (jalur aktif) | Probe NRO BO2 Mesa berhasil dibangun dan mencapai loop aplikasi di Switch; gate kompilasi runtime masih parsial | Hasil GIPA/instance/device belum terkonfirmasi. File `renderer_draw.cpp` dan `renderer_resolve.cpp` ditunda karena membutuhkan header PPC privat hasil XenonRecomp |
 | Switch runtime | Dalam integrasi | Platform, input, audio, storage dan grafis belum terverifikasi sebagai satu game |
 | PES 2017 NRO | Belum tersedia | Belum ada full-game NRO yang terbukti boot atau playable |
 
@@ -69,7 +69,7 @@ Angka di bawah adalah hasil pekerjaan dan pemeriksaan yang telah tercatat, bukan
 - **Probe BO2 Mesa (10 November 2026):** CI berhasil membangun NRO dan pengguna mengonfirmasi aplikasi terbuka pada Switch hingga menampilkan instruksi menekan HOME untuk keluar. Ini membuktikan NRO dapat diluncurkan dan mencapai loop aplikasi. Karena baris diagnostik `GIPA: PASS` atau `FAIL` belum dilaporkan secara eksplisit, pemanggilan entrypoint Vulkan dan hasil `vkEnumerateInstanceVersion` belum boleh dinyatakan lulus.
 - **Build berhasil** berarti compiler dan linker berhasil menghasilkan target yang diuji.
 - **Syntax check berhasil** berarti file yang diperiksa dapat dikompilasi pada tahap pemeriksaan tersebut; belum membuktikan perilaku runtime.
-- **Smoke test berhasil** berarti jalur API tertentu berhasil diuji oleh aplikasi kecil. NRO PES-owned #147 telah menyelesaikan 120/120 frame dan GPU color-clear tiga fase; perubahan warna terlihat di layar Switch menurut konfirmasi pengguna. Ini belum membuktikan graphics pipeline atau renderer PES.
+- **Smoke test historis NXVK/NVK** berhasil menyelesaikan VI swapchain dan GPU color-clear pada Switch fisik; hasil ini dicatat sebagai eksperimen lama dan bukan bukti jalur Vulkan BO2 aktif. Probe BO2 Mesa terbaru hanya dikonfirmasi mencapai prompt HOME; diagnostik Vulkan sebelum prompt belum dilaporkan.
 - **Playable** baru dapat dinyatakan setelah game benar-benar berjalan di Switch dan fungsi permainan penting telah diverifikasi.
 
 Keberhasilan smoke test VI tidak boleh dianggap sebagai bukti bahwa PES 2017 sudah berjalan di perangkat fisik.
@@ -245,7 +245,7 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 | Jalur | Kebijakan | Status |
 |---|---|---|
 | NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake hanya memilih jalur NXVK jika `PES17_SWITCH_USE_LEGACY_NXVK=ON`. | **Dihentikan — opsi legacy eksplisit saja** |
-| Vulkan native (BO2-style) | SDK statis BO2 dipakai oleh probe dan gate compile seluruh translation unit Vulkan runtime. Gate menemukan deklarasi dispatch belum dipaksa-include; CMake dan workflow kini memasang `runtime/gpu/vulkan/loader.h` sebelum source runtime. Provider/device/presenter PES belum dipisahkan. | **Arah kerja aktif — koreksi dispatch preinclude dikirim; hasil CI ulang menunggu** |
+| Vulkan native (BO2-style) | SDK statis BO2 dipakai oleh probe dan gate compile runtime. Preinclude dispatch sudah diperbaiki; dua TU yang membutuhkan header PPC privat kini ditandai deferred secara eksplisit. | **Arah kerja aktif — gate parsial sedang divalidasi; provider/device/presenter PES belum dipisahkan** |
 
 Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).
 
