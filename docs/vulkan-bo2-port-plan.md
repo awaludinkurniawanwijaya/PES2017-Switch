@@ -181,3 +181,10 @@ Source review found that `loader.cpp::LoadInstance` still used a direct `vkGetIn
 The BO2 SDK workflow now compiles every `runtime/gpu/vulkan/*.cpp` translation unit for the Switch target against the same pinned Mesa Vulkan headers and devkitPro/libnx headers before building the standalone GIPA/instance/physical-device probe. This is deliberately a **compile-only runtime gate**: it checks PES Vulkan source compatibility with the Switch SDK, but does not link the complete PES executable or prove runtime behavior.
 
 Important build constraint discovered during inspection: this repository checkout does not contain `pes/default.xex` or generated `ppc/*.cpp`. The top-level CMake project intentionally refuses to configure without the user's private game input and matching recompiled PPC output. Therefore this CI step does not pretend to build the complete PES NRO; it isolates and compiles the full Vulkan runtime translation-unit set. Full executable link and physical-device tests remain separate checkpoints.
+
+
+## B2.5 — Switch-specific RenderDoc compile failure (2026-11-10)
+
+The first runtime compile-gate run (workflow run `42860048323`) reached the PES Vulkan translation units and failed in `runtime/gpu/vulkan/capture.cpp`: the vendored RenderDoc header does not recognize the Horizon `__SWITCH__` platform macro, so `RENDERDOC_CC` and the RenderDoc API declarations were unavailable. RenderDoc's in-process injection/capture mechanism is not part of the Switch runtime.
+
+Correction: `capture.cpp` now enables its RenderDoc implementation only when Vulkan is present **and** the target is not Switch (`PES17_HAVE_RENDERDOC_CAPTURE`). Switch uses the existing no-op capture hooks. This is a platform capability boundary, not a Vulkan driver workaround. The retry is CI run `42860277184`; its final compile result is pending at this checkpoint.
