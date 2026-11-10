@@ -469,3 +469,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Direct borrowed-context initialization remains supported: if no snapshot exists (the caller did not use `pipeline::CreateDevice`), Pipeline queries and fills the missing records itself.
 - New creation attempts invalidate the prior property/feature readiness flags before probing a new physical device; shutdown clears all snapshots. This avoids stale metadata crossing device lifetimes.
 - Validation pending.
+
+### Device snapshot physical-handle ownership guard (2026-11-11)
+
+- Bound the cached physical properties/features to the exact `VkPhysicalDevice` handle they describe. A new CreateDevice attempt invalidates the prior association; Pipeline::Initialise refreshes the snapshots if a directly borrowed context supplies a different physical device.
+- Shutdown clears the association. This prevents cached physical-device data from leaking across device changes while retaining the fast reuse path for the same selected physical device.
+- B2.14 validation is still running; this follow-up is pending CI as well.
