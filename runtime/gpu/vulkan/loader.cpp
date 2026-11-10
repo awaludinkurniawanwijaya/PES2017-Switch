@@ -19,7 +19,7 @@
 
 extern "C"
 {
-    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddrFn = nullptr;
 
 #define PES17_VK_GLOBAL(name)   PFN_##name name = nullptr;
 #define PES17_VK_INSTANCE(name) PFN_##name name = nullptr;
@@ -91,13 +91,13 @@ bool vk::loader::Open(std::string& error)
     // A failed first attempt may be retried after the platform has made the
     // driver available. Do not carry missing-symbol counts from that attempt.
     g_missing = 0;
-    vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(entry);
+    vkGetInstanceProcAddrFn = reinterpret_cast<PFN_vkGetInstanceProcAddr>(entry);
 
     // What can be had without an instance. vkEnumerateInstanceVersion is
     // Vulkan 1.1 and may be absent on a 1.0 implementation, which is not an
     // error -- the caller treats null as "1.0".
 #define PES17_VK_GLOBAL(name) \
-    Take(name, vkGetInstanceProcAddr(nullptr, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(nullptr, #name), #name, \
          std::strcmp(#name, "vkEnumerateInstanceVersion") != 0);
 #define PES17_VK_INSTANCE(name)
 #define PES17_VK_DEVICE(name)
@@ -132,7 +132,7 @@ void vk::loader::LoadInstance(VkInstance instance)
     // enabled; the renderer checks for them itself.
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name) \
-    Take(name, vkGetInstanceProcAddr(instance, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(instance, #name), #name, \
          std::strstr(#name, "Surface") == nullptr && std::strstr(#name, "Debug") == nullptr && \
          std::strstr(#name, "Android") == nullptr);
 #define PES17_VK_DEVICE(name) \
@@ -174,7 +174,7 @@ void vk::loader::ForgetDevice()
     if (!g_instance) return;
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name)
-#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddr(g_instance, #name));
+#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(g_instance, #name));
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
 #undef PES17_VK_INSTANCE
