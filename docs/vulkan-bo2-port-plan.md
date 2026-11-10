@@ -77,3 +77,32 @@ Each checkpoint requires source diff, CI result, device log and visual confirmat
 - PES Vulkan native provider/device/presenter: not implemented yet.
 - Current CMake target: still NXVK-linked; migration must be completed before it can honestly be called NXVK-independent.
 - Visible triangle on Switch: not yet proven.
+
+
+## B1 — PES legacy coupling inventory (source inspection, 2026-11-10)
+
+- `CMakeLists.txt` still requires the pkg-config module `nxvk` and links `nvk`, `nvk_support`, `z`, `expat`, and `nx`. This is the current statically linked Switch Vulkan driver package, not the target application architecture.
+- `cmake/switch-toolchain.cmake` obtains target-side archives from devkitPro portlibs.
+- `runtime/gpu/vulkan/*.cpp` is already compiled through a source glob, so `switch_driver.cpp` is included without another CMake source entry.
+- The legacy NXVK workflow is now manual-only; automatic push triggers were removed.
+- `runtime/gpu/vulkan/loader.cpp` owns global function pointer dispatch. Its Switch-specific entrypoint is now delegated to `switch_driver.h/.cpp`.
+- `runtime/gpu/vulkan/presenter.cpp` still owns instance creation, device selection, VI surface, swapchain, queues, synchronization, and present in one translation unit. It contains internal `CreateInstance` and `CreateDevice` stages.
+- `presenter.h` exposes global `vk::Start/Stop/ShowImage` functions, not BO2-style provider/device/presenter objects.
+
+### Driver versus architecture
+
+BO2's Switch `VulkanInstance` explicitly documents that Horizon has no system Vulkan loader and that NVK is statically linked. BO2 assigns its public `vkGetInstanceProcAddr` directly. BO2 therefore does **not** replace NVK with another Switch graphics driver; it uses a provider/device/presenter architecture above a statically linked NVK driver.
+
+For PES, stopping NXVK development means stopping its app/build/smoke-test route as the architecture, isolating the available static driver behind a platform adapter, and moving instance/device/presentation ownership into BO2-style components. The NVK driver package remains required until a different actual Vulkan driver is available and validated. It would be inaccurate to claim driver independence while this target still links NVK.
+
+### Changes in this checkpoint
+
+- Added `runtime/gpu/vulkan/switch_driver.h/.cpp` as the Switch-specific static-driver entrypoint boundary.
+- Changed `loader.cpp` to obtain GIPA through `vk::switch_driver::GetInstanceProcAddr()` and its description through `Description()`.
+- Changed the Switch linker's forced symbol from private `vk_icdGetInstanceProcAddr` to public adapter `nvk_GetInstanceProcAddr`.
+- Updated CMake and toolchain wording to distinguish the BO2-style Vulkan application architecture from the static NVK driver package.
+- Generalized the Switch WSI diagnostic so it no longer refers to NXVK as the application architecture.
+
+### B1 result
+
+**Partially complete.** Driver entrypoint isolation and dependency inventory are in place. The monolithic presenter and static NVK link remain intentionally; the next safe change is to extract instance/device/provider lifecycle behind PES-owned interfaces without changing the current runtime behavior.
