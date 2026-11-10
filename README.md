@@ -234,7 +234,7 @@ Artefak smoke test NXVK adalah alat pengujian driver, bukan game. Jangan menyimp
 
 ## 8. Arah kerja baru: Vulkan native mengikuti BO2-360-NX
 
-Audit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Audit menemukan dispatch instance di `loader.cpp` masih memakai nama fungsi langsung alih-alih pointer GIPA; pemanggilan itu sudah diarahkan ke `vkGetInstanceProcAddrFn`. Workflow kini menambahkan kompilasi semua `runtime/gpu/vulkan/*.cpp` untuk Switch terhadap header SDK BO2 yang dipin. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
+Audit BO2 dan inventaris ketergantungan PES dicatat dalam [dokumen migrasi](docs/vulkan-bo2-port-plan.md). Adapter entrypoint driver Switch kini dipisah ke `switch_driver.h/.cpp`. Audit menemukan dispatch instance di `loader.cpp` masih memakai nama fungsi langsung alih-alih pointer GIPA; pemanggilan itu sudah diarahkan ke `vkGetInstanceProcAddrFn`. Workflow kini menambahkan kompilasi semua `runtime/gpu/vulkan/*.cpp` untuk Switch terhadap header SDK BO2 yang dipin. Percobaan pertama menemukan `capture.cpp` memasukkan API RenderDoc yang tidak tersedia pada Horizon; capture RenderDoc kini dibuat no-op khusus Switch, tanpa mengubah jalur Vulkan. Percobaan ulang sedang berjalan. Ini belum berarti provider/device/presenter BO2-style sudah dipindahkan.
 
 **Keputusan arsitektur:** pengembangan NXVK dihentikan. Tidak ada lagi pekerjaan fitur, debugging, atau penambahan integrasi pada jalur NXVK. Source, konfigurasi, workflow, dan artefak NXVK yang sudah ada wajib dipertahankan sebagai cadangan yang terpisah. Jangan menghapusnya dahulu.
 
