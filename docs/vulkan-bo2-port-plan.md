@@ -195,3 +195,23 @@ Correction: `capture.cpp` now enables its RenderDoc implementation only when Vul
 After the RenderDoc platform guard was corrected, the compile gate advanced to `display_table.cpp` and failed because Vulkan command names such as `vkCreateImage` and `vkCmdPipelineBarrier` were undeclared. These are intentionally function-pointer declarations emitted by `runtime/gpu/vulkan/loader.h` when `PES17_VULKAN_DYNAMIC` is enabled. The header's own comment says it must be force-included before every Vulkan runtime translation unit, but the top-level CMake target had not actually added that compile option.
 
 Correction: the Switch `pes17` target now force-includes the absolute path to `runtime/gpu/vulkan/loader.h` for C++ compilation. The BO2 SDK compile gate mirrors this exact preinclude, rather than compiling with a different set of declarations from the real target. This is a build-system correctness fix; it does not yet establish successful compilation, full executable linkage, or device runtime behavior. Validation is running under workflow `42860946845`.
+
+
+## B2.7 — Isolasi translation unit yang memerlukan PPC privat (2026-11-10)
+
+Workflow compile gate sempat berhenti di `renderer_draw.cpp` karena file tersebut memasukkan `runtime/kernel/kernel.h`, yang membutuhkan `ppc/ppc_recomp_shared.h`. Header tersebut dihasilkan XenonRecomp dari `default.xex` milik pengguna dan memang tidak disertakan dalam checkout publik.
+
+Pemeriksaan source terhadap seluruh daftar translation unit Vulkan menemukan dua file yang secara langsung memasukkan header kernel tersebut:
+- `runtime/gpu/vulkan/renderer_draw.cpp`
+- `runtime/gpu/vulkan/renderer_resolve.cpp`
+
+Workflow sekarang menandai dua file tersebut sebagai **DEFERRED** dan tetap mengompilasi translation unit Vulkan lain terhadap SDK BO2 yang dipin. Tidak dibuat header PPC tiruan. Gate ini adalah pemeriksaan parsial yang eksplisit, bukan klaim bahwa seluruh runtime telah terkompilasi.
+
+Percobaan CI setelah perubahan isolasi juga menemukan kesalahan ekspansi variabel compiler pada skrip bash (`$compiler-g++`/`$compiler-gcc` diubah menjadi `${compiler}-g++`/`${compiler}-gcc`). Perbaikan tersebut dikirim pada commit `c1702dd15355c3a001ea9a9ba5987ffe532be7e3`; hasil validasi run baru masih harus diperiksa.
+
+### Batas pembuktian saat ini
+
+- SDK BO2: checksum dan manifest rilis sudah diverifikasi pada run sebelumnya.
+- PES Vulkan translation units: 13 file sudah pernah berhasil dikompilasi sebelum titik pertama yang membutuhkan PPC; hasil gate parsial baru akan diketahui setelah retry.
+- `renderer_draw.cpp` dan `renderer_resolve.cpp`: belum dikompilasi pada target Switch karena header PPC privat tidak tersedia di CI publik.
+- Full PES link, device/WSI, segitiga RGB, dan rendering game: belum terbukti.
