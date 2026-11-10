@@ -89,4 +89,8 @@ Physical Switch log from the PES-owned NRO #147:
 - The run ended `presented 120 / 120`, `PES-OWNED LOADER + VI SWAPCHAIN PASSED`, and `exit=0`.
 - NVK reported `zero-copy FAILED`; the run used the supported CPU-copy WSI fallback.
 
-This is stronger than a swapchain-only test: it demonstrates that the transfer-clear workload was submitted and completed on the physical Tegra X1. The text log does not independently establish what colors were visible on the display. It is not yet a graphics-pipeline draw test and does not demonstrate PES game rendering.
+This is stronger than a swapchain-only test: it demonstrates that the transfer-clear workload was submitted and completed on the physical Tegra X1. The user explicitly confirmed that the changing color background was visible on the physical display during NRO #147. This therefore passes a visible GPU transfer-clear test, but it is not yet a graphics-pipeline draw test and does not demonstrate PES game rendering.
+
+## Next milestone: visible graphics-pipeline draw
+
+The next test must move beyond color clearing: implement a minimal graphics pipeline and issue `vkCmdDraw` on the PES-owned VI swapchain. Use the already-tested upstream `nvk_tri` shader, pipeline, and draw implementation as the reference, adapting it to the PES-owned swapchain rather than repeating the color-cycle test. The hardware acceptance criterion is an actual rendered primitive visible on the Switch display, with matching shader/pipeline/draw and present success in the log. Only after this passes should work proceed to textures, geometry/material resources, and integration with the PES renderer. A visible primitive is still a graphics smoke test, not a PES 2017 game scene.
