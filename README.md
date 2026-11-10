@@ -575,3 +575,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Replaced Pipeline's separate headless Instance/Device owners with one `vk::provider::Context`, matching the Presenter path.
 - Headless Pipeline now requests a headless Instance, selects a graphics-capable physical device, and asks Provider Context to create/adopt the logical Device. Pipeline borrows raw handles from the Provider Context while retaining renderer-facing descriptor layouts/cache.
 - Pipeline owns the Context only in headless mode; presentation mode continues to borrow Presenter-owned Provider Context. Both paths now share the same Instance/Device lifetime implementation. CI validation pending.
+
+### Remaining Device capability migration boundary (2026-11-11)
+
+- Audited the remaining `pipeline::CreateDevice` implementation against BO2 `VulkanDevice::CreateIfSupported`. Provider Context now owns Instance/Device lifetimes and selection, but the actual logical-device negotiation still runs in Pipeline.
+- Device-owned work to migrate next: queue-family/device queue creation, supported core properties/features, device-extension inventory, core/extension feature chains, format support (BC/ASTC), queue priority negotiation, fault-report function binding, and logical-device creation.
+- Keep Presenter's swapchain/present-ID/present-wait negotiation in Presenter. Keep Pipeline's descriptor-set layouts, pipeline layout/cache and shader-module/pipeline resource operations in Pipeline. Move only device discovery/creation/capability ownership into Device, then make Provider Context call Device::Create directly.
