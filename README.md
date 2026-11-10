@@ -557,3 +557,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - The raw handles retained in Pipeline State are non-owning operational aliases; the RAII objects are the destruction authorities. CI validation pending.
 
 **B2.24 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `436f3293dd2d4687bbd6f01d7eb882ecebb73595`. The SDK probe compiled 27 Vulkan runtime TUs; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897814184/artifacts/13800529967 (ZIP SHA256 `048b5c0df00748be31a1c86b55d6692c7867b4179eaa279fb86e49bc8fc6a9b0`). This validates the diagnostic SDK probe, not full PES linking or scene rendering.
+
+### BO2-style Provider context owner introduced (2026-11-11)
+
+- Added `vk::provider::Context`, an aggregate RAII owner for an `Instance` and optional `Device`, with deterministic Device-before-Instance destruction.
+- Context supports a staged window flow (create presentation-capable Instance → select a surface-compatible physical device → create/adopt logical Device) and a headless selection path. It exposes the owned objects and their handles for Pipeline/Presenter borrowing.
+- This commit establishes the owner/API; current Presenter and Pipeline paths have not yet been switched to it. Device capability negotiation still delegates to the existing Pipeline implementation. CI validation pending.
