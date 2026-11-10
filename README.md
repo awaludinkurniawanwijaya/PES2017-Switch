@@ -538,3 +538,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Presenter teardown clears the pre-creation selection fields after destroying Device and WSI objects, preventing stale adapter references after shutdown.
 - Pipeline receives the Device object through `BorrowedContext`; the instance remains separately owned by Provider/Presenter. CI validation pending.
 - Ownership wording corrected: the logical `Device` owns `VkDevice`; Presenter currently retains the `VkInstance` and uses Provider's create/destroy functions. Provider is not yet an owning C++ instance object.
+
+**B2.22 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `97632d08aee9598e7abaf90eb0954a8d42969d71`. The SDK job compiled 26 Vulkan runtime TUs, including the new Device ownership/accessor path; two renderer TUs remain deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42896857395/artifacts/13799734628 (ZIP SHA256 `f3ab3850f520cb08e64442e2b6fe266212e2fd8a95ea90d32c8db88f907729f5`). No full PES game link or scene-rendering validation is claimed.
