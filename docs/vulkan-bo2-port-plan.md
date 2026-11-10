@@ -458,3 +458,5 @@ Added an explicit `snapshotPhysical` association for cached physical properties 
 Validation pending.
 
 **Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`; 25 runtime TUs compiled, with two private PPC-dependent TUs deferred. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This does not prove full-game link or scene rendering.
+
+**Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `147cad0eb0c9ed2f911a548656d5003973e0d98f`; 25 runtime TUs compiled, with the two PPC-dependent renderer TUs deferred. Diagnostic NRO artifact `13795741590`, ZIP SHA256 `487127e7a5027e117d2a6a8d89e646689599d0e12247db1244196e017951d477`. Full-game linking and scene rendering remain unvalidated.
