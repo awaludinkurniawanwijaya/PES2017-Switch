@@ -1,5 +1,5 @@
 # Cross-compilation toolchain for the native Nintendo Switch runtime.
-# Requires devkitPro devkitA64, libnx, switch-tools, and the statically linked Switch Vulkan/NVK driver portlib.
+# Requires devkitPro devkitA64, libnx, switch-tools, and the BO2-style Mesa Horizon SDK (static libvulkan.a).
 if(NOT DEFINED ENV{DEVKITPRO})
     message(FATAL_ERROR "DEVKITPRO must point to the devkitPro installation")
 endif()
