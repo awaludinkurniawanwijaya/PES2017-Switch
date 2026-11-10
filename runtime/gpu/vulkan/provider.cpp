@@ -114,11 +114,13 @@ bool vk::provider::CreateInstance(VkInstance& instance)
         }
         extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
         extensions.push_back("VK_NN_vi_surface");
-#else
+#elif defined(PES17_USE_SDL)
         uint32_t extensionCount = 0;
         const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
         if (!sdlExtensions) { LOGW("vulkan: SDL has no instance extensions (%s)", SDL_GetError()); return false; }
         extensions.assign(sdlExtensions, sdlExtensions + extensionCount);
+#else
+        // Offline shader/texture tools are headless and need no window-system extensions.
 #endif
 
         VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
