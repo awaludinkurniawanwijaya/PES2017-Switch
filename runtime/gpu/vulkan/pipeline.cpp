@@ -1019,7 +1019,19 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
 
 void vk::pipeline::Shutdown()
 {
-    if (!g.device) return;
+    if (!g.device)
+    {
+        // Presenter may have created a Device but failed before Pipeline
+        // adopted its borrowed context. Clear metadata from that attempt.
+        g_faultInfo.store(nullptr);
+        g_faultDevice.store(VK_NULL_HANDLE);
+        g.instance = VK_NULL_HANDLE;
+        g.queue = VK_NULL_HANDLE;
+        g.family = 0;
+        g.ownsDevice = false;
+        ResetDeviceSnapshot();
+        return;
+    }
     SaveCache();
     // The fault callback is device-scoped. Clear it before an owned device is
     // destroyed, and also when the device is borrowed and will be destroyed by
@@ -1042,15 +1054,7 @@ void vk::pipeline::Shutdown()
     // context, even though Pipeline must not destroy the presenter's objects.
     g.device = VK_NULL_HANDLE;
     g.instance = VK_NULL_HANDLE;
-    g.physical = VK_NULL_HANDLE;
-    g.memoryProperties = {};
-    g.memoryPropertiesReady = false;
-    g.deviceProperties = {};
-    g.devicePropertiesReady = false;
-    g.depthStencilResolveSampleZero = false;
-    g.physicalFeatures = {};
-    g.physicalFeaturesReady = false;
-    g.snapshotPhysical = VK_NULL_HANDLE;
+    ResetDeviceSnapshot();
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
     g.ownsDevice = false;
