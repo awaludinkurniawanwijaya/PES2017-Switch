@@ -41,7 +41,6 @@ bool vk::pipeline::CreateModule(const uint32_t*, size_t, const char** error)
     if (error) *error = "built without Vulkan";
     return false;
 }
-bool vk::pipeline::DeviceHasExtension(void*, const char*) { return false; }
 bool vk::pipeline::CreateDevice(void*, uint32_t, const char* const*, uint32_t, void**, void**, void*)
 {
     return false;
@@ -191,18 +190,6 @@ bool vk::pipeline::Failed(int vkResult, const char* where)
     return true;
 }
 
-bool vk::pipeline::DeviceHasExtension(void* physical, const char* name)
-{
-    uint32_t count = 0;
-    VkPhysicalDevice device = static_cast<VkPhysicalDevice>(physical);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
-    std::vector<VkExtensionProperties> offered(count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, offered.data());
-    for (const auto& e : offered)
-        if (std::strcmp(e.extensionName, name) == 0) return true;
-    return false;
-}
-
 bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
                                 const char* const* extraExtensions, uint32_t extraCount,
                                 void** deviceOut, void** queueOut, void* features)
@@ -235,9 +222,9 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
             else if (std::strcmp(wanted, "high") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_HIGH_KHR;
             else if (std::strcmp(wanted, "realtime") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_REALTIME_KHR;
         }
-        if (level && DeviceHasExtension(physical, VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))
+        if (level && vk::provider::DeviceHasExtension(physical, VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))
             priorityExtension = VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME;
-        else if (level && DeviceHasExtension(physical, VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))
+        else if (level && vk::provider::DeviceHasExtension(physical, VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))
             priorityExtension = VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME;
         if (priorityExtension)
         {
@@ -365,7 +352,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     // its own without the driver giving up compression; naming it in an image's
     // pNext without enabling it is invalid.
     std::vector<const char*> extensions(extraExtensions, extraExtensions + extraCount);
-    if (DeviceHasExtension(physical, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
+    if (vk::provider::DeviceHasExtension(physical, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
         extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
     // MSAA depth surfaces are read back through a render pass resolve. That is
     // core in Vulkan 1.2 but an extension before it, so a 1.1-or-1.0 device
@@ -373,16 +360,16 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     // gates multisampling on.
     {
         if (physicalProperties.apiVersion < VK_API_VERSION_1_2 &&
-            DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
+            vk::provider::DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
             extensions.push_back(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
         // The depth resolve's own query goes through GetPhysicalDevice*
         // Properties2, and the 1.1 promoted Maintenance1 is where negative
         // viewport heights (the renderer's flipped clip space) live.
         if (physicalProperties.apiVersion < VK_API_VERSION_1_1)
         {
-            if (DeviceHasExtension(physical, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+            if (vk::provider::DeviceHasExtension(physical, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
                 extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-            if (DeviceHasExtension(physical, VK_KHR_MAINTENANCE1_EXTENSION_NAME))
+            if (vk::provider::DeviceHasExtension(physical, VK_KHR_MAINTENANCE1_EXTENSION_NAME))
                 extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
         }
     }
@@ -392,7 +379,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     // same thing.
     VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT nonSeamless{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT };
-    if (DeviceHasExtension(physical, VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME))
+    if (vk::provider::DeviceHasExtension(physical, VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME))
     {
         VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
         query.pNext = &nonSeamless;
@@ -412,11 +399,11 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     const bool core13 = physicalProperties.apiVersion >= VK_API_VERSION_1_3;
 
     const bool dynamicRenderingExtension =
-        DeviceHasExtension(physical, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        vk::provider::DeviceHasExtension(physical, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     const bool dynamicStateExtension =
-        DeviceHasExtension(physical, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+        vk::provider::DeviceHasExtension(physical, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
     const bool pipelineLibrariesExtension =
-        DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
+        vk::provider::DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
 
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRendering{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
@@ -488,8 +475,8 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     if (dynamicStateExtension) extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
     g.pipelineLibraries =
         !g.staticStates &&
-        DeviceHasExtension(physical, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
-        DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME) &&
+        vk::provider::DeviceHasExtension(physical, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
+        vk::provider::DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME) &&
         libraries.graphicsPipelineLibrary;
     if (g.pipelineLibraries)
     {
@@ -522,7 +509,7 @@ bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
     }
 
     VkPhysicalDeviceFaultFeaturesEXT fault{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
-    if (DeviceHasExtension(physical, VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+    if (vk::provider::DeviceHasExtension(physical, VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
     {
         VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
         query.pNext = &fault;

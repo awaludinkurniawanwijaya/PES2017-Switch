@@ -250,6 +250,19 @@ bool vk::provider::CreateHeadlessInstance(VkInstance& instance)
     return true;
 }
 
+bool vk::provider::DeviceHasExtension(VkPhysicalDevice physical, const char* name)
+{
+    std::vector<VkExtensionProperties> offered;
+    if (!EnumerateVector(offered,
+            [physical](uint32_t* count, VkExtensionProperties* data) {
+                return vkEnumerateDeviceExtensionProperties(physical, nullptr, count, data);
+            }, "device extensions"))
+        return false;
+    for (const auto& extension : offered)
+        if (std::strcmp(extension.extensionName, name) == 0) return true;
+    return false;
+}
+
 void vk::provider::DestroyInstance(VkInstance& instance)
 {
     if (g_messenger)

@@ -29,8 +29,6 @@ namespace vk::pipeline
     bool CreateDevice(void* physical, uint32_t queueFamily,
                       const char* const* extraExtensions, uint32_t extraCount,
                       void** device, void** queue, void* features = nullptr);
-    // Whether the physical device (a VkPhysicalDevice) offers a device extension.
-    bool DeviceHasExtension(void* physical, const char* name);
 
     const char* DeviceName();
     // Opaque, so this header stays free of the Vulkan headers: a VkInstance,

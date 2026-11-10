@@ -262,8 +262,8 @@ namespace
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
         void* features = nullptr;
         g.presentWait = false;
-        if (vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
-            vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+        if (vk::provider::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+            vk::provider::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
         {
             presentId.pNext = &presentWaitFeatures;
             VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };

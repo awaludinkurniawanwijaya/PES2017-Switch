@@ -9,6 +9,8 @@ namespace vk::provider
     bool CreateInstance(VkInstance& instance);
     // Headless/offline tools need an instance without any window-system extensions.
     bool CreateHeadlessInstance(VkInstance& instance);
+    // Queries an extension advertised by a physical device.
+    bool DeviceHasExtension(VkPhysicalDevice physical, const char* name);
     void DestroyInstance(VkInstance& instance);
     // Creates a logical device and loads its device dispatch; feature policy stays in pipeline.
     VkResult CreateLogicalDevice(VkPhysicalDevice physical, const VkDeviceCreateInfo& info,
