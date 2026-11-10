@@ -426,3 +426,10 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - PES currently retains raw `VkPhysicalDeviceMemoryProperties` in Renderer and Texture Cache, while Frame Generation, Upscaler and Presenter query it locally. The safe first migration should therefore expose a compact device-scoped memory-type capability view (or a typed immutable snapshot) rather than letting each subsystem own a physical-device query.
 - Keep per-allocation `memoryTypeBits` filtering: BO2's cached property categories do not eliminate Vulkan's per-resource allowed-type mask. Required flags and allocation failure handling remain with the caller.
 - This comparison refines the design only; no BO2 class or memory allocator has been copied wholesale, and no runtime behavior change is claimed.
+
+### Device-scoped physical memory snapshot (2026-11-11)
+
+- Implemented a single physical-device memory-properties snapshot in Pipeline device context. It is captured once after the borrowed or headless device context is selected, exposed through `vk::pipeline::GetMemoryProperties`, and cleared during Pipeline shutdown.
+- Renderer and Texture Cache now obtain their memory properties from that device-scoped snapshot. Frame Generation, Upscaler and Presenter no longer issue their own `vkGetPhysicalDeviceMemoryProperties` query; they request a snapshot copy before resource allocation.
+- Resource allocation policy remains local: each subsystem still applies its own `memoryTypeBits` and required property flags through the existing `FindMemory` helper. Texture Cache still reads heap sizes from the snapshot for its budget calculation.
+- This is the first implemented Device-metadata extraction slice, not a complete VulkanDevice object. CI compilation and tests are required before treating it as validated.
