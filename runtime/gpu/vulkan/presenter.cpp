@@ -289,14 +289,15 @@ namespace
         }
         g.device = static_cast<VkDevice>(createdDevice);
         g.queue = static_cast<VkQueue>(createdQueue);
-#ifdef __SWITCH__
+        // Swapchain commands are mandatory for every window-system presenter,
+        // not only Horizon. Dynamic Android/desktop drivers need the same early
+        // failure instead of a null dispatch call in CreateSwapchain/DrawOneFrame.
         if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
             !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
         {
-            LOGW("vulkan: the selected Switch Vulkan implementation is missing required swapchain dispatch functions");
+            LOGW("vulkan: the selected implementation is missing required swapchain dispatch functions");
             return false;
         }
-#endif
         if (g.presentWait)
         {
             g.waitForPresent = reinterpret_cast<PFN_vkWaitForPresentKHR>(

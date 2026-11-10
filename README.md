@@ -388,3 +388,9 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 - Dynamic loading now treats every core device entry point used by the runtime as required, while KHR/EXT entry points remain optional at the generic loader boundary and are checked by the feature/WSI paths that enable them.
 - Provider refuses to publish a logical device if any required core device function is missing: it destroys the just-created device while instance dispatch is still valid, restores instance-level dispatch, clears the output handle, and returns initialization failure.
 - This follows BO2 `VulkanDevice`'s explicit function-table validation instead of merely logging how many symbols were loaded. Switch Presenter still performs its separate required swapchain-dispatch checks.
+
+
+### Cross-platform swapchain-dispatch gate (2026-11-11)
+
+- Moved the required swapchain entry-point check out of the Switch-only compile guard. Android and SDL dynamic-loader paths now reject a device with missing `VK_KHR_swapchain` commands before attempting swapchain creation or presentation, just as the Switch path already did.
+- The generic loader continues to require core device dispatch; the Presenter validates WSI dispatch because swapchain is a presenter-owned extension. This is consistent with BO2's separation of device function availability and presentation responsibilities.

@@ -361,3 +361,9 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 - Provider now rolls back a newly created logical device when required core dispatch is incomplete, before the device escapes to Pipeline or Presenter. It destroys through the still-valid instance dispatch, restores instance-level dispatch, nulls the output and reports initialization failure.
 - Switch Presenter separately checks the five required swapchain dispatch commands after enabling `VK_KHR_swapchain`. This preserves the division between generic core dispatch and WSI-specific requirements.
 - Architectural correspondence: this is one part of BO2 `VulkanDevice`'s contract (verified device function table), not the full object extraction. Properties, enabled feature/extension state and queue-family ownership are still distributed and are not claimed as migrated.
+
+
+### B2.6m — Cross-platform swapchain-dispatch gate (2026-11-11)
+
+- The Presenter now validates the five required `VK_KHR_swapchain` commands on every window-system platform after logical-device creation, not only Switch. A dynamic Android/SDL driver missing one of these commands fails cleanly before swapchain or present calls can dereference a null dispatch pointer.
+- Dispatch validation responsibilities are explicit: Loader checks mandatory core commands, Provider rolls back a device with incomplete core dispatch, and Presenter checks the WSI extension it enabled. Optional present-wait remains independently gated.
