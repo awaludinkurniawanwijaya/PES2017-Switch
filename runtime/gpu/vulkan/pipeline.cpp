@@ -84,6 +84,7 @@ namespace
         // Owns a headless Provider context only; Presenter contexts are borrowed.
         bool ownsContext = false;
         std::unique_ptr<vk::provider::Context> ownedProvider;
+        const vk::device::Device* deviceContext = nullptr;
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice physical = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
@@ -126,6 +127,7 @@ namespace
     void ResetDeviceSnapshot()
     {
         g.physical = VK_NULL_HANDLE;
+        g.deviceContext = nullptr;
         g.preciseQueries = false;
         g.maxAnisotropy = 1.0f;
         g.nonSeamlessCubes = false;
@@ -668,6 +670,7 @@ namespace
         g.device = g.ownedProvider->LogicalHandle();
         g.queue = g.ownedProvider->QueueHandle();
         g.family = g.ownedProvider->QueueFamily();
+        g.deviceContext = g.ownedProvider->DeviceObject();
         g.ownsContext = true;
         return true;
     }
@@ -955,6 +958,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
         g.physical = static_cast<VkPhysicalDevice>(borrowedContext->device->Physical());
         g.queue = static_cast<VkQueue>(borrowedContext->device->Queue());
         g.family = borrowedContext->device->QueueFamily();
+        g.deviceContext = borrowedContext->device;
         g.ownsContext = false;
     }
     else if (!BringUpHeadless())
@@ -962,40 +966,16 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
         return false;
     }
 
-    if (g.snapshotPhysical != g.physical)
+    if (!g.deviceContext || !g.deviceContext->Complete() ||
+        !g.deviceContext->GetDeviceProperties(&g.deviceProperties, sizeof(g.deviceProperties)))
     {
-        g.devicePropertiesReady = false;
-        g.physicalFeaturesReady = false;
+        LOGW("pipeline: Provider supplied no complete Device capability snapshot");
+        Shutdown();
+        return false;
     }
-    if (!g.devicePropertiesReady)
-    {
-        vkGetPhysicalDeviceProperties(g.physical, &g.deviceProperties);
-        g.devicePropertiesReady = true;
-    }
-    const VkPhysicalDeviceProperties props = g.deviceProperties;
-    vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memoryProperties);
-    g.memoryPropertiesReady = true;
-    if (!g.physicalFeaturesReady)
-    {
-        vkGetPhysicalDeviceFeatures(g.physical, &g.physicalFeatures);
-        g.physicalFeaturesReady = true;
-    }
-    g.snapshotPhysical = g.physical;
-    g.deviceProperties = props;
     g.devicePropertiesReady = true;
-    g.depthStencilResolveSampleZero = false;
-    if (props.apiVersion >= VK_API_VERSION_1_2 ||
-        vk::provider::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
-    {
-        VkPhysicalDeviceDepthStencilResolveProperties resolve{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
-        VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-        properties2.pNext = &resolve;
-        vkGetPhysicalDeviceProperties2(g.physical, &properties2);
-        g.depthStencilResolveSampleZero =
-            (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) != 0;
-    }
-    g.name = props.deviceName;
+    g.name = g.deviceContext->Name();
+
     // A bug report is read against the driver's known faults.
     if (report::On())
     {
@@ -1031,6 +1011,7 @@ void vk::pipeline::Shutdown()
         g.queue = VK_NULL_HANDLE;
         g.family = 0;
         g.ownsContext = false;
+        g.deviceContext = nullptr;
         ResetDeviceSnapshot();
         return;
     }
@@ -1055,6 +1036,7 @@ void vk::pipeline::Shutdown()
     // context, even though Pipeline must not destroy the presenter's objects.
     g.device = VK_NULL_HANDLE;
     g.instance = VK_NULL_HANDLE;
+    g.deviceContext = nullptr;
     ResetDeviceSnapshot();
     g.queue = VK_NULL_HANDLE;
     g.family = 0;
@@ -1064,56 +1046,50 @@ void vk::pipeline::Shutdown()
 bool vk::pipeline::Ready() { return g.device != VK_NULL_HANDLE; }
 bool vk::pipeline::GetMemoryProperties(void* properties, size_t size)
 {
-    if (!properties || size != sizeof(VkPhysicalDeviceMemoryProperties) || !g.memoryPropertiesReady)
-        return false;
-    std::memcpy(properties, &g.memoryProperties, sizeof(g.memoryProperties));
-    return true;
+    return g.deviceContext && g.deviceContext->GetMemoryProperties(properties, size);
 }
 bool vk::pipeline::GetDeviceProperties(void* properties, size_t size)
 {
-    if (!properties || size != sizeof(VkPhysicalDeviceProperties) || !g.devicePropertiesReady)
-        return false;
-    std::memcpy(properties, &g.deviceProperties, sizeof(g.deviceProperties));
-    return true;
+    return g.deviceContext && g.deviceContext->GetDeviceProperties(properties, size);
 }
-bool vk::pipeline::DepthStencilResolveSampleZero() { return g.depthStencilResolveSampleZero; }
+bool vk::pipeline::DepthStencilResolveSampleZero()
+{
+    return g.deviceContext && g.deviceContext->DepthStencilResolveSampleZero();
+}
 bool vk::pipeline::GetPhysicalDeviceFeatures(void* features, size_t size)
 {
-    if (!features || size != sizeof(VkPhysicalDeviceFeatures) || !g.physicalFeaturesReady)
-        return false;
-    std::memcpy(features, &g.physicalFeatures, sizeof(g.physicalFeatures));
-    return true;
+    return g.deviceContext && g.deviceContext->GetPhysicalDeviceFeatures(features, size);
 }
-const char* vk::pipeline::DeviceName() { return g.name.c_str(); }
+const char* vk::pipeline::DeviceName() { return g.deviceContext ? g.deviceContext->Name() : "none"; }
 void*    vk::pipeline::Instance() { return g.instance; }
 void*    vk::pipeline::Device() { return g.device; }
 void*    vk::pipeline::PhysicalDevice() { return g.physical; }
 void*    vk::pipeline::Queue() { return g.queue; }
 uint32_t vk::pipeline::QueueFamily() { return g.family; }
-bool     vk::pipeline::PreciseOcclusionQueries() { return g.preciseQueries; }
-float    vk::pipeline::MaxAnisotropy() { return g.maxAnisotropy; }
-bool     vk::pipeline::NonSeamlessCubes() { return g.nonSeamlessCubes; }
+bool     vk::pipeline::PreciseOcclusionQueries() { return g.deviceContext && g.deviceContext->PreciseOcclusionQueries(); }
+float    vk::pipeline::MaxAnisotropy() { return g.deviceContext ? g.deviceContext->MaxAnisotropy() : 1.0f; }
+bool     vk::pipeline::NonSeamlessCubes() { return g.deviceContext && g.deviceContext->NonSeamlessCubes(); }
 // PES17_NO_PIPELINE_LIBRARIES=1 builds whole pipelines at the first draw instead.
 bool     vk::pipeline::PipelineLibraries()
 {
     static const bool refused = env::Flag("PES17_NO_PIPELINE_LIBRARIES");
-    return g.pipelineLibraries && g.fastLinking && !refused;
+    return g.deviceContext && g.deviceContext->PipelineLibraries() && g.deviceContext->FastLinking() && !refused;
 }
-bool     vk::pipeline::HasDynamicRendering() { return g.hasDynamicRendering; }
-bool     vk::pipeline::HasExtendedDynamicState() { return g.hasExtendedDynamicState; }
-bool     vk::pipeline::LegacyMode() { return g.legacyMode; }
-bool     vk::pipeline::StaticStates() { return g.staticStates; }
-bool     vk::pipeline::TextureCompressionBC() { return g.textureCompressionBC; }
-bool     vk::pipeline::AstcSampled() { return g.astcSampled; }
+bool     vk::pipeline::HasDynamicRendering() { return g.deviceContext && g.deviceContext->HasDynamicRendering(); }
+bool     vk::pipeline::HasExtendedDynamicState() { return g.deviceContext && g.deviceContext->HasExtendedDynamicState(); }
+bool     vk::pipeline::LegacyMode() { return !g.deviceContext || g.deviceContext->LegacyMode(); }
+bool     vk::pipeline::StaticStates() { return !g.deviceContext || g.deviceContext->StaticStates(); }
+bool     vk::pipeline::TextureCompressionBC() { return g.deviceContext && g.deviceContext->TextureCompressionBC(); }
+bool     vk::pipeline::AstcSampled() { return g.deviceContext && g.deviceContext->AstcSampled(); }
 bool     vk::pipeline::BcFormatSampled(uint32_t xenosFormat)
 {
     switch (xenosFormat)
     {
-    case 18: case 51: return g.bcSampled[0];
-    case 19: case 52: return g.bcSampled[1];
-    case 20: case 53: return g.bcSampled[2];
-    case 59:          return g.bcSampled[3];
-    case 49:          return g.bcSampled[4];
+    case 18: case 51: return g.deviceContext && g.deviceContext->BcFormatSampled(0);
+    case 19: case 52: return g.deviceContext && g.deviceContext->BcFormatSampled(1);
+    case 20: case 53: return g.deviceContext && g.deviceContext->BcFormatSampled(2);
+    case 59:          return g.deviceContext && g.deviceContext->BcFormatSampled(3);
+    case 49:          return g.deviceContext && g.deviceContext->BcFormatSampled(4);
     default:          return false;
     }
 }
