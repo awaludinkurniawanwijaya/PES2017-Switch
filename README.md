@@ -618,4 +618,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 
 - Repository cleanup: removed the zero-byte hidden file `runtime/gpu/vulkan/.!28804!renderer_resolve.cpp`; the real renderer source is preserved.
 
+### Resolve path platform guard (2026-11-11)
+
+- Full Switch SDK compilation reached `renderer_resolve.cpp` after `renderer_draw.cpp` compiled, then found two Android app-path debug toggles outside `PES17_ANDROID`. Both are now guarded; non-Android builds explicitly disable those file-based toggles.
+- Refreshed full-renderer SDK probe queued: [run 42926688441](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926688441).
+
 **Latest validation (2026-11-11):** CTest passed for the current documentation HEAD `baafb1ebf46d1af316fbfd0eadf49a6eb9397f74` (run [42925400050](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925400050)). The BO2 Mesa Switch SDK probe also completed successfully for the Device extension-deduplication code commit `dc9d788ed72ecac4bb31538069d4138d62de63e4` (run [42925275792](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792)); artifact `pes17-vulkan-bo2-probe` ID `13813836384`, 8,114,137 bytes, SHA-256 `82645e76d3736495d4a8d650022c22f206074d774372faf2334c8f91b0277e2e`, is available [here](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792/artifacts/13813836384). The probe compiled the Vulkan runtime translation units selected by the workflow; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because they require private XenonRecomp-generated PPC output. This is a diagnostic entrypoint probe, not proof of full PES game linking, Vulkan rendering, boot, or gameplay.
