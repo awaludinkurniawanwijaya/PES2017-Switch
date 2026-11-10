@@ -537,3 +537,4 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Removed the duplicated raw `VkDevice`, `VkPhysicalDevice`, `VkQueue` and queue-family fields from Presenter state. The pre-creation selection outputs are now explicitly named `selectedPhysical` and `selectedQueueFamily`; once Device is adopted, all device/physical/queue/family reads come from Device accessors.
 - Presenter teardown clears the pre-creation selection fields after destroying Device and WSI objects, preventing stale adapter references after shutdown.
 - Pipeline receives the Device object through `BorrowedContext`; the instance remains separately owned by Provider/Presenter. CI validation pending.
+- Ownership wording corrected: the logical `Device` owns `VkDevice`; Presenter currently retains the `VkInstance` and uses Provider's create/destroy functions. Provider is not yet an owning C++ instance object.
