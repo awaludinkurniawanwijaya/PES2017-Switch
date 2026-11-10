@@ -157,6 +157,25 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
             });
     };
 
+    // Extra extensions are required by the caller (currently the Presenter/WSI
+    // contract). Reject a bad request against the inventory already enumerated
+    // above, rather than relying on vkCreateDevice's generic EXTENSION_NOT_PRESENT.
+    for (uint32_t i = 0; i < extraCount; ++i)
+    {
+        const char* name = extraExtensions[i];
+        if (!name || !name[0])
+        {
+            LOGW("vulkan: required device extension %u has an empty name", i);
+            return nullptr;
+        }
+        if (!hasExtension(name))
+        {
+            LOGW("vulkan: required device extension %s is not advertised by %s",
+                 name, impl->name.c_str());
+            return nullptr;
+        }
+    }
+
     VkPhysicalDeviceProperties physicalProperties{};
     vkGetPhysicalDeviceProperties(physical, &physicalProperties);
     impl->deviceProperties = physicalProperties;
