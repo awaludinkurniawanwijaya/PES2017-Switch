@@ -7,6 +7,10 @@
 #include <cstring>
 #include <atomic>
 #include "../../kernel/physical.h"
+
+// The renderer only needs this narrow kernel diagnostic hook, not kernel.h
+// (which pulls in the private XenonRecomp-generated PPC declarations).
+namespace kernel { void DumpYieldStacks(int perThread); }
 #include "../../guest_memory.h"
 #include <unordered_set>
 // Resolves: EDRAM copied out to a texture the title reads back, or the
