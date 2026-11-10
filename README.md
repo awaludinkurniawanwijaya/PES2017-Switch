@@ -531,3 +531,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - A mechanical replacement briefly touched the `deviceOwner` identifier; it was corrected before the validated follow-up commit. CI validation pending.
 
 **B2.21 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `5803a69c6d754b592a83d3735055aea6371ce81e`. The SDK probe compiled 26 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. This is not full PES game-link or scene-rendering validation.
+
+### Device object is the sole Presenter Vulkan-handle source (2026-11-11)
+
+- Removed the duplicated raw `VkDevice`, `VkPhysicalDevice`, `VkQueue` and queue-family fields from Presenter state. The pre-creation selection outputs are now explicitly named `selectedPhysical` and `selectedQueueFamily`; once Device is adopted, all device/physical/queue/family reads come from Device accessors.
+- Presenter teardown clears the pre-creation selection fields after destroying Device and WSI objects, preventing stale adapter references after shutdown.
+- Pipeline receives the Device object through `BorrowedContext`; the instance remains separately owned by Provider/Presenter. CI validation pending.
