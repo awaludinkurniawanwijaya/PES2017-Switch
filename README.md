@@ -486,3 +486,4 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - `CreateDevice` now rejects replacement while a Pipeline device is active, clears previous snapshot/capability state before a fresh attempt, and clears the attempted device metadata if logical-device creation fails.
 - Headless bring-up rollback now destroys the instance and clears the complete failed-device snapshot, rather than only nulling the physical-device handle.
 - CI validation for this change is pending.
+- Portability refinement: the fixed BC capability array is reset with a range-for loop, avoiding reliance on `std::begin` header exposure.
