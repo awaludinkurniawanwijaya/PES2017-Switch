@@ -209,20 +209,49 @@ if(PES17_SWITCH)
     target_compile_options(pes17 PRIVATE
         -ffunction-sections -fdata-sections -pthread)
     target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SWITCH_VULKAN_DRIVER REQUIRED nxvk)
     target_link_directories(pes17 PRIVATE
         "$ENV{DEVKITPRO}/portlibs/switch/lib"
         "$ENV{DEVKITPRO}/libnx/lib")
-    # The nxvk.pc package wraps the statically linked Mesa NVK driver. Keep
-    # only the public adapter entrypoint referenced by switch_driver.cpp;
-    # vk_icdGetInstanceProcAddr is ICD-private and is not the app's GIPA.
-    # NVK has read-only-section dynamic relocations; NRO startup applies them.
-    target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,nvk_GetInstanceProcAddr)
-    target_link_libraries(pes17 PRIVATE
-        nvk
-        "-Wl,--start-group" nvk_support z expat "-Wl,--end-group"
-        nx)
+    option(PES17_SWITCH_USE_LEGACY_NXVK
+        "Use the archived NXVK portlib instead of the BO2 Mesa Horizon SDK" OFF)
+    set(PES17_SWITCH_VULKAN_SDK "$ENV{PES17_SWITCH_VULKAN_SDK}" CACHE PATH
+        "Mesa Horizon SDK portlibs/switch directory containing lib/libvulkan.a")
+    if(PES17_SWITCH_USE_LEGACY_NXVK)
+        # Backup-only path. It remains available for bisecting old experiments,
+        # but is not the active Vulkan build direction.
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SWITCH_VULKAN_DRIVER REQUIRED nxvk)
+        target_compile_definitions(pes17 PRIVATE PES17_SWITCH_USE_LEGACY_NXVK=1)
+        target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,nvk_GetInstanceProcAddr)
+        target_link_libraries(pes17 PRIVATE
+            nvk
+            "-Wl,--start-group" nvk_support z expat "-Wl,--end-group"
+            nx)
+        message(STATUS "Switch Vulkan: legacy NXVK backup path")
+    else()
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/lib/libvulkan.a")
+            message(FATAL_ERROR
+                "PES17_SWITCH_VULKAN_SDK must point to the BO2 Mesa Horizon SDK "
+                "portlibs/switch directory (missing lib/libvulkan.a): '${PES17_SWITCH_VULKAN_SDK}'")
+        endif()
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/include/vulkan/vulkan.h")
+            message(FATAL_ERROR
+                "Mesa Horizon SDK Vulkan headers not found under '${PES17_SWITCH_VULKAN_SDK}/include'")
+        endif()
+        enable_language(C)
+        target_sources(pes17 PRIVATE "${CMAKE_SOURCE_DIR}/switch/mesa/elf_stubs.c")
+        target_include_directories(pes17 PRIVATE "${PES17_SWITCH_VULKAN_SDK}/include")
+        target_link_directories(pes17 PRIVATE "${PES17_SWITCH_VULKAN_SDK}/lib")
+        # Match BO2's rexglue_switch.cmake archive order. Repeating the static
+        # archives lets the linker resolve cross-archive references without
+        # relying on a platform-specific linker-group feature.
+        target_link_libraries(pes17 PRIVATE
+            vulkan expat zstd z nx
+            vulkan expat zstd z nx
+            stdc++ m)
+        target_link_options(pes17 PRIVATE -pthread -Wl,-z,notext -Wl,-u,vkGetInstanceProcAddr)
+        message(STATUS "Switch Vulkan: BO2 Mesa Horizon SDK (${PES17_SWITCH_VULKAN_SDK})")
+    endif()
 endif()
 # The runtime checks the disc's executable against this hash before installing.
 # The selected local executable is PES 2017 Europe XEX v0x12. Validate its
