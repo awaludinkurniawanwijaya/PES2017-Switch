@@ -481,9 +481,17 @@ int main(int argc, char** argv)
     renderPassInfo.pDependencies = dependencies;
     Log("[PIPELINE] before vkCreateRenderPass");
     CHECK_VK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
-    Log("[PIPELINE] render pass created");
+    Log("[PIPELINE] render pass created; framebuffer dispatch=%p",
+        reinterpret_cast<void*>(vkCreateFramebuffer));
 
+    if (!vkCreateFramebuffer) {
+        Log("FAIL vkCreateFramebuffer dispatch pointer is null");
+        result = 12;
+        break;
+    }
     for (uint32_t i = 0; i < actualImages; ++i) {
+        Log("[PIPELINE] before vkCreateFramebuffer image=%u view=%p extent=%ux%u",
+            i, reinterpret_cast<void*>(swapchainViews[i]), extent.width, extent.height);
         VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
         framebufferInfo.renderPass = renderPass;
         framebufferInfo.attachmentCount = 1;
@@ -491,9 +499,17 @@ int main(int argc, char** argv)
         framebufferInfo.width = extent.width;
         framebufferInfo.height = extent.height;
         framebufferInfo.layers = 1;
-        CHECK_VK(vkCreateFramebuffer(device, &framebufferInfo, nullptr,
-                                     &swapchainFramebuffers[i]));
+        VkResult framebufferResult = vkCreateFramebuffer(device, &framebufferInfo, nullptr,
+                                                               &swapchainFramebuffers[i]);
+        Log("[PIPELINE] vkCreateFramebuffer image=%u returned %d handle=%p",
+            i, int(framebufferResult), reinterpret_cast<void*>(swapchainFramebuffers[i]));
+        if (framebufferResult != VK_SUCCESS) {
+            Log("FAIL vkCreateFramebuffer image=%u result=%d", i, int(framebufferResult));
+            result = 13;
+            break;
+        }
     }
+    if (result) break;
     Log("[PIPELINE] framebuffers created count=%u", actualImages);
 
     VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
