@@ -18,6 +18,9 @@ u32 __nx_heap_size = 0;
 }
 
 static FILE* g_log = nullptr;
+// libnx console and the Vulkan VI WSI share the default NWindow. Once the
+// Vulkan surface owns that window, consoleUpdate() must not dequeue from it.
+static bool g_vulkan_owns_default_window = false;
 extern "C" PFN_vkVoidFunction VKAPI_CALL
 vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
 
@@ -49,23 +52,18 @@ static void Log(const char* fmt, ...)
         fflush(g_log);
     }
 
-    va_list screenArgs;
-    va_copy(screenArgs, ap);
-    vprintf(fmt, screenArgs);
-    va_end(screenArgs);
-    printf("\n");
-
+    // Before Vulkan takes the default NWindow, mirror messages to libnx's
+    // screen console. Afterwards all diagnostics go to the SD log only: the
+    // console renderer and VI WSI must never dequeue the same NWindow buffers.
+    if (!g_vulkan_owns_default_window) {
+        va_list screenArgs;
+        va_copy(screenArgs, ap);
+        vprintf(fmt, screenArgs);
+        va_end(screenArgs);
+        printf("\\n");
+        consoleUpdate(nullptr);
+    }
     va_end(ap);
-    const bool traceFrameAcquire = fmt && std::strstr(fmt, "[FRAME %u] after acquire") != nullptr;
-    if (traceFrameAcquire && g_log) {
-        fputs("[LOG-TRACE] before consoleUpdate after acquire\n", g_log);
-        fflush(g_log);
-    }
-    consoleUpdate(nullptr);
-    if (traceFrameAcquire && g_log) {
-        fputs("[LOG-TRACE] after consoleUpdate after acquire\n", g_log);
-        fflush(g_log);
-    }
 }
 
 static void WaitForExit()
@@ -254,7 +252,12 @@ int main(int argc, char** argv)
     sci.window = nwindowGetDefault();
     Log("stage 7: vkCreateViSurfaceNN");
     CHECK_VK(vkCreateViSurfaceNN(instance, &sci, nullptr, &surface));
-    Log("vkCreateViSurfaceNN OK");
+    // vkCreateViSurfaceNN binds Vulkan WSI to nwindowGetDefault(). The libnx
+    // console uses that same NWindow; calling consoleUpdate() after this point
+    // races WSI's buffer dequeue/acquire and can deadlock immediately after
+    // vkAcquireNextImageKHR. Keep logging to the flushed SD file until teardown.
+    g_vulkan_owns_default_window = true;
+    Log("vkCreateViSurfaceNN OK; screen console disabled to reserve default NWindow for Vulkan WSI");
 
     // Keep each first physical-device call bracketed by a flushed SD log
     // marker. If the driver faults inside enumeration, the last marker tells
@@ -516,6 +519,7 @@ int main(int argc, char** argv)
         vkDestroyDevice(device,nullptr);
     }
     if (surface && instance) vkDestroySurfaceKHR(instance,surface,nullptr);
+    g_vulkan_owns_default_window = false;
     if (instance) vkDestroyInstance(instance,nullptr);
     Log("exit=%d",result);
     if (g_log) { fclose(g_log); g_log=nullptr; }
