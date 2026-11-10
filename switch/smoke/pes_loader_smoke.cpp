@@ -23,9 +23,6 @@ static FILE* g_log = nullptr;
 // libnx console and the Vulkan VI WSI share the default NWindow. Once the
 // Vulkan surface owns that window, consoleUpdate() must not dequeue from it.
 static bool g_vulkan_owns_default_window = false;
-extern "C" PFN_vkVoidFunction VKAPI_CALL
-vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL
 PESDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                  VkDebugUtilsMessageTypeFlagsEXT, 
