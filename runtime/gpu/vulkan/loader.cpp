@@ -10,7 +10,7 @@
 #elif defined(__SWITCH__)
 // NXVK is linked as a static, loaderless Vulkan ICD on Horizon.
 extern "C" PFN_vkVoidFunction VKAPI_CALL
-vk_icdGetInstanceProcAddr(VkInstance instance, const char* name);
+vkGetInstanceProcAddr(VkInstance instance, const char* name);
 #else
 #include <dlfcn.h>
 #endif
@@ -69,7 +69,7 @@ bool vk::loader::Open(std::string& error)
 #elif defined(__SWITCH__)
     // NXVK exports the ICD entry point directly; there is no Vulkan loader
     // on Horizon. It has the same instance/name dispatch contract needed here.
-    entry = reinterpret_cast<void*>(vk_icdGetInstanceProcAddr);
+    entry = reinterpret_cast<void*>(vkGetInstanceProcAddr);
     g_description = "NXVK static ICD";
 #else
     // A desktop build with dynamic loading asked for: the system's loader.
