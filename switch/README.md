@@ -30,9 +30,11 @@ complete game-data launch path.
 
 ### Vulkan / NVK progress
 
-- The project Vulkan loader has a Switch static-NXVK path that resolves the
-  public `vkGetInstanceProcAddr` export directly, matching BO2's Horizon
-  bootstrap rather than using Mesa's ICD-private entry point.
+- The project Vulkan loader has a Switch static-NXVK path that binds the actual
+  public Mesa/NVK adapter symbol `nvk_GetInstanceProcAddr` (the pinned archive
+  does not export a literal `vkGetInstanceProcAddr` symbol), matching BO2's
+  public-entry-point dispatch model rather than using Mesa's ICD-private
+  `vk_icdGetInstanceProcAddr` entry point.
 - The project's Vulkan presenter has a Switch VI path using
   `VK_KHR_surface`, `VK_NN_vi_surface`, and `nwindowGetDefault()`.
 - Required VI surface and swapchain dispatch functions, transfer-destination
@@ -215,3 +217,32 @@ The BO2 source audit identified a more fundamental mismatch in the static Switch
 ### Follow-up: correct NXVK static entry-point symbol (10 November 2026)
 
 The next NXVK build exposed that the pinned static archive does not export a literal `vkGetInstanceProcAddr` symbol. Inspection of the actual `libnvk.a` produced by CI with `nm -g --defined-only` shows the public Mesa/NVK adapter is exported as `nvk_GetInstanceProcAddr`, alongside the private `vk_icdGetInstanceProcAddr`. The previous attempt to bind the pointer variable to a literal `vkGetInstanceProcAddr` therefore selected a symbol that the static archive does not provide. Commit `c5a2778737a520e64527a2cee3b3df5aa57c0d6c` changes the Switch adapter to call the actual exported `nvk_GetInstanceProcAddr` entry point; commit `b4ace32b1b784189896e68393249dcf961d5c37f` updates CI's archive and undefined-symbol checks to assert that exact symbol rather than the ICD-private one. The preceding run [42806337138](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42806337138) built the NXVK archives successfully but stopped at the stale symbol assertion; no NRO was produced. The corrected build is tracked in [run 42807742433](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807742433) and its workflow rerun [42807751358](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807751358). Hardware validation is still required to prove non-null `vkGetDeviceProcAddr` results and framebuffer/pipeline/draw/present success.
+
+
+### Follow-up: corrected static entry point and rebuilt diagnostic NRO (10 November 2026)
+
+The pinned NXVK workflow now completes successfully at commit
+`b4ace32b1b784189896e68393249dcf961d5c37f`, run
+[42807747618](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807747618).
+The host test workflow also passes (run
+[42807751358](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807751358)).
+The earlier run [42807742433](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807742433)
+failed before packaging because it compiled the NXVK archive but the PES loader
+compile/link stage still referenced the wrong entry point; the corrected
+workflow now compiles the loader against the real `nvk_GetInstanceProcAddr`
+symbol and packages all three diagnostic NROs.
+
+The PES-owned `pes_loader_smoke.nro` in artifact
+[13761641203](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42807747618/artifacts/13761641203)
+is 14,129,349 bytes (SHA-256
+`9d9b7a65d5b85a8abcc7de8c115014278357bbd15211cd4c497266522f3e7c4a`).
+CI additionally verified that the final NRO contains the Properties2 callback
+trace, WSI copy-commands2/NVK implementation traces, and the graphics-pipeline
+plus `vkCmdDraw` path. This is a newly built diagnostic binary, not proof that
+those GPU operations execute successfully on the console. The previous
+physical log's null framebuffer function pointers came from the earlier
+diagnostic build; this corrected binary must be tested before interpreting
+that old failure as current behavior. The hardware gate is now to inspect the
+new log for non-null framebuffer dispatch, successful framebuffer and
+graphics-pipeline creation, draw, submit, and visible triangle presentation.
+Neither a playable PES build nor the PES renderer is validated by this CI run.
