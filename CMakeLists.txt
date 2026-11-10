@@ -24,7 +24,7 @@ endif()
 
 # Android and Switch provide native window/input/audio backends, so SDL is
 # disabled for either target regardless of a stale cache value.
-option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and BO2-style Vulkan architecture" OFF)
+option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and BO2-style Vulkan architecture (static NVK driver)" OFF)
 if(ANDROID AND PES17_SWITCH)
     message(FATAL_ERROR "PES17_SWITCH cannot be combined with Android")
 endif()
