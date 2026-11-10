@@ -524,3 +524,9 @@ Added `vk::instance::Instance` as a non-copyable RAII owner for `VkInstance`, wi
 Validation for B2.23 is pending.
 
 **B2.23 validation completed:** CTest, libnx homebrew NRO build, and Switch BO2 Mesa SDK probe passed for `ebf8836f0126687ec268fb9c8857a76d302fe51e`. The SDK probe compiled 27 Vulkan runtime TUs including `instance.cpp`; two PPC-dependent renderer TUs remain deferred. Diagnostic NRO artifact `13800434703`, ZIP SHA256 `870d0761ab0910e8e7b780c10a50a780a76d2046a5689ed52765a0499906ac3c`. Full PES linking and scene rendering remain unvalidated.
+
+### B2.24 — Unify headless and presenting RAII ownership (2026-11-11)
+
+The offline/headless Pipeline path now creates an `Instance` owner and adopts the created logical device into a `Device` owner, just like the Presenter path. `Pipeline::State` retains `ownedInstance`/`ownedDevice` only for the headless mode; when initialized with a `BorrowedContext`, it retains no owners and cannot destroy Presenter resources. Headless rollback and normal Pipeline shutdown release descriptor/pipeline resources first, then Device, then Instance. Raw `VkInstance`/`VkDevice` fields in Pipeline remain non-owning operational aliases; RAII objects are the sole destruction authorities.
+
+Validation for B2.24 is pending.
