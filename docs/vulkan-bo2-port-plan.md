@@ -418,3 +418,5 @@ Migrated consumers: Renderer, Texture Cache, Frame Generation, Upscaler and Pres
 Validation is pending for this commit. The next steps are inspect CI, fix any compile/test failures, then migrate physical-device properties through the same lifecycle only after auditing all standalone tool targets.
 
 **Validation update:** the tests-only CTest workflow for implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5` completed successfully. The Switch BO2 Mesa SDK probe job is still running; its result is not yet claimed.
+
+**Validation completed:** CTest passed. The Switch BO2 Mesa SDK job also passed: 25 Vulkan runtime TUs compiled, while `renderer_draw.cpp` and `renderer_resolve.cpp` were explicitly deferred for private XenonRecomp-generated PPC output. The diagnostic probe NRO artifact is `13795401108`, ZIP SHA256 `739048ccefe61e156b403851535e19e5352d8aafa2e568584f88c5aa6eb222b8`. This is not evidence of a complete PES2017 game link or actual scene rendering on Switch.
