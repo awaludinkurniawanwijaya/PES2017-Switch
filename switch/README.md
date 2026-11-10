@@ -40,19 +40,22 @@ complete game-data launch path.
 - NXVK is an experimental, non-conformant NVK port. The runtime explicitly
   opts in with `NVK_I_WANT_A_BROKEN_VULKAN_DRIVER=1`; compatibility and
   stability are not guaranteed.
-- The pinned NXVK workflow has successfully built the NVK archive, packaged
-  the portlib, syntax-compiled the project's loader and presenter, and built
-  three diagnostic NROs (`nvk_tri.nro`, `nvk_vi_swapchain.nro`, and
-  `pes_loader_smoke.nro`). This is CI build/link evidence only; no physical
-  Switch GPU execution has been confirmed.
+- The pinned NXVK workflow has built the NVK archive, packaged the portlib,
+  syntax-compiled the project's loader and presenter, and built three
+  diagnostic NROs (`nvk_tri.nro`, `nvk_vi_swapchain.nro`, and
+  `pes_loader_smoke.nro`). A physical Switch run of the PES-owned loader then
+  completed VI swapchain creation and 120/120 acquire-submit-present cycles
+  on NVK / Tegra X1. This validates WSI and queue submission, but not an actual
+  GPU draw/clear, the PES renderer, or game boot.
 - The separate libnx bootstrap workflow has successfully built
   `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
   diagnostic app, not the PES game.
 
 Host tests passed (11/11), and the bootstrap NRO was packaged successfully (about 759 KiB before compression).
 The runtime XInput translation unit still needs generated PPC headers for its
-full syntax check. These results do **not** prove that NVK presents to the
-screen or that PES 2017 can boot.
+full syntax check. The physical VI smoke test proves that the PES-owned loader
+can acquire, submit, and present frames; it does **not** prove that the PES
+renderer works or that PES 2017 can boot.
 
 ## Bootstrap build
 
@@ -139,11 +142,13 @@ PPC output.
 1. **CI feasibility build — passed.** The NVK archive/portlib, project
    loader/presenter compile checks, and three diagnostic NROs are now produced
    successfully by the pinned workflow.
-2. **Validate NXVK on a physical Switch.** Run the triangle and VI swapchain
-   tests, then inspect logs. CI compilation alone cannot prove GPU execution
-   or display presentation.
-3. **Link a PES-specific presenter test.** Exercise the project's static ICD
-   loader, VI surface, swapchain, and frame-present path together in an NRO.
+2. **PES-owned VI swapchain on physical Switch — passed.** The latest log
+   confirms NVK Tegra X1 initialization, VI surface/swapchain creation, image
+   enumeration, and 120/120 acquire-submit-present cycles.
+3. **Exercise real GPU writes — in progress.** The next NRO clears each
+   acquired swapchain image with `vkCmdClearColorImage` in three changing
+   color phases before presenting. This separates real NVK image writes from
+   the already-proven barrier/submit/present path.
 4. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
 5. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
    install, and generated PPC sources with the correct libnx/NXVK dependencies.
