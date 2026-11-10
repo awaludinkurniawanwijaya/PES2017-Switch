@@ -247,62 +247,7 @@ namespace
         return vk::provider::CreateInstance(g.instance);
     }
 
-    bool PickDevice()
-    {
-        std::vector<VkPhysicalDevice> devices;
-        if (!EnumerateVector(devices,
-                [](uint32_t* count, VkPhysicalDevice* data) {
-                    return vkEnumeratePhysicalDevices(g.instance, count, data);
-                }, "physical devices"))
-            return false;
-        if (devices.empty()) { LOGW("vulkan: no physical devices"); return false; }
 
-        // Prefer a discrete device, but take whatever can present.
-        VkPhysicalDevice fallback = VK_NULL_HANDLE;
-        uint32_t fallbackFamily = 0;
-        for (VkPhysicalDevice candidate : devices)
-        {
-            std::vector<VkQueueFamilyProperties> properties;
-            if (!EnumerateVector(properties,
-                    [candidate](uint32_t* count, VkQueueFamilyProperties* data) {
-                        vkGetPhysicalDeviceQueueFamilyProperties(candidate, count, data);
-                        return VK_SUCCESS;
-                    }, "queue families"))
-                continue;
-
-            for (uint32_t i = 0; i < properties.size(); i++)
-            {
-                if (!(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
-                VkBool32 canPresent = VK_FALSE;
-                const VkResult supportResult =
-                    vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, g.surface, &canPresent);
-                if (supportResult != VK_SUCCESS)
-                {
-                    LOGW("vulkan: surface support query failed for queue family %u (%d)",
-                         i, int(supportResult));
-                    continue;
-                }
-                if (!canPresent) continue;
-
-                VkPhysicalDeviceProperties info{};
-                vkGetPhysicalDeviceProperties(candidate, &info);
-                if (info.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-                {
-                    g.physical = candidate; g.queueFamily = i;
-                    LOGI("vulkan: %s", info.deviceName);
-                    return true;
-                }
-                if (!fallback) { fallback = candidate; fallbackFamily = i; }
-                break;
-            }
-        }
-        if (!fallback) { LOGW("vulkan: no device can present to the window"); return false; }
-        g.physical = fallback; g.queueFamily = fallbackFamily;
-        VkPhysicalDeviceProperties info{};
-        vkGetPhysicalDeviceProperties(g.physical, &info);
-        LOGI("vulkan: %s", info.deviceName);
-        return true;
-    }
 
     // The renderer draws on this device when there is a window, so it is made
     // the way pipeline.cpp makes its own, with the swapchain beside.
@@ -1242,7 +1187,7 @@ namespace
             android::SetStatus("Failed to create Vulkan surface for Android window");
             return false;
         }
-        if (!PickDevice()) {
+        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily)) {
             android::SetStatus("No Vulkan physical device found");
             return false;
         }
