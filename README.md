@@ -591,3 +591,4 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Removed the superseded `pipeline::CreateDevice` API and its duplicate 400-line device creation/capability negotiation implementation. Device::Create is now the single logical-device creation and capability owner; Pipeline remains responsible for descriptor/pipeline layout, cache and shader modules.
 - Device fault reports now delegate to `Device::ReportFault()`; the duplicate Pipeline-level device-fault dispatch cache was removed.
 - CI validation for this migration is pending.
+- Follow-up cleanup: removed Pipeline's now-unused duplicate capability flags and copied memory/core-feature/depth-resolve snapshots. Pipeline keeps only its non-owning Device pointer, operational handle aliases and the physical-properties copy required to validate persistent pipeline-cache identity.
