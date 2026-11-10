@@ -116,6 +116,44 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
         LOGW("vulkan: queue family %u has no queues", family);
         return nullptr;
     }
+
+    // Device capability negotiation asks about many optional extensions. Enumerate
+    // the physical device's inventory once and answer all membership tests locally.
+    uint32_t extensionCount = 0;
+    VkResult extensionResult =
+        vkEnumerateDeviceExtensionProperties(physical, nullptr, &extensionCount, nullptr);
+    if (extensionResult != VK_SUCCESS)
+    {
+        LOGW("vulkan: device extension enumeration failed (%s)", Explain(extensionResult));
+        return nullptr;
+    }
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    for (;;)
+    {
+        uint32_t written = uint32_t(availableExtensions.size());
+        extensionResult = vkEnumerateDeviceExtensionProperties(
+            physical, nullptr, &written,
+            availableExtensions.empty() ? nullptr : availableExtensions.data());
+        if (extensionResult == VK_INCOMPLETE)
+        {
+            availableExtensions.resize(std::max(written, uint32_t(availableExtensions.size()) + 1));
+            continue;
+        }
+        if (extensionResult != VK_SUCCESS)
+        {
+            LOGW("vulkan: device extension enumeration failed (%s)", Explain(extensionResult));
+            return nullptr;
+        }
+        availableExtensions.resize(written);
+        break;
+    }
+    const auto hasExtension = [&availableExtensions](const char* name) {
+        return name && std::any_of(availableExtensions.begin(), availableExtensions.end(),
+            [name](const VkExtensionProperties& extension) {
+                return std::strcmp(extension.extensionName, name) == 0;
+            });
+    };
+
     VkPhysicalDeviceProperties physicalProperties{};
     vkGetPhysicalDeviceProperties(physical, &physicalProperties);
     impl->deviceProperties = physicalProperties;
@@ -124,7 +162,7 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     vkGetPhysicalDeviceMemoryProperties(physical, &impl->memoryProperties);
     impl->memoryPropertiesReady = true;
     if (physicalProperties.apiVersion >= VK_API_VERSION_1_2 ||
-        vk::provider::DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
+        hasExtension(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
     {
         VkPhysicalDeviceDepthStencilResolveProperties resolve{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
