@@ -1101,6 +1101,8 @@ namespace
 #endif
         g.surface = VK_NULL_HANDLE;
         g.instance = VK_NULL_HANDLE;
+        g.selectedPhysical = VK_NULL_HANDLE;
+        g.selectedQueueFamily = 0;
     }
 
 #ifdef __SWITCH__
