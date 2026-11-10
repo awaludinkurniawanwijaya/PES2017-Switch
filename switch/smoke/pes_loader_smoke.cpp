@@ -418,9 +418,11 @@ int main(int argc, char** argv)
     CHECK_VK(vkAllocateCommandBuffers(device,&cbai,&commandBuffer));
 
     for (uint32_t frame=0; frame<120; ++frame) {
+        Log("[FRAME %u] before acquire", frame);
         uint32_t imageIndex=0;
         VkResult ar=vkAcquireNextImageKHR(device,swapchain,UINT64_MAX,acquired,VK_NULL_HANDLE,&imageIndex);
         if (ar!=VK_SUCCESS && ar!=VK_SUBOPTIMAL_KHR) { Log("FAIL acquire frame=%u result=%d",frame,int(ar)); result=7; break; }
+        Log("[FRAME %u] after acquire result=%d image=%u", frame, int(ar), imageIndex);
         if (imageIndex>=swapchainImages.size()) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,swapchainImages.size()); result=7; break; }
 
         // A presentable image must be transitioned to PRESENT_SRC_KHR by a
@@ -461,16 +463,22 @@ int main(int argc, char** argv)
         VkSemaphore frameComplete=renderComplete[imageIndex];
         submit.signalSemaphoreCount=1;
         submit.pSignalSemaphores=&frameComplete;
+        Log("[FRAME %u] before queue submit", frame);
         VkResult submitResult=vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE);
         if (submitResult!=VK_SUCCESS) { Log("FAIL queue submit frame=%u result=%d",frame,int(submitResult)); result=9; break; }
+        Log("[FRAME %u] after queue submit", frame);
 
         VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&frameComplete;
         pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&imageIndex;
+        Log("[FRAME %u] before queue present", frame);
         VkResult pr=vkQueuePresentKHR(queue,&pi);
         if (pr!=VK_SUCCESS && pr!=VK_SUBOPTIMAL_KHR) { Log("FAIL present frame=%u result=%d",frame,int(pr)); result=8; break; }
+        Log("[FRAME %u] after queue present result=%d", frame, int(pr));
+        Log("[FRAME %u] before device wait idle", frame);
         VkResult idle = vkDeviceWaitIdle(device);
         if (idle != VK_SUCCESS) { Log("FAIL device idle frame=%u result=%d",frame,int(idle)); result=9; break; }
+        Log("[FRAME %u] after device wait idle", frame);
         if ((frame+1)%30==0) Log("presented %u / 120",frame+1);
     }
     if (!result) Log("=== PES-OWNED LOADER + VI SWAPCHAIN PASSED ===");
