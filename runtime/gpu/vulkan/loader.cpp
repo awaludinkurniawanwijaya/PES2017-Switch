@@ -146,24 +146,34 @@ void vk::loader::LoadInstance(VkInstance instance)
          g_missing ? " (some are missing, see above)" : "");
 }
 
-void vk::loader::LoadDevice(VkDevice device)
+bool vk::loader::LoadDevice(VkDevice device)
 {
     std::lock_guard lock(g_lock);
-    if (!vkGetDeviceProcAddr || !device) return;
+    if (!vkGetDeviceProcAddr || !device)
+    {
+        LOGW("vulkan: cannot load device dispatch without vkGetDeviceProcAddr and a device");
+        return false;
+    }
     uint32_t taken = 0;
+    uint32_t missing = 0;
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name)
 #define PES17_VK_DEVICE(name) \
-    if (auto address = vkGetDeviceProcAddr(device, #name)) \
+    name = reinterpret_cast<PFN_##name>(vkGetDeviceProcAddr(device, #name)); \
+    if (name) taken++; \
+    else if (std::strstr(#name, "KHR") == nullptr && std::strstr(#name, "EXT") == nullptr) \
     { \
-        name = reinterpret_cast<PFN_##name>(address); \
-        taken++; \
+        if (missing < 12) LOGW("vulkan: this device has no required core entry point %s", #name); \
+        missing++; \
     }
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
 #undef PES17_VK_INSTANCE
 #undef PES17_VK_DEVICE
     LOGI("vulkan: %u device entry points taken straight from the driver", taken);
+    if (missing)
+        LOGW("vulkan: device dispatch is incomplete (%u required core entry point(s) missing)", missing);
+    return missing == 0;
 }
 
 // The device is going: its entry points must not be called again, so they go

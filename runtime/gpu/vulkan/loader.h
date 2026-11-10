@@ -64,7 +64,7 @@ namespace vk::loader
     // extension owns come back null when the extension is not there, which
     // is what the callers already check for.
     void LoadInstance(VkInstance instance);
-    void LoadDevice(VkDevice device);
+    bool LoadDevice(VkDevice device);
     // The device is about to be destroyed: its entry points go back to the
     // instance's, which stay valid.
     void ForgetDevice();

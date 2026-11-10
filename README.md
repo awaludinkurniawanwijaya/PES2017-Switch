@@ -381,3 +381,10 @@ The active Switch path is being reorganized toward BO2's provider/device/present
 - Extended the Provider boundary audit beyond the selected queue family: every requested queue-create record must have the correct structure type, nonzero queue count, a priority array, an in-range family index, and a queue count no greater than that family's reported capacity.
 - Each requested priority is checked against Vulkan's `[0, 1]` range, duplicate queue-family records are rejected, and the family whose queue Provider returns must actually be included in the create info. Invalid requests fail before `vkCreateDevice`, with output handles left null.
 - This is input-contract hardening only. It does not change selected GPU policy, queue priority fallback, feature negotiation, or Presenter ownership. BO2 `VulkanDevice` capability extraction remains a separate future milestone.
+
+
+### Required Vulkan device-dispatch validation (2026-11-11)
+
+- Dynamic loading now treats every core device entry point used by the runtime as required, while KHR/EXT entry points remain optional at the generic loader boundary and are checked by the feature/WSI paths that enable them.
+- Provider refuses to publish a logical device if any required core device function is missing: it destroys the just-created device while instance dispatch is still valid, restores instance-level dispatch, clears the output handle, and returns initialization failure.
+- This follows BO2 `VulkanDevice`'s explicit function-table validation instead of merely logging how many symbols were loaded. Switch Presenter still performs its separate required swapchain-dispatch checks.

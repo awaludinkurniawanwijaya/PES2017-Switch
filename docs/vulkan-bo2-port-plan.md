@@ -353,3 +353,11 @@ The teardown-order correction is now validated by the later B2.6f SDK run. Next:
 - Provider now validates the complete `VkDeviceQueueCreateInfo` array before calling the driver: record `sType`, nonzero count, non-null priorities, valid family index, per-family queue capacity, finite-by-range priority values (NaN also fails the range predicate), no duplicate family records, and inclusion of the queue family whose queue is retrieved.
 - This complements the earlier selected-family check and makes the low-level Provider boundary independently safe for callers other than the current Pipeline.
 - No renderer feature policy or WSI policy moved. The next BO2-inspired Device milestone remains a coherent extraction of physical-device properties, feature/extension negotiation, queue-family state and device dispatch—not a superficial wrapper.
+
+
+### B2.6l — Required Vulkan device-dispatch validation (2026-11-11)
+
+- Changed dynamic `loader::LoadDevice` to return a completeness result. All core device entry points present in the generated runtime call list are mandatory; extension-suffixed KHR/EXT commands remain optional at this generic layer because their enablement is conditional.
+- Provider now rolls back a newly created logical device when required core dispatch is incomplete, before the device escapes to Pipeline or Presenter. It destroys through the still-valid instance dispatch, restores instance-level dispatch, nulls the output and reports initialization failure.
+- Switch Presenter separately checks the five required swapchain dispatch commands after enabling `VK_KHR_swapchain`. This preserves the division between generic core dispatch and WSI-specific requirements.
+- Architectural correspondence: this is one part of BO2 `VulkanDevice`'s contract (verified device function table), not the full object extraction. Properties, enabled feature/extension state and queue-family ownership are still distributed and are not claimed as migrated.

@@ -498,7 +498,15 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
     if (result != VK_SUCCESS) return result;
 #if defined(PES17_VULKAN_DYNAMIC)
     // Device entrypoints become valid only after the driver-created device exists.
-    vk::loader::LoadDevice(device);
+    // Match BO2's VulkanDevice contract: required core dispatch must be complete
+    // before any renderer/presenter code is allowed to use the device.
+    if (!vk::loader::LoadDevice(device))
+    {
+        vkDestroyDevice(device, nullptr);
+        vk::loader::ForgetDevice();
+        device = VK_NULL_HANDLE;
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
 #endif
     vkGetDeviceQueue(device, queueFamily, 0, &queue);
     if (!queue)
