@@ -40,7 +40,7 @@ jobs:
           import json, sys
           with open(sys.argv[1], encoding="utf-8") as f:
               manifest = json.load(f)
-          assert manifest["commit"] == "dd189961e8876079087d6f0843af8013bd154277", manifest.get("commit")
+          assert manifest["commit"] == "897abae89ca1836abe119581883b435d80edc6fe", manifest.get("commit")
           assert manifest["mesa"]["base"] == "danfromtico/mesa-switch 1a8c1a66d6f", manifest.get("mesa")
           print("Verified BO2 runtime manifest:", manifest["commit"], manifest["mesa"]["base"])
           PY
