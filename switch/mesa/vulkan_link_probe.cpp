@@ -1,4 +1,5 @@
 #include <switch.h>
+#include <cstdio>
 
 #define VK_NO_PROTOTYPES 1
 #include <vulkan/vulkan.h>
@@ -9,7 +10,7 @@ vkGetInstanceProcAddr(VkInstance instance, const char* name);
 int main()
 {
     consoleInit(nullptr);
-    printf("PES2017 BO2 Mesa Vulkan SDK probe\n");
+    std::printf("PES2017 BO2 Mesa Vulkan SDK probe\n");
 
     const auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
         vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
