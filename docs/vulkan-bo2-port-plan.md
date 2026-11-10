@@ -428,3 +428,9 @@ Added `vk::pipeline::GetDeviceProperties(void*, size_t)` alongside the memory-pr
 Validation for this follow-up commit is pending. The previous B2.10 implementation passed CTest and the SDK probe; that result does not automatically validate this new change.
 
 **Validation completed:** CTest and the Switch BO2 Mesa SDK probe both passed for `f10aece7ae651fc4322f5a2f0be77985058adc19`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for unavailable private XenonRecomp-generated PPC output. The probe validates these runtime TUs and the diagnostic NRO only, not full PES link or game-scene rendering.
+
+### B2.12 — Depth-resolve capability discovery centralized (2026-11-11)
+
+Pipeline now queries and stores whether the selected physical device supports sample-zero depth/stencil resolve, considering Vulkan 1.2 core promotion or `VK_KHR_depth_stencil_resolve`. Renderer reads the immutable capability through `DepthStencilResolveSampleZero()` and retains the policy decision to enable or disable MSAA. Presenter-specific present-ID/present-wait feature negotiation remains in Presenter because it is WSI policy, not a general Device capability.
+
+Validation for B2.12 is pending.
