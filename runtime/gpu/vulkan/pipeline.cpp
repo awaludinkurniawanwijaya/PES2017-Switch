@@ -859,7 +859,17 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
 {
     if (g.device) return true;
 
-    if (device && physical)
+    // A borrowed device is an all-or-nothing tuple. Falling through to the
+    // headless path when only some handles were supplied would silently ignore
+    // the caller's device and could create a second, unrelated GPU context.
+    const bool borrowed = device || physical || queue || instance;
+    if (borrowed && (!device || !physical || !queue || !instance))
+    {
+        LOGW("pipeline: incomplete borrowed Vulkan device context");
+        return false;
+    }
+
+    if (borrowed)
     {
         g.instance = static_cast<VkInstance>(instance);
         g.device = static_cast<VkDevice>(device);
