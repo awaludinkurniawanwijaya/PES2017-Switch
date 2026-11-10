@@ -11,7 +11,7 @@ TARGET := pes_loader_smoke
 BUILD := build
 SOURCES := compat
 DATA :=
-INCLUDES := ../../../runtime
+INCLUDES := ../../../runtime generated-shaders
 
 APP_TITLE := PES 2017 NXVK Loader Smoke
 APP_AUTHOR := PES2017-Switch contributors
