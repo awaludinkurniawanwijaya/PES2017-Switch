@@ -66,7 +66,6 @@ struct vk::device::Device::Impl
     bool depthStencilResolveSampleZero = false;
     VkPhysicalDeviceFeatures physicalFeatures{};
     bool physicalFeaturesReady = false;
-    VkPhysicalDevice snapshotPhysical = VK_NULL_HANDLE;
     PFN_vkGetDeviceFaultInfoEXT faultInfo = nullptr;
 };
 
@@ -124,9 +123,6 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     impl->name = physicalProperties.deviceName;
     vkGetPhysicalDeviceMemoryProperties(physical, &impl->memoryProperties);
     impl->memoryPropertiesReady = true;
-    vkGetPhysicalDeviceFeatures(physical, &impl->physicalFeatures);
-    impl->physicalFeaturesReady = true;
-    impl->snapshotPhysical = physical;
     if (physicalProperties.apiVersion >= VK_API_VERSION_1_2 ||
         vk::provider::DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
     {
@@ -198,7 +194,6 @@ std::unique_ptr<vk::device::Device> vk::device::Device::Create(
     vkGetPhysicalDeviceFeatures(physical, &supported);
     impl->physicalFeatures = supported;
     impl->physicalFeaturesReady = true;
-    impl->snapshotPhysical = physical;
     VkPhysicalDeviceFeatures enabled{};
     // Robust buffer access, because the vertex fetch path reads the frame arena
     // at indices the guest's own data computes. One index past the end is,
