@@ -379,15 +379,14 @@ int main(int argc, char** argv)
         Log("FAIL invalid swapchain image count=%u min=%u max=%u",imageCount,caps.minImageCount,caps.maxImageCount);
         result=6; break;
     }
-    VkImageUsageFlags imageUsage = 0;
-    if (caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-        imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    else if (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-        imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    else {
-        Log("FAIL surface supports neither COLOR_ATTACHMENT nor TRANSFER_DST usage (0x%08x)",caps.supportedUsageFlags);
+    // The next milestone must prove real GPU writes, not only image-layout
+    // transitions. Require transfer-destination support so each frame can
+    // clear the acquired swapchain image before presenting it.
+    if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
+        Log("FAIL surface lacks TRANSFER_DST usage required by clear test (0x%08x)",caps.supportedUsageFlags);
         result=6; break;
     }
+    VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha)) {
         alpha = (VkCompositeAlphaFlagBitsKHR)0;
@@ -441,9 +440,9 @@ int main(int argc, char** argv)
         if (imageIndex>=acquiredImageCount) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,acquiredImageCount); result=7; break; }
         Log("[FRAME %u] after acquired-image bounds check", frame);
 
-        // A presentable image must be transitioned to PRESENT_SRC_KHR by a
-        // queue operation. The acquire semaphore is consumed by this submit;
-        // presentation waits on the semaphore signalled after the barrier.
+        // Render a deterministic color directly into the acquired swapchain
+        // image. This exercises a real NVK GPU write through the PES-owned
+        // loader/VI path instead of merely presenting untouched images.
         Log("[FRAME %u] before reset command buffer", frame);
         VkResult resetResult=vkResetCommandBuffer(commandBuffer,0);
         Log("[FRAME %u] after reset command buffer result=%d", frame, int(resetResult));
@@ -454,24 +453,56 @@ int main(int argc, char** argv)
         VkResult beginResult=vkBeginCommandBuffer(commandBuffer,&begin);
         Log("[FRAME %u] after begin command buffer result=%d", frame, int(beginResult));
         if (beginResult!=VK_SUCCESS) { Log("FAIL begin command buffer frame=%u result=%d",frame,int(beginResult)); result=9; break; }
+        VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        toTransfer.srcAccessMask=0;
+        toTransfer.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        toTransfer.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        toTransfer.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        toTransfer.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.image=swapchainImages[imageIndex];
+        toTransfer.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        toTransfer.subresourceRange.baseMipLevel=0;
+        toTransfer.subresourceRange.levelCount=1;
+        toTransfer.subresourceRange.baseArrayLayer=0;
+        toTransfer.subresourceRange.layerCount=1;
+        Log("[FRAME %u] before transfer-dst barrier", frame);
+        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,0,
+                             0,nullptr,0,nullptr,1,&toTransfer);
+        Log("[FRAME %u] after transfer-dst barrier", frame);
+
+        VkClearColorValue clearColor{};
+        const uint32_t phase = (frame / 40) % 3;
+        clearColor.float32[0] = phase == 0 ? 0.85f : 0.05f;
+        clearColor.float32[1] = phase == 1 ? 0.85f : 0.05f;
+        clearColor.float32[2] = phase == 2 ? 0.85f : 0.05f;
+        clearColor.float32[3] = 1.0f;
+        VkImageSubresourceRange clearRange{};
+        clearRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        clearRange.baseMipLevel=0;
+        clearRange.levelCount=1;
+        clearRange.baseArrayLayer=0;
+        clearRange.layerCount=1;
+        Log("[FRAME %u] before vkCmdClearColorImage phase=%u", frame, phase);
+        vkCmdClearColorImage(commandBuffer,swapchainImages[imageIndex],
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,&clearColor,1,&clearRange);
+        Log("[FRAME %u] after vkCmdClearColorImage", frame);
+
         VkImageMemoryBarrier toPresent{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        toPresent.srcAccessMask=0;
+        toPresent.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
         toPresent.dstAccessMask=0;
-        toPresent.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        toPresent.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         toPresent.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         toPresent.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
         toPresent.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
         toPresent.image=swapchainImages[imageIndex];
-        toPresent.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
-        toPresent.subresourceRange.baseMipLevel=0;
-        toPresent.subresourceRange.levelCount=1;
-        toPresent.subresourceRange.baseArrayLayer=0;
-        toPresent.subresourceRange.layerCount=1;
-        Log("[FRAME %u] before pipeline barrier", frame);
-        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        toPresent.subresourceRange=clearRange;
+        Log("[FRAME %u] before present barrier", frame);
+        vkCmdPipelineBarrier(commandBuffer,VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,
                              0,nullptr,0,nullptr,1,&toPresent);
-        Log("[FRAME %u] after pipeline barrier", frame);
+        Log("[FRAME %u] after present barrier", frame);
         Log("[FRAME %u] before end command buffer", frame);
         VkResult endResult=vkEndCommandBuffer(commandBuffer);
         Log("[FRAME %u] after end command buffer result=%d", frame, int(endResult));
