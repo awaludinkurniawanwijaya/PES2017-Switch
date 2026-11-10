@@ -448,7 +448,16 @@ namespace
 
 bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext)
 {
-    if (g.device) return true;
+    if (g.device)
+    {
+        const bool sameBorrowed = borrowedContext && borrowedContext->Complete() &&
+            !g.ownsContext && g.deviceContext == borrowedContext->device &&
+            g.instance == borrowedContext->instance->Handle();
+        const bool sameHeadless = !borrowedContext && g.ownsContext;
+        if (sameBorrowed || sameHeadless) return true;
+        LOGW("pipeline: refusing to reinitialise with a different Device context");
+        return false;
+    }
 
     // A borrowed device is an all-or-nothing tuple. Falling through to the
     // headless path when only some handles were supplied would silently ignore
