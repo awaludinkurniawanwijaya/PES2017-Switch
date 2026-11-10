@@ -16,6 +16,9 @@ echo "==> Stage NXVK newlib compatibility shim for standard libnx build"
 mkdir -p "$ROOT/switch/smoke/pes-loader/compat"
 cp "$NXVK/switch/smoke/nvk_compat.c" "$ROOT/switch/smoke/pes-loader/compat/nvk_compat.c"
 
+echo "==> Clean prior PES-owned smoke objects"
+make -C "$ROOT/switch/smoke/pes-loader" clean
+
 echo "==> Stage the exact upstream nvk_tri SPIR-V headers used by the reference sample"
 mkdir -p "$ROOT/switch/smoke/pes-loader/build/shaders"
 cp "$NXVK/switch/smoke/shaders/tri_vert.h" "$NXVK/switch/smoke/shaders/solid_frag.h" \
@@ -24,7 +27,7 @@ test -s "$ROOT/switch/smoke/pes-loader/build/shaders/tri_vert.h"
 test -s "$ROOT/switch/smoke/pes-loader/build/shaders/solid_frag.h"
 
 echo "==> Build PES-owned VI graphics-pipeline triangle smoke using standard libnx switch_rules"
-make -C "$ROOT/switch/smoke/pes-loader" clean all
+make -C "$ROOT/switch/smoke/pes-loader" all
 cp "$ROOT/switch/smoke/pes-loader/pes_loader_smoke.nro" "$OUT/pes_loader_smoke.nro"
 test -s "$OUT/pes_loader_smoke.nro"
 grep -aFq "[PROP2-TRACE] entered" "$OUT/pes_loader_smoke.nro" || { echo "ERROR: Properties2 callback trace is absent from final NRO"; exit 1; }
