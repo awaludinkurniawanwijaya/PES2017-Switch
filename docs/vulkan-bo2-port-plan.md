@@ -188,3 +188,10 @@ Important build constraint discovered during inspection: this repository checkou
 The first runtime compile-gate run (workflow run `42860048323`) reached the PES Vulkan translation units and failed in `runtime/gpu/vulkan/capture.cpp`: the vendored RenderDoc header does not recognize the Horizon `__SWITCH__` platform macro, so `RENDERDOC_CC` and the RenderDoc API declarations were unavailable. RenderDoc's in-process injection/capture mechanism is not part of the Switch runtime.
 
 Correction: `capture.cpp` now enables its RenderDoc implementation only when Vulkan is present **and** the target is not Switch (`PES17_HAVE_RENDERDOC_CAPTURE`). Switch uses the existing no-op capture hooks. This is a platform capability boundary, not a Vulkan driver workaround. The retry is CI run `42860277184`; its final compile result is pending at this checkpoint.
+
+
+## B2.6 — Vulkan dispatch header must be force-included (2026-11-10)
+
+After the RenderDoc platform guard was corrected, the compile gate advanced to `display_table.cpp` and failed because Vulkan command names such as `vkCreateImage` and `vkCmdPipelineBarrier` were undeclared. These are intentionally function-pointer declarations emitted by `runtime/gpu/vulkan/loader.h` when `PES17_VULKAN_DYNAMIC` is enabled. The header's own comment says it must be force-included before every Vulkan runtime translation unit, but the top-level CMake target had not actually added that compile option.
+
+Correction: the Switch `pes17` target now force-includes the absolute path to `runtime/gpu/vulkan/loader.h` for C++ compilation. The BO2 SDK compile gate mirrors this exact preinclude, rather than compiling with a different set of declarations from the real target. This is a build-system correctness fix; it does not yet establish successful compilation, full executable linkage, or device runtime behavior. Validation is running under workflow `42860946845`.
