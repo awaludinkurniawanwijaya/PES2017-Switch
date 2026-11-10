@@ -446,3 +446,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - CI validation for this follow-up is pending.
 
 **Validation completed for B2.11:** CTest passed and the BO2 Mesa Switch SDK probe passed for implementation commit `f10aece7ae651fc4322f5a2f0be77985058adc19`. The SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. The diagnostic NRO artifact is available at https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42883304861/artifacts/13794483544 (ZIP SHA256 `9f1ca88ed09e33b6c9fffcbae146ded166eb5b1eec7dcf65d33d745fe2674771`). This is not a complete PES game link or scene-rendering validation.
+
+### Device capability snapshot: depth resolve (2026-11-11)
+
+- Moved the `VK_KHR_depth_stencil_resolve` / Vulkan 1.2 sample-zero resolve capability query from Renderer into Pipeline device initialization.
+- Pipeline now records `DepthStencilResolveSampleZero()` as a device capability; Renderer consumes that result for its MSAA decision. WSI-specific present feature negotiation remains in Presenter.
+- This keeps capability discovery with the selected physical device while leaving the renderer's policy (whether to enable MSAA) in Renderer. CI validation is pending.
