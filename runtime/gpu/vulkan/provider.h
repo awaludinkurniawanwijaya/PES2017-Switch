@@ -44,6 +44,7 @@ namespace vk::provider
         bool SelectPresentationDevice(VkSurfaceKHR surface);
         bool CreateLogicalDevice(const char* const* extraExtensions, uint32_t extraCount,
                                  void* features = nullptr);
+        void DestroyDevice();
 
         const vk::instance::Instance* InstanceObject() const { return instance_.get(); }
         const vk::device::Device* DeviceObject() const { return device_.get(); }

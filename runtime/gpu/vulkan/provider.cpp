@@ -608,3 +608,10 @@ uint32_t vk::provider::Context::QueueFamily() const
 {
     return device_ ? device_->QueueFamily() : selectedQueueFamily_;
 }
+
+void vk::provider::Context::DestroyDevice()
+{
+    device_.reset();
+    selectedPhysical_ = VK_NULL_HANDLE;
+    selectedQueueFamily_ = 0;
+}
