@@ -502,3 +502,7 @@ Validation for B2.20 is pending.
 Closed a failure-path gap after introducing the RAII Device owner. Presenter creates the logical Device before Pipeline initialization; if a later WSI step fails before Pipeline adopts the borrowed context, `pipeline::Shutdown()` previously returned immediately because `g.device` was null, leaving capability snapshots from the failed attempt cached. The no-device branch now clears fault dispatch pointers, instance/queue/family copies and all physical-device-derived metadata via `ResetDeviceSnapshot()`. The regular shutdown path also uses the shared reset helper rather than duplicating each field reset.
 
 Validation for B2.21 is pending.
+
+### B2.22 — Device is the sole Presenter logical-handle authority (2026-11-11)
+
+Removed Presenter State's duplicate raw `VkDevice` field. All Presenter Vulkan device operations now obtain the handle from the owning `deviceOwner` via `DeviceHandle()`. The `Device` object is the sole logical-device lifetime/destruction authority; Pipeline borrows that same object through `BorrowedContext`. Physical-device and queue/family raw fields are retained temporarily and will be consolidated in a separate step. The corrected implementation is commit `bbe3cf62aa74f55668ffc9290d2791fea3b6f57e`; CI validation pending.
