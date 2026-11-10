@@ -78,6 +78,7 @@ jobs:
                   -DVK_NO_PROTOTYPES=1 \
                   -D_GNU_SOURCE=1 -D_DEFAULT_SOURCE=1 -DPES17_DIAGNOSTICS=0 \
                   -DPES17_NO_LOGGING=1 -include cstdint \
+                  -include runtime/gpu/vulkan/loader.h \
                   -Iruntime -Iswitch/source -Iswitch/include \
                   -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
                   -I/opt/devkitpro/portlibs/switch/include \
