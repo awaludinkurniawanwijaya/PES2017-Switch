@@ -321,11 +321,27 @@ int main(int argc, char** argv)
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &qCount, qprops.data());
     Log("stage 7k: queue family properties returned");
     uint32_t qFamily = UINT32_MAX;
-    for (uint32_t i=0; i<qCount; ++i) {
+    for (uint32_t i = 0; i < qCount; ++i) {
         VkBool32 present = VK_FALSE;
-        if (qprops[i].queueCount && vkGetPhysicalDeviceSurfaceSupportKHR(physical,i,surface,&present)==VK_SUCCESS && present) { qFamily=i; break; }
+        const VkResult supportResult =
+            vkGetPhysicalDeviceSurfaceSupportKHR(physical, i, surface, &present);
+        Log("queue family %u: flags=0x%08x queues=%u present_result=%d present=%u",
+            i, qprops[i].queueFlags, qprops[i].queueCount,
+            int(supportResult), unsigned(present));
+        // The same queue submits graphics commands and presents the VI image.
+        // Do not select a present-only family for a graphics pipeline.
+        const bool graphics = (qprops[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+        if (qprops[i].queueCount && graphics &&
+            supportResult == VK_SUCCESS && present) {
+            qFamily = i;
+            break;
+        }
     }
-    if (qFamily == UINT32_MAX) { Log("FAIL no present queue family"); result = 5; break; }
+    if (qFamily == UINT32_MAX) {
+        Log("FAIL no queue family supports both GRAPHICS and VI present");
+        result = 5;
+        break;
+    }
 
     const char* deviceExts[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
     float priority = 1.0f;
@@ -659,8 +675,9 @@ int main(int argc, char** argv)
         if (imageIndex>=acquiredImageCount) { Log("FAIL acquire returned invalid image index=%u count=%zu",imageIndex,acquiredImageCount); result=7; break; }
         Log("[FRAME %u] after acquired-image bounds check", frame);
 
-        // Draw the upstream nvk_tri RGB triangle directly into the acquired
-        // PES-owned swapchain image; gl_VertexIndex supplies all vertices.
+        // Draw the upstream nvk_tri RGB triangle into the PES-owned
+        // offscreen framebuffer; gl_VertexIndex supplies all vertices.
+        // The completed offscreen image is copied into this acquired VI image.
         Log("[FRAME %u] before reset command buffer", frame);
         VkResult resetResult=vkResetCommandBuffer(commandBuffer,0);
         if (resetResult!=VK_SUCCESS) { Log("FAIL reset command buffer frame=%u result=%d",frame,int(resetResult)); result=9; break; }
