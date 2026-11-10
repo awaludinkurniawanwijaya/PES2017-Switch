@@ -143,30 +143,24 @@ PPC output.
 
 ## Remaining gates, in dependency order
 
-1. **CI feasibility build — passed.** The NVK archive/portlib, project
-   loader/presenter compile checks, and three diagnostic NROs are now produced
-   successfully by the pinned workflow.
-2. **PES-owned VI swapchain on physical Switch — passed.** The latest log
-   confirms NVK Tegra X1 initialization, VI surface/swapchain creation, image
-   enumeration, and 120/120 acquire-submit-present cycles.
-3. **Visible GPU transfer clear on physical Switch — passed.** NRO #147
-   recorded `vkCmdClearColorImage` in three 40-frame color phases; all 120
-   frames submitted, presented, and passed `vkDeviceWaitIdle`. The user
-   confirmed that the changing color background was visible on the display.
-4. **Graphics pipeline and real draw on the PES-owned VI path — implementation committed, CI pending.** The PES smoke source now stages the upstream `nvk_tri` vertex/fragment SPIR-V headers, creates swapchain image views, render pass/framebuffers and a minimal graphics pipeline, then issues `vkCmdDraw(3, 1, 0, 0)`. The build must pass first; then a physical Switch run must confirm the RGB triangle is visible. This remains a graphics smoke test, not PES game-scene rendering.
-5. **Validate the Switch guest-memory backend.** The 4 GiB reservation, 512 MiB shared bank, three aliases, and explicit page-commit path now compile for devkitA64. The bootstrap probe only tests a 4 KiB shared-memory primitive; confirm SVC access, full-size allocation, and the actual fixed-window mappings on hardware.
-6. **Create a complete Switch game target.** Link platform, GPU, APU, kernel,
-   install, and generated PPC sources with the correct libnx/NXVK dependencies.
-   The current bootstrap target is not this executable.
-7. **Generate title-specific PPC output.** This requires the user's legally
-   obtained PES 2017 executable and matching build metadata. Those files and
-   generated output must remain outside the public repository.
-8. **Complete game-data import and verification.** The Switch build must accept
-   local game data, verify the executable hash, and locate required CPK files
-   without embedding or distributing copyrighted assets.
-9. **Run full hardware validation.** Verify boot, menus, controller behavior,
-   audio, match rendering, save paths, suspend/resume, memory pressure, and a
-   sustained full-match session on a physical Switch.
+Urutan ini mengikuti pola presenter Vulkan pada pembanding BO2-360-NX: window/VI surface → device/queue → swapchain → acquire/synchronization → resource dan pipeline → draw → present. Pola tersebut dipakai sebagai panduan lifecycle, bukan menyalin renderer BO2 secara langsung.
+
+1. **Visible graphics-pipeline draw — aktif.** Source PES-owned sudah mengadaptasi shader `nvk_tri`, image view, render pass/framebuffer, graphics pipeline, dan `vkCmdDraw(3, 1, 0, 0)`. Selesaikan CI build, lalu uji NRO di Switch fisik. Gate hanya lulus jika segitiga RGB benar-benar terlihat dan log membuktikan pipeline, draw, submit, serta present sukses.
+2. **Resource grafis dasar.** Setelah primitive tampil, uji vertex/index buffer, upload buffer, texture/image, sampler, descriptor, depth/stencil, render target, layout transition, dan lifetime resource satu per satu. Jangan gabungkan semua resource dalam satu percobaan pertama.
+3. **Shader dan semantik Xenos.** Validasi Xenos-to-SPIR-V memakai shader PES representatif; periksa konstanta, texture sampling, blending, depth, format dan render-target behavior terhadap output acuan.
+4. **Integrasi renderer PES.** Hubungkan resource, shader, command recording, synchronization dan present ke backend Vulkan. Kriteria bukan sekadar pipeline berhasil dibuat, melainkan geometri/texture PES-owned benar-benar dirender.
+5. **Switch guest-memory backend.** Validasi reservation 4 GiB, shared bank 512 MiB, tiga alias, page commit, izin SVC dan mapping fixed-window pada perangkat. Probe 4 KiB hanya membuktikan primitive kecil, bukan keseluruhan layout.
+6. **Runtime compatibility dan loader.** Audit kernel import berdasarkan jalur startup; selesaikan guest memory/thread, event/synchronization, dynamic library/symbol loading, filesystem dan startup path. Catatan terakhir menyebut 69 import masih stub dan harus diprioritaskan berdasarkan trace startup.
+7. **Audio, input, dan storage.** Integrasikan XMA/audio, controller, save dan data persisten; validasi sebagai satu alur runtime game.
+8. **Full-game target dan PPC.** Gabungkan platform, GPU, APU, kernel, loader, dan PPC hasil recompilation yang cocok. PPC/game data tetap berasal dari salinan legal milik pengguna dan tidak masuk repo publik.
+9. **Game-data import dan launch.** Verifikasi hash executable, penemuan CPK, struktur SD dan jalur launch pada NRO full-game; bootstrap bukan target ini.
+10. **Validasi gameplay fisik.** Uji boot, menu, pertandingan, rendering, audio, kontrol, save, suspend/resume, tekanan memori dan sesi panjang pada Switch.
+
+### Referensi alur renderer yang diterapkan
+
+Pemeriksaan terhadap `sdk/src/ui/vulkan/vulkan_presenter.cpp` pada BO2-360-NX menunjukkan pemisahan eksplisit antara VI window/surface, swapchain, acquire, submit dan present. Pembanding juga menyediakan opsi CPU-wait acquire fence (`present_wait_acquire_on_cpu`) untuk menghindari submit yang tertahan oleh acquire semaphore pada kondisi tertentu. Opsi ini hanya akan diaktifkan bila log menunjukkan stall yang sesuai; bukan default tanpa bukti.
+
+Untuk tahap pipeline, proyek memakai pola upstream NXVK `nvk_tri`: shader vertex/fragment, pipeline tanpa vertex buffer, dan vertex dibangkitkan dari `gl_VertexIndex`. Ini sengaja menjadi vertical slice minimal sebelum texture dan resource PES. BO2-360-NX dan NXVK adalah referensi pola implementasi, bukan jaminan kompatibilitas langsung dengan shader atau resource Xenos.
 
 ## CI and hardware distinction
 
