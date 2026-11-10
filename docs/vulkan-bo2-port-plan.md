@@ -119,7 +119,7 @@ Primary BO2 files rechecked at pinned commit `dd189961e8876079087d6f0843af8013bd
 
 PES changes made in this checkpoint:
 
-1. `PES17_SWITCH_VULKAN_SDK` is now the default Switch Vulkan SDK input and must point to the BO2-style Mesa Horizon SDK portlibs directory. CMake validates both `lib/libvulkan.a` and `include/vulkan/vulkan.h`.
+1. `PES17_SWITCH_VULKAN_SDK` is now the default Switch Vulkan SDK input and must point to the BO2-style Mesa Horizon SDK portlibs directory. CMake validates both `lib/libvulkan.a` and `include/vulkan/vulkan.h`; it accepts either `PES17_SWITCH_VULKAN_SDK` or BO2 toolchain environment variable `MESA_SDK`.
 2. The default target links `vulkan expat zstd z nx` twice and then `stdc++ m`, following BO2's static archive order.
 3. The existing `switch/mesa/elf_stubs.c` is added to the active target and C language is enabled for that target.
 4. `switch_driver.cpp` now requests the public `vkGetInstanceProcAddr` symbol on the default Mesa path. The old `nvk_GetInstanceProcAddr` entrypoint remains only under `PES17_SWITCH_USE_LEGACY_NXVK=ON`.
