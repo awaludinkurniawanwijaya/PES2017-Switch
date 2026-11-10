@@ -335,10 +335,10 @@ VkResult vk::provider::CreateLogicalDevice(VkPhysicalDevice physical, const VkDe
     vkGetDeviceQueue(device, queueFamily, 0, &queue);
     if (!queue)
     {
+        vkDestroyDevice(device, nullptr);
 #if defined(PES17_VULKAN_DYNAMIC)
         vk::loader::ForgetDevice();
 #endif
-        vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
         return VK_ERROR_INITIALIZATION_FAILED;
     }
