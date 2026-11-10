@@ -16,6 +16,7 @@ on:
       - "switch/smoke/pes-loader/Makefile"
       - "switch/smoke/build-pes-loader-smoke.sh"
       - "switch/smoke/patch-nxvk-copy-trace.py"
+      - "switch/smoke/patch-nxvk-acquire-trace.py"
       - "CMakeLists.txt"
       - "third_party/ffmpeg-xenia/CMakeLists.txt"
       - "cmake/switch-toolchain.cmake"
@@ -630,6 +631,9 @@ jobs:
 
       - name: Install NVK copy dispatch tracepoints
         run: python3 switch/smoke/patch-nxvk-copy-trace.py
+
+      - name: Install Horizon WSI acquire tracepoints
+        run: python3 switch/smoke/patch-nxvk-acquire-trace.py
 
       - name: Build pinned NXVK toolchain image
         run: |
