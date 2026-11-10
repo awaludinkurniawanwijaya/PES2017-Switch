@@ -332,7 +332,7 @@ namespace
             !vkGetPhysicalDeviceSurfaceFormatsKHR ||
             !vkGetPhysicalDeviceSurfacePresentModesKHR)
         {
-            LOGW("vulkan: NXVK is missing one or more required VI surface dispatch functions");
+            LOGW("vulkan: the selected Switch Vulkan implementation is missing required VI surface dispatch functions");
             return false;
         }
 #endif
@@ -432,7 +432,7 @@ namespace
         if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
             !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
         {
-            LOGW("vulkan: NXVK is missing one or more required swapchain dispatch functions");
+            LOGW("vulkan: the selected Switch Vulkan implementation is missing required swapchain dispatch functions");
             return false;
         }
 #endif
