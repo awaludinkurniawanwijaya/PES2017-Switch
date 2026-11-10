@@ -136,7 +136,7 @@ namespace
         g.legacyMode = false;
         g.staticStates = false;
         g.textureCompressionBC = false;
-        std::fill(std::begin(g.bcSampled), std::end(g.bcSampled), false);
+        for (bool& sampled : g.bcSampled) sampled = false;
         g.astcSampled = false;
         g.name = "none";
         g.deviceProperties = {};
