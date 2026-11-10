@@ -481,3 +481,9 @@ Audited the pinned BO2 `VulkanDevice` header/implementation against PES2017's Pr
 Confirmed the current normal shutdown sequence: `StopPresenting()` stops and joins the WSI worker without destroying the device; Renderer and Texture Cache release device resources; `pipeline::Shutdown()` releases pipeline objects and clears borrowed handles without destroying the Presenter-owned device; finally `vk::Stop()` invokes Presenter `Teardown()` to destroy WSI objects, logical device and instance. The Worker startup-failure path explicitly tears down partial WSI/device state and falls back to headless. Normal Worker exit intentionally does not tear down the device, preserving the two-phase ordering.
 
 This ordering is a hard invariant for the BO2 Device extraction: Pipeline resources must be shut down before the Device owner destroys its VkDevice; Presenter owns the Device lifetime only while running the window path, and Pipeline's headless path owns its own Device. Keep these ownership modes explicit rather than relying on destructor order by accident.
+
+### B2.19 — Explicit borrowed Device context contract (2026-11-11)
+
+Introduced `vk::device::BorrowedContext` in `runtime/gpu/vulkan/device.h` as a single non-owning tuple for instance, physical device, logical device, queue and queue family. `Pipeline::Initialise` now accepts either `nullptr` (create/own a headless Device) or a complete borrowed context (Presenter-owned Device); partial tuples are rejected by `Complete()`. Android, Switch and SDL Presenter bring-up use one shared helper, removing repeated positional raw-handle calls. This deliberately does not transfer ownership yet: Presenter remains the window-path Device owner, Pipeline borrows; the full BO2-style owning Device object is the next architectural stage.
+
+Validation for B2.19 is pending.
