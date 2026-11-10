@@ -412,3 +412,10 @@ The next architectural milestone is deliberately **not** a thin `Device` wrapper
 - `pipeline.h`: exposes opaque context handles and renderer capability getters consumed by renderer/texture code.
 
 Extraction order: (1) centralize physical-device properties, memory properties and queue-family metadata in a real device context; (2) move supported/enabled feature and extension negotiation with the corresponding state; (3) move logical-device handle and dispatch ownership under a single destruction contract; (4) adapt Pipeline and Presenter through typed accessors while preserving borrowed/headless ownership; (5) remove duplicated physical-device queries only after all consumers use the context. The surface/swapchain and present policy stay in Presenter. This mapping is the baseline; no Device object extraction is claimed complete yet.
+
+### Device metadata consumer audit (2026-11-11)
+
+- Audited the first BO2 `VulkanDevice` extraction slice against actual PES call sites. `pipeline.cpp::State` already owns a cached `VkPhysicalDeviceProperties` record, but Renderer and Texture Cache independently query physical-device properties again; Renderer and Texture Cache also each keep a separate copy of `VkPhysicalDeviceMemoryProperties`.
+- Frame Generation, Upscaler and Presenter query physical-device memory properties inside image-allocation/resizing paths. This is redundant device metadata access, not a distinct allocation policy: each call feeds the same `vk::util::FindMemory` selector with required memory-property flags.
+- This audit establishes the first safe migration target: one device-scoped immutable physical-memory-properties snapshot, populated once per selected physical device and invalidated with the device context. Existing per-subsystem allocation decisions and required memory flags must remain local.
+- No code extraction is claimed in this checkpoint. The next implementation must preserve the offline `translate-shader` / `upload-texture` tool builds, which compile selected Vulkan translation units independently of the full runtime.
