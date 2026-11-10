@@ -22,7 +22,7 @@ CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fdata-sections $(ARCH) $(DEF
 CFLAGS += $(INCLUDE) -D__SWITCH__ -D_GNU_SOURCE -D_DEFAULT_SOURCE -DVK_USE_PLATFORM_VI_NN -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN
 CXXFLAGS := $(CFLAGS) -std=gnu++20
 ASFLAGS := -g $(ARCH)
-LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections -Wl,-u,vk_icdGetInstanceProcAddr -Wl,-u,vk_common_GetPhysicalDeviceProperties2 -Wl,-z,notext
+LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections -Wl,-u,vkGetInstanceProcAddr -Wl,-u,vk_common_GetPhysicalDeviceProperties2 -Wl,-z,notext
 LIBS := -lnvk -lnvk_support -lz -lexpat -lnx -lc -lm -lstdc++ -pthread
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
