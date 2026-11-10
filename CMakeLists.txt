@@ -214,7 +214,15 @@ if(PES17_SWITCH)
         "$ENV{DEVKITPRO}/libnx/lib")
     option(PES17_SWITCH_USE_LEGACY_NXVK
         "Use the archived NXVK portlib instead of the BO2 Mesa Horizon SDK" OFF)
-    set(PES17_SWITCH_VULKAN_SDK "$ENV{PES17_SWITCH_VULKAN_SDK}" CACHE PATH
+    if(DEFINED ENV{PES17_SWITCH_VULKAN_SDK})
+        set(_PES17_SWITCH_VULKAN_SDK "$ENV{PES17_SWITCH_VULKAN_SDK}")
+    elseif(DEFINED ENV{MESA_SDK})
+        # BO2's tools/toolchain.sh exports MESA_SDK to this exact SDK directory.
+        set(_PES17_SWITCH_VULKAN_SDK "$ENV{MESA_SDK}")
+    else()
+        set(_PES17_SWITCH_VULKAN_SDK "")
+    endif()
+    set(PES17_SWITCH_VULKAN_SDK "${_PES17_SWITCH_VULKAN_SDK}" CACHE PATH
         "Mesa Horizon SDK portlibs/switch directory containing lib/libvulkan.a")
     if(PES17_SWITCH_USE_LEGACY_NXVK)
         # Backup-only path. It remains available for bisecting old experiments,
