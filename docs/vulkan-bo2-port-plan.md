@@ -420,3 +420,9 @@ Validation is pending for this commit. The next steps are inspect CI, fix any co
 **Validation update:** the tests-only CTest workflow for implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5` completed successfully. The Switch BO2 Mesa SDK probe job is still running; its result is not yet claimed.
 
 **Validation completed:** CTest passed. The Switch BO2 Mesa SDK job also passed: 25 Vulkan runtime TUs compiled, while `renderer_draw.cpp` and `renderer_resolve.cpp` were explicitly deferred for private XenonRecomp-generated PPC output. The diagnostic probe NRO artifact is `13795401108`, ZIP SHA256 `739048ccefe61e156b403851535e19e5352d8aafa2e568584f88c5aa6eb222b8`. This is not evidence of a complete PES2017 game link or actual scene rendering on Switch.
+
+### B2.11 — Physical-device properties centralized (2026-11-11)
+
+Added `vk::pipeline::GetDeviceProperties(void*, size_t)` alongside the memory-properties accessor. The active Pipeline context now owns the cached `VkPhysicalDeviceProperties` record and clears it at shutdown. Renderer consumers (alignment, maximum image dimension for scale, timestamp period), Texture Cache (maximum image dimension), and Presenter diagnostics now read this snapshot instead of independently querying the physical device. Feature queries remain explicit because extension feature chains are a separate capability negotiation concern.
+
+Validation for this follow-up commit is pending. The previous B2.10 implementation passed CTest and the SDK probe; that result does not automatically validate this new change.
