@@ -253,37 +253,10 @@ namespace
     // the way pipeline.cpp makes its own, with the swapchain beside.
     bool CreateDevice()
     {
-        std::vector<const char*> extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-        // Present ids and waiting on them say when a frame reached the
-        // screen, which is the display's clock.
-        VkPhysicalDevicePresentIdFeaturesKHR presentId{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
-        VkPhysicalDevicePresentWaitFeaturesKHR presentWait{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
-        void* features = nullptr;
-        if (vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
-            vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
-        {
-            presentId.pNext = &presentWait;
-            VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-            query.pNext = &presentId;
-            vkGetPhysicalDeviceFeatures2(g.physical, &query);
-            if (presentId.presentId && presentWait.presentWait)
-            {
-                extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
-                extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-                presentWait.pNext = nullptr;
-                features = &presentId;
-                g.presentWait = true;
-            }
-        }
-        void* device = nullptr;
-        void* queue = nullptr;
-        if (!vk::pipeline::CreateDevice(g.physical, g.queueFamily, extensions.data(),
-                                        uint32_t(extensions.size()), &device, &queue, features))
+        // Provider creates the logical device; Presenter retains WSI dispatch and timing.
+        if (!vk::provider::CreatePresentationDevice(g.physical, g.queueFamily,
+                                                     g.device, g.queue, g.presentWait))
             return false;
-        g.device = static_cast<VkDevice>(device);
-        g.queue = static_cast<VkQueue>(queue);
 #ifdef __SWITCH__
         if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
             !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
@@ -303,7 +276,6 @@ namespace
                  " (VK_KHR_present_wait); the guest's blank keeps its own 60 Hz clock");
         return true;
     }
-
     bool CreateSwapchain()
     {
         VkSurfaceCapabilitiesKHR caps{};
