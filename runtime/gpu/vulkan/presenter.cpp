@@ -75,23 +75,6 @@ namespace
     constexpr uint32_t kHeight = 720;
     constexpr uint32_t kFramesInFlight = 2;
 
-    VkDevice DeviceHandle()
-    {
-        return g.deviceOwner ? static_cast<VkDevice>(g.deviceOwner->Logical()) : VK_NULL_HANDLE;
-    }
-    VkPhysicalDevice PhysicalHandle()
-    {
-        return g.deviceOwner ? static_cast<VkPhysicalDevice>(g.deviceOwner->Physical()) : g.selectedPhysical;
-    }
-    VkQueue QueueHandle()
-    {
-        return g.deviceOwner ? static_cast<VkQueue>(g.deviceOwner->Queue()) : VK_NULL_HANDLE;
-    }
-    uint32_t QueueFamilyIndex()
-    {
-        return g.deviceOwner ? g.deviceOwner->QueueFamily() : g.selectedQueueFamily;
-    }
-
     struct Frame
     {
         VkCommandBuffer commands = VK_NULL_HANDLE;
@@ -203,6 +186,24 @@ namespace
     };
 
     Presenter g;
+
+    VkDevice DeviceHandle()
+    {
+        return g.deviceOwner ? static_cast<VkDevice>(g.deviceOwner->Logical()) : VK_NULL_HANDLE;
+    }
+    VkPhysicalDevice PhysicalHandle()
+    {
+        return g.deviceOwner ? static_cast<VkPhysicalDevice>(g.deviceOwner->Physical()) : g.selectedPhysical;
+    }
+    VkQueue QueueHandle()
+    {
+        return g.deviceOwner ? static_cast<VkQueue>(g.deviceOwner->Queue()) : VK_NULL_HANDLE;
+    }
+    uint32_t QueueFamilyIndex()
+    {
+        return g.deviceOwner ? g.deviceOwner->QueueFamily() : g.selectedQueueFamily;
+    }
+
 
     bool Check(VkResult r, const char* what)
     {
