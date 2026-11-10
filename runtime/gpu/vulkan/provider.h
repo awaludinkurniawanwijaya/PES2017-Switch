@@ -12,6 +12,8 @@ namespace vk::provider
     // Optional present-id/wait support is enabled only when both extensions and features exist.
     VkResult CreateLogicalDevice(VkPhysicalDevice physical, const VkDeviceCreateInfo& info,
                             uint32_t queueFamily, VkDevice& device, VkQueue& queue);
+    // Destroys a logical device while its device dispatch is still loaded.
+    void DestroyLogicalDevice(VkDevice& device);
     bool CreatePresentationDevice(VkPhysicalDevice physical, uint32_t queueFamily,
                                   VkDevice& device, VkQueue& queue, bool& presentWait);
     // Selects a graphics queue that can present to the caller-owned surface.
