@@ -229,7 +229,7 @@ bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
     {
         std::vector<VkPhysicalDevice> devices;
         if (!EnumerateVector(devices,
-                [](uint32_t* count, VkPhysicalDevice* data) {
+                [instance](uint32_t* count, VkPhysicalDevice* data) {
                     return vkEnumeratePhysicalDevices(instance, count, data);
                 }, "physical devices"))
             return false;
