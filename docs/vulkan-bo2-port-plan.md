@@ -508,3 +508,9 @@ Validation for B2.21 is pending.
 Removed Presenter State's duplicate raw `VkDevice` field. All Presenter Vulkan device operations now obtain the handle from the owning `deviceOwner` via `DeviceHandle()`. The `Device` object is the sole logical-device lifetime/destruction authority; Pipeline borrows that same object through `BorrowedContext`. Physical-device and queue/family raw fields are retained temporarily and will be consolidated in a separate step. The corrected implementation is commit `bbe3cf62aa74f55668ffc9290d2791fea3b6f57e`; CI validation pending.
 
 **B2.21 validation completed:** CTest and the Switch BO2 Mesa SDK probe passed for `5803a69c6d754b592a83d3735055aea6371ce81e`. The SDK probe compiled 26 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. This is not full PES game-link or scene-rendering validation.
+
+### B2.22 — Remove duplicate Presenter device/queue metadata (2026-11-11)
+
+Presenter State no longer caches duplicate raw `VkDevice`, `VkPhysicalDevice`, `VkQueue` or queue-family fields. Before logical-device creation, adapter selection is held explicitly in `selectedPhysical` and `selectedQueueFamily`. After `Device::Adopt`, `DeviceHandle()`, `PhysicalHandle()`, `QueueHandle()` and `QueueFamilyIndex()` resolve the authoritative values from the owning Device. Presenter Teardown clears the pre-creation selection after destroying Device/WSI resources. Pipeline continues to borrow the Device object via `BorrowedContext`; the Vulkan instance remains separately owned by Provider/Presenter.
+
+Implementation commits: `bbe3cf62aa74f55668ffc9290d2791fea3b6f57e` (logical handle migration), `ab00bdd45e3c0e42ebbfc8856a44e405e78cb9c7` (metadata accessors), and `97632d08aee9598e7abaf90eb0954a8d42969d71` (clear selected adapter at teardown). CI validation pending.
