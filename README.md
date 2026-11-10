@@ -419,3 +419,10 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Frame Generation, Upscaler and Presenter query physical-device memory properties inside image-allocation/resizing paths. This is redundant device metadata access, not a distinct allocation policy: each call feeds the same `vk::util::FindMemory` selector with required memory-property flags.
 - This audit establishes the first safe migration target: one device-scoped immutable physical-memory-properties snapshot, populated once per selected physical device and invalidated with the device context. Existing per-subsystem allocation decisions and required memory flags must remain local.
 - No code extraction is claimed in this checkpoint. The next implementation must preserve the offline `translate-shader` / `upload-texture` tool builds, which compile selected Vulkan translation units independently of the full runtime.
+
+### BO2 Device memory-type model comparison (2026-11-11)
+
+- Inspected the pinned BO2 `VulkanDevice` header and implementation (`dd189961e8876079087d6f0843af8013bd154277`), not just its class name. BO2 exposes device-scoped `MemoryTypes` bitmasks (`device_local`, `host_visible`, `host_coherent`, `host_cached`) derived once from physical-device memory properties after logical-device creation.
+- PES currently retains raw `VkPhysicalDeviceMemoryProperties` in Renderer and Texture Cache, while Frame Generation, Upscaler and Presenter query it locally. The safe first migration should therefore expose a compact device-scoped memory-type capability view (or a typed immutable snapshot) rather than letting each subsystem own a physical-device query.
+- Keep per-allocation `memoryTypeBits` filtering: BO2's cached property categories do not eliminate Vulkan's per-resource allowed-type mask. Required flags and allocation failure handling remain with the caller.
+- This comparison refines the design only; no BO2 class or memory allocator has been copied wholesale, and no runtime behavior change is claimed.
