@@ -294,3 +294,15 @@ CI artifact note: run `42867472597` uploaded artifact `pes17-vulkan-bo2-probe` (
 - The final artifact `pes17-vulkan-bo2-probe` (ID `13788841794`) was downloaded and inspected. ZIP SHA-256: `f13218ba55c82c7090971d7a0f7401feb98a784e6821ddc1f6cda6c5c3f8a597`; NRO SHA-256: `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3`, identical to the previous stage-2 probe. No new physical test is warranted.
 - A transient intermediate workflow failed because the provider implementation commit was built before its header declaration commit reached the branch; the final branch commit contains all three changes and passed. This was a commit-order race, not a remaining source compile failure.
 - This validates a partial source compile and static SDK probe only. It does not validate full PES linking, physical Switch Vulkan initialization, a visible triangle, or PES game rendering.
+
+### B2.6e — Raw logical-device lifecycle boundary (2026-11-11)
+
+- Added `vk::provider::CreateLogicalDevice`: Provider now owns the raw `vkCreateDevice` call, dynamic device-dispatch loading, queue retrieval, and cleanup if the requested queue is unavailable.
+- Pipeline retains policy decisions: supported/enabled Vulkan features, extension negotiation, global queue-priority selection and fallback, optional device-fault reporting, and renderer capability flags. Presenter still supplies the chosen physical device, queue family and prepared `VkDeviceCreateInfo`.
+- The provider returns the original `VkResult`, preserving Pipeline's retry path when a requested global queue priority is refused. On queue retrieval failure it destroys the just-created device before clearing dynamic dispatch.
+- The owned headless Pipeline teardown order was corrected too: call `vkDestroyDevice` while the device dispatch is still loaded, then call `vk::loader::ForgetDevice`. This follows the same reverse-lifetime rule as the provider's queue-failure cleanup.
+- SDK workflow [42875642739](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42875642739), commit `db8a50ef4e84949ed3162ab5c4976e7aa81714e6`, completed successfully. It compiled 25 Vulkan runtime translation units, deferred only `renderer_draw.cpp` and `renderer_resolve.cpp` for private PPC-generated headers, and linked/packaged the static BO2 Mesa SDK probe NRO.
+- The generic tests workflow for the same commit also passed. A follow-up teardown-order correction was committed separately after that SDK run; its own CI validation is pending, so do not treat the teardown-order correction as validated yet.
+- This remains a partial Provider/Device boundary: no independent `VulkanDevice` owner object exists yet, and full PES linking, Switch Vulkan initialization, and game rendering remain unverified.
+
+Next: validate the teardown-order correction, then move device ownership/destruction behind an explicit lifetime object only after confirming all presenter/headless callers and loader teardown paths. Do not move Pipeline feature policy or shared renderer state into Provider by duplicating it.
