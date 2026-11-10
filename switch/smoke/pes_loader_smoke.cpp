@@ -390,19 +390,20 @@ int main(int argc, char** argv)
         Log("FAIL invalid swapchain image count=%u min=%u max=%u",imageCount,caps.minImageCount,caps.maxImageCount);
         result=6; break;
     }
-    // Require WSI color-attachment usage and format support before creating
-    // render targets for the real graphics-pipeline draw.
-    const VkImageUsageFlags requiredUsage =
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // The WSI image is only a transfer destination. Rendering happens in the
+    // app-owned offscreen image, so do not require COLOR_ATTACHMENT usage from VI.
+    const VkImageUsageFlags requiredUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if ((caps.supportedUsageFlags & requiredUsage) != requiredUsage) {
-        Log("FAIL surface lacks required COLOR_ATTACHMENT|TRANSFER_DST usage (0x%08x)",
+        Log("FAIL surface lacks required TRANSFER_DST usage (0x%08x)",
             caps.supportedUsageFlags);
         result=6; break;
     }
     VkFormatProperties formatProps{};
     vkGetPhysicalDeviceFormatProperties(physical, format.format, &formatProps);
-    if (!(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) {
-        Log("FAIL swapchain format=%u lacks optimal COLOR_ATTACHMENT feature (0x%08x)",
+    const VkFormatFeatureFlags offscreenFeatures =
+        VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+    if ((formatProps.optimalTilingFeatures & offscreenFeatures) != offscreenFeatures) {
+        Log("FAIL format=%u lacks optimal COLOR_ATTACHMENT|TRANSFER_SRC features (0x%08x)",
             unsigned(format.format), formatProps.optimalTilingFeatures);
         result=6; break;
     }
@@ -704,7 +705,9 @@ int main(int argc, char** argv)
         VkResult endResult=vkEndCommandBuffer(commandBuffer);
         if (endResult!=VK_SUCCESS) { Log("FAIL end command buffer frame=%u result=%d",frame,int(endResult)); result=9; break; }
 
-        const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        // Acquire protects the WSI image's first use, which is the copy transfer.
+        // Waiting only at COLOR_ATTACHMENT_OUTPUT would let the earlier transfer run.
+        const VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.waitSemaphoreCount=1;
         submit.pWaitSemaphores=&acquired;
