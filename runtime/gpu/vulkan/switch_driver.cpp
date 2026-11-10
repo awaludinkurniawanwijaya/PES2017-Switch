@@ -2,20 +2,34 @@
 
 #if defined(__SWITCH__) && defined(PES17_VULKAN_DYNAMIC) && defined(PES17_HAVE_VULKAN)
 
-// Horizon has no system Vulkan loader. BO2's Switch path also links Mesa NVK
-// statically and obtains the public Vulkan dispatch entry point directly.
-// Do not use vk_icdGetInstanceProcAddr: that is an ICD-private interface.
+#if defined(PES17_SWITCH_USE_LEGACY_NXVK)
+// Backup-only compatibility entrypoint for the archived portlib route.
 extern "C" PFN_vkVoidFunction VKAPI_CALL
 nvk_GetInstanceProcAddr(VkInstance instance, const char* name);
+#else
+// Match BO2's Switch instance path: Mesa's static libvulkan.a exports the
+// public Vulkan GIPA directly. The loader pointer is named
+// vkGetInstanceProcAddrFn, so this function symbol does not collide with it.
+extern "C" PFN_vkVoidFunction VKAPI_CALL
+vkGetInstanceProcAddr(VkInstance instance, const char* name);
+#endif
 
 PFN_vkGetInstanceProcAddr vk::switch_driver::GetInstanceProcAddr()
 {
+#if defined(PES17_SWITCH_USE_LEGACY_NXVK)
     return &nvk_GetInstanceProcAddr;
+#else
+    return &vkGetInstanceProcAddr;
+#endif
 }
 
 const char* vk::switch_driver::Description()
 {
-    return "statically linked Mesa NVK (Switch Vulkan driver)";
+#if defined(PES17_SWITCH_USE_LEGACY_NXVK)
+    return "legacy NXVK static driver (backup only)";
+#else
+    return "BO2 Mesa Horizon SDK (statically linked NVK)";
+#endif
 }
 
 #endif
