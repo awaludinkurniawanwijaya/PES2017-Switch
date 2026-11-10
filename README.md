@@ -433,3 +433,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Renderer and Texture Cache now obtain their memory properties from that device-scoped snapshot. Frame Generation, Upscaler and Presenter no longer issue their own `vkGetPhysicalDeviceMemoryProperties` query; they request a snapshot copy before resource allocation.
 - Resource allocation policy remains local: each subsystem still applies its own `memoryTypeBits` and required property flags through the existing `FindMemory` helper. Texture Cache still reads heap sizes from the snapshot for its budget calculation.
 - This is the first implemented Device-metadata extraction slice, not a complete VulkanDevice object. CI compilation and tests are required before treating it as validated.
+
+**Validation update:** CTest for `53b464bb8145e24e9499ae519eae948155d4eae5` passed. The Switch BO2 Mesa SDK probe job remains in progress, so this change is not yet marked fully validated.
