@@ -75,6 +75,7 @@ jobs:
                 echo "Compile PES Vulkan runtime: $source"
                 "$compiler-g++" -std=c++20 -O2 $common -pthread \
                   -D__SWITCH__=1 -DPES17_VULKAN_DYNAMIC=1 -DPES17_HAVE_VULKAN=1 \
+                  -DVK_NO_PROTOTYPES=1 \
                   -D_GNU_SOURCE=1 -D_DEFAULT_SOURCE=1 -DPES17_DIAGNOSTICS=0 \
                   -DPES17_NO_LOGGING=1 -include cstdint \
                   -Iruntime -Iswitch/source -Iswitch/include \
