@@ -397,3 +397,9 @@ Build workflow untuk commit instrumentasi belum menghasilkan job build yang dapa
 - Commit `3d13cbf9477051bb3bf7cac42eb0684a784b219c` menambahkan callback WSI `vkCmdCopyImageToBuffer2` langsung, mempertahankan legacy sebagai fallback, serta memasang trace dispatch baru. Commit `532872b8929daff3925795b0d357b742e18d1064` menambahkan validasi build bahwa marker WSI direct-2 dan NVK benar-benar ada pada NRO final.
 - Build NXVK untuk perubahan tersebut sedang berjalan pada [run #42749853074](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42749853074). Status terakhir saat dokumentasi ini ditulis: job build masih berjalan; belum ada NRO baru yang dapat diuji.
 - **Kriteria tahap 2 tidak berubah:** perlu log fisik yang membuktikan swapchain selesai dibuat, images dienumerasi, queue submit, dan present sukses. Build sukses atau marker binary saja bukan bukti runtime. Full-game PES 2017 NRO belum tersedia.
+
+## Latest hardware diagnostic: NVK VI image acquisition (10 November 2026)
+
+The latest Switch log confirms that the PES-owned Vulkan loader, NVK physical-device initialization, VI surface creation, three-image swapchain creation, CPU-copy WSI image allocation, and NVK copy-engine command dispatch all return successfully. The log then stops immediately after `[FRAME 0] before acquire`; no matching `after acquire` marker is present. This localizes the current stall to the first `vkAcquireNextImageKHR` call, before queue submission or presentation.
+
+The next diagnostic build instruments the Horizon WSI acquire path in `wsi_switch.c`, including the selected libnx dequeue path and the underlying buffer-queue dequeue. This will distinguish a block inside `nwindowDequeueBuffer` from a problem in the event-driven dequeue path. This remains a diagnostic milestone, not evidence that PES 2017 is playable.
