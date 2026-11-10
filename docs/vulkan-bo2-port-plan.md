@@ -408,3 +408,11 @@ The pinned BO2 implementation (`sdk/include/rex/ui/vulkan/device.h` and `sdk/src
 PES should follow that ownership pattern without copying BO2's complete class or allocator policy. The device context should own the immutable memory-property data and may expose derived masks; resource subsystems retain their own required flags, resource lifetime and failure handling. The `memoryTypeBits` intersection is mandatory and must not be lost during migration.
 
 This is a source-grounded design refinement only. The next code change should implement the shared device-scoped metadata API and migrate one consumer group at a time, while retaining standalone tool build compatibility.
+
+### B2.10 — Device-scoped physical memory snapshot implemented (2026-11-11)
+
+Pipeline device context now captures `VkPhysicalDeviceMemoryProperties` once after the borrowed or headless physical device has been selected. `vk::pipeline::GetMemoryProperties(void*, size_t)` exposes a size-checked copy without adding Vulkan headers to `pipeline.h`; the snapshot is cleared with Pipeline context teardown.
+
+Migrated consumers: Renderer, Texture Cache, Frame Generation, Upscaler and Presenter. This removes repeated physical-device memory-property queries from those subsystems. Texture Cache continues to derive its device-local heap budget from the snapshot. Each allocation still intersects the resource's `memoryTypeBits` with the subsystem's requested memory flags; ownership and failure cleanup have not been moved into Pipeline.
+
+Validation is pending for this commit. The next steps are inspect CI, fix any compile/test failures, then migrate physical-device properties through the same lifecycle only after auditing all standalone tool targets.
