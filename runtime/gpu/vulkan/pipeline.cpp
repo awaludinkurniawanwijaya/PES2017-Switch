@@ -86,65 +86,21 @@ namespace
         VkDevice device = VK_NULL_HANDLE;
         VkQueue queue = VK_NULL_HANDLE;
         uint32_t family = 0;
-        bool preciseQueries = false;
-        float maxAnisotropy = 1.0f;
-        bool nonSeamlessCubes = false;
-        bool pipelineLibraries = false, fastLinking = false;
-        bool hasDynamicRendering = false;
-        bool hasExtendedDynamicState = false;
-        bool legacyMode = false;
-        // Culling and the depth and stencil tests built into each pipeline instead of set per draw.
-        bool staticStates = false;
-        bool textureCompressionBC = false;
-        // BC1, BC2, BC3, BC4, BC5: whether the driver samples each (with linear filtering and as a
-        // copy destination), which is what Xenia asks of each format before using it.
-        bool bcSampled[5]{};
-        // ASTC 4x4 LDR, UNORM and sRGB: what a BC1 texture is transcoded to where BC is absent.
-        bool astcSampled = false;
-        std::string name = "none";
-
         VkDescriptorSetLayout sets[3]{};
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkPipelineCache cache = VK_NULL_HANDLE;
         VkPhysicalDeviceProperties deviceProperties{};
-        VkPhysicalDeviceMemoryProperties memoryProperties{};
-        bool memoryPropertiesReady = false;
-        bool devicePropertiesReady = false;
-        bool depthStencilResolveSampleZero = false;
-        VkPhysicalDeviceFeatures physicalFeatures{};
-        bool physicalFeaturesReady = false;
-        VkPhysicalDevice snapshotPhysical = VK_NULL_HANDLE;
         std::string lastError;
     };
     State g;
 
-    // Clear all metadata derived from a physical/logical-device bring-up. A failed
-    // creation must not leave capabilities from that attempt visible to a later one.
+    // Invalidate Pipeline's non-owning aliases and its cache-identity copy.
+    // The Provider Context / Device remains the sole authority for GPU state.
     void ResetDeviceSnapshot()
     {
         g.physical = VK_NULL_HANDLE;
         g.deviceContext = nullptr;
-        g.preciseQueries = false;
-        g.maxAnisotropy = 1.0f;
-        g.nonSeamlessCubes = false;
-        g.pipelineLibraries = false;
-        g.fastLinking = false;
-        g.hasDynamicRendering = false;
-        g.hasExtendedDynamicState = false;
-        g.legacyMode = false;
-        g.staticStates = false;
-        g.textureCompressionBC = false;
-        for (bool& sampled : g.bcSampled) sampled = false;
-        g.astcSampled = false;
-        g.name = "none";
         g.deviceProperties = {};
-        g.devicePropertiesReady = false;
-        g.memoryProperties = {};
-        g.memoryPropertiesReady = false;
-        g.depthStencilResolveSampleZero = false;
-        g.physicalFeatures = {};
-        g.physicalFeaturesReady = false;
-        g.snapshotPhysical = VK_NULL_HANDLE;
     }
 
     const char* Explain(VkResult r)
@@ -524,8 +480,6 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
         Shutdown();
         return false;
     }
-    g.devicePropertiesReady = true;
-    g.name = g.deviceContext->Name();
     const VkPhysicalDeviceProperties props = g.deviceProperties;
 
     // A bug report is read against the driver's known faults.
@@ -546,7 +500,7 @@ bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext
 
     if (!CreateSetLayouts()) { Shutdown(); return false; }
     CreateCache();
-    LOGI("pipeline: layout ready on %s", g.name.c_str());
+    LOGI("pipeline: layout ready on %s", vk::pipeline::DeviceName());
     return true;
 }
 
