@@ -221,3 +221,13 @@ Percobaan pertama setelah isolasi gagal sebelum kompilasi dimulai karena ekspans
 - Menambahkan helper enumerasi count/data dengan retry terbatas saat Vulkan mengembalikan `VK_INCOMPLETE`; dipakai untuk instance extensions, physical devices, queue families, surface formats, dan swapchain images.
 - Query `vkGetPhysicalDeviceSurfaceSupportKHR` kini memeriksa `VkResult` sebelum memakai nilai dukungan present.
 - Perubahan ini adalah hardening pada lifecycle yang masih monolitik, bukan pemisahan kelas instance/device ala BO2. Pemisahan ownership/dispatch tetap menjadi pekerjaan berikutnya setelah compile gate selesai.
+
+
+### Pemeriksaan lifecycle swapchain image ownership (11 November 2026)
+
+- Source review menemukan bahwa saat swapchain lama diganti, vector `g.images` masih dapat menyimpan handle image milik swapchain yang sudah dihancurkan sampai enumerasi swapchain baru selesai.
+- Jika pembuatan/enumerasi swapchain baru gagal, handle lama atau hasil enumerasi parsial dapat tertinggal dan terlihat oleh jalur diagnostik/presenter yang memeriksa daftar image.
+- `presenter.cpp` kini mengosongkan `g.images` tepat setelah swapchain lama dihancurkan, dan juga membersihkannya pada kegagalan enumerasi image swapchain baru.
+- Perubahan source commit: `e69b540f6db57a1eda41782b975619ddf6d6d216`.
+- Validasi CI BO2 SDK dan compile gate runtime sedang berjalan pada run [42866248741](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42866248741). Belum dihitung lulus sampai job selesai.
+- Ini memperbaiki konsistensi ownership handle WSI saat resize/recreate. Belum mengubah status arsitektur monolitik dan bukan bukti present atau rendering pada Switch fisik.
