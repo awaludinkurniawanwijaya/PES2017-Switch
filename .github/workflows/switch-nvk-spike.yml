@@ -1,5 +1,5 @@
-# Rebuild on workflow changes so instrumentation fixes are compiled against the pinned NXVK source.
-name: Switch NVK feasibility spike
+# Legacy NXVK backup workflow. Kept for reproducibility; not part of active Vulkan development.
+name: Legacy NXVK backup smoke (manual only)
 
 on:
   workflow_dispatch:
@@ -25,12 +25,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: switch-nvk-spike-${{ github.ref }}-${{ github.sha }}
+  group: legacy-nxvk-backup-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
-  build-nxvk-smoke:
-    name: Build pinned NXVK Vulkan smoke NROs
+  legacy-nxvk-smoke:
+    name: Reproduce archived NXVK smoke NROs (not active backend)
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
