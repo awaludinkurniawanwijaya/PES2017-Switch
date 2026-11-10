@@ -270,13 +270,16 @@ This is the source-level extraction map for the current `runtime/gpu/vulkan/pres
 
 The concrete ownership map is complete. No provider/device source extraction has been claimed yet. The first code change is constrained to instance ownership; surface selection, shared pipeline-device state, loader dispatch timing, and reverse teardown order are explicit invariants for that change.
 
-### B2.6b — Initial instance ownership extraction (2026-11-11; CI pending)
+### B2.6b — Initial instance ownership extraction (2026-11-11; CI passed)
 
 - Added `runtime/gpu/vulkan/provider.h/.cpp` with a PES-owned provider boundary for Vulkan instance creation, instance dispatch loading, optional validation callback/messenger ownership, and instance destruction.
 - `presenter.cpp` now delegates instance creation/destruction to `vk::provider`; VI/Android surface creation, physical-device selection, device creation, swapchain and frame presentation remain in the presenter for now.
 - The original extension negotiation and API-version selection logic was moved without intentionally changing its policy. The provider receives the instance handle by reference so the presenter retains the existing shared state and call sequence during this first extraction.
 - The source glob in CMake and the Switch workflow includes the new translation unit automatically.
-- CI runs 42867472597 (provider implementation) and 42867467446 (interface checkpoint) were triggered. Their result is not yet known at this documentation update.
-- This is a source ownership boundary, not a completed BO2 provider/device/presenter port. No new NRO has been verified and no hardware test is requested from this checkpoint.
+- CI run [42867472597](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42867472597) passed. The Switch SDK compile gate built 25 Vulkan runtime translation units, including the new `provider.cpp` and modified `presenter.cpp`; only `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because they require private generated PPC output. The standalone BO2 SDK probe also linked and packaged successfully.
+- The uploaded probe NRO was inspected: SHA-256 `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3`, identical to the previously tested stage-2 probe. It is therefore not a new hardware-test checkpoint. This is a source ownership boundary, not a completed BO2 provider/device/presenter port.
 
 Next: validate the new translation unit and presenter compile together; fix any compile errors before extracting physical-device selection. Keep dispatch timing, validation-messenger teardown-before-instance, and surface-before-instance destruction unchanged.
+
+
+CI artifact note: run `42867472597` uploaded artifact `pes17-vulkan-bo2-probe` (artifact ID `13787687844`). Its NRO is byte-identical to the earlier stage-2 probe, so do not ask for another device test until the diagnostic code or behavior changes.
