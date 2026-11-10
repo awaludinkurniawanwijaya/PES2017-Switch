@@ -400,7 +400,9 @@ namespace vk::renderer::detail
         highest = high;
     }
 
-#if !defined(_WIN32)
+// GCC function multiversioning with AVX2 is an x86-only optimization.
+    // Switch is AArch64: keep the portable scalar implementation there.
+#if !defined(_WIN32) && (defined(__i386__) || defined(__x86_64__))
     __attribute__((target_clones("avx2", "default")))
 #endif
     void SwapIndices16(const uint8_t* source, uint16_t* out, uint32_t count, uint16_t& lowest,
@@ -409,7 +411,9 @@ namespace vk::renderer::detail
         SwapIndices(source, out, count, lowest, highest);
     }
 
-#if !defined(_WIN32)
+// GCC function multiversioning with AVX2 is an x86-only optimization.
+    // Switch is AArch64: keep the portable scalar implementation there.
+#if !defined(_WIN32) && (defined(__i386__) || defined(__x86_64__))
     __attribute__((target_clones("avx2", "default")))
 #endif
     void SwapIndices32(const uint8_t* source, uint32_t* out, uint32_t count, uint32_t& lowest,
