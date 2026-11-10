@@ -1000,7 +1000,7 @@ void vk::pipeline::Shutdown()
     g.layout = VK_NULL_HANDLE;
     if (g.ownsDevice)
     {
-vk::provider::DestroyLogicalDevice(g.device);
+        vk::provider::DestroyLogicalDevice(g.device);
         if (g.instance) vkDestroyInstance(g.instance, nullptr);
         g.instance = VK_NULL_HANDLE;
     }
