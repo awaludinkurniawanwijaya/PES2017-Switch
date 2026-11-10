@@ -1020,10 +1020,7 @@ namespace
             }
             if (g.pool) vkDestroyCommandPool(g.device, g.pool, nullptr);
             if (g.swapchain) vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
-#if defined(PES17_VULKAN_DYNAMIC)
-            vk::loader::ForgetDevice();
-#endif
-            vkDestroyDevice(g.device, nullptr);
+vk::provider::DestroyLogicalDevice(g.device);
             g.pool = VK_NULL_HANDLE;
             g.swapchain = VK_NULL_HANDLE;
             g.device = VK_NULL_HANDLE;
