@@ -178,3 +178,8 @@ be made until the corresponding test has been run on a physical Switch.
 ### Graphics pipeline implementation note (10 November 2026)
 
 The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`) from the same NXVK revision already used by CI. The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The render pass targets the acquired VI swapchain images directly and transitions them to `PRESENT_SRC_KHR`. CI compilation passed on 10 November 2026 (run [42783311807](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42783311807)); the NRO binary includes the pipeline and `vkCmdDraw` diagnostic paths. Physical-console display confirmation remains pending.
+
+
+### Follow-up: framebuffer path adapted from upstream NXVK
+
+The latest Switch log stopped inside the first `vkCreateFramebuffer` call when the attachment was a WSI swapchain image view. The render pass itself returned successfully; graphics-pipeline creation and `vkCmdDraw` were never reached. The pinned upstream NXVK `nvk_tri.c` / `nvk_gfx.h` reference was inspected directly: it creates an application-owned optimal-tiled color image, binds memory, creates its image view, and attaches that view to the framebuffer. PES now follows that resource pattern and copies the completed offscreen render target into the acquired WSI image before presentation. Source commit: `3e2b77814f96a977c8137b6dc6123f65333ade2b`. This is an evidence-led adaptation, not yet a physical render pass result; CI and the next Switch log must confirm the new path.
