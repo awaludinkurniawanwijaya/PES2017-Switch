@@ -136,7 +136,7 @@ void vk::loader::LoadInstance(VkInstance instance)
          std::strstr(#name, "Surface") == nullptr && std::strstr(#name, "Debug") == nullptr && \
          std::strstr(#name, "Android") == nullptr);
 #define PES17_VK_DEVICE(name) \
-    Take(name, vkGetInstanceProcAddr(instance, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(instance, #name), #name, \
          std::strstr(#name, "KHR") == nullptr && std::strstr(#name, "EXT") == nullptr);
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
