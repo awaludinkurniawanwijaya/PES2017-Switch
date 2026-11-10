@@ -75,6 +75,11 @@ namespace
     constexpr uint32_t kHeight = 720;
     constexpr uint32_t kFramesInFlight = 2;
 
+    VkDevice DeviceHandle()
+    {
+        return DeviceHandle()Owner ? static_cast<VkDevice>(DeviceHandle()Owner->Logical()) : VK_NULL_HANDLE;
+    }
+
     struct Frame
     {
         VkCommandBuffer commands = VK_NULL_HANDLE;
@@ -98,7 +103,6 @@ namespace
         VkInstance instance = VK_NULL_HANDLE;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         VkPhysicalDevice physical = VK_NULL_HANDLE;
-        VkDevice device = VK_NULL_HANDLE;
         std::unique_ptr<vk::device::Device> deviceOwner;
         uint32_t queueFamily = 0;
         VkQueue queue = VK_NULL_HANDLE;
@@ -289,16 +293,15 @@ namespace
             g.presentWait = false;
             return false;
         }
-        g.deviceOwner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
-        if (!g.deviceOwner)
+        DeviceHandle()Owner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
+        if (!DeviceHandle()Owner)
         {
             VkDevice orphan = static_cast<VkDevice>(createdDevice);
             vk::provider::DestroyLogicalDevice(orphan);
             g.presentWait = false;
             return false;
         }
-        g.device = static_cast<VkDevice>(g.deviceOwner->Logical());
-        g.queue = static_cast<VkQueue>(g.deviceOwner->Queue());
+        g.queue = static_cast<VkQueue>(DeviceHandle()Owner->Queue());
 #if defined(PES17_VULKAN_DYNAMIC)
         // Swapchain commands are mandatory for every dynamic window-system
         // presenter, not only Horizon. Static-link builds resolve these symbols
@@ -313,7 +316,7 @@ namespace
         if (g.presentWait)
         {
             g.waitForPresent = reinterpret_cast<PFN_vkWaitForPresentKHR>(
-                vkGetDeviceProcAddr(g.device, "vkWaitForPresentKHR"));
+                vkGetDeviceProcAddr(DeviceHandle(), "vkWaitForPresentKHR"));
             g.presentWait = g.waitForPresent != nullptr;
         }
         if (!g.presentWait)
@@ -446,12 +449,12 @@ namespace
         info.oldSwapchain = old;
 
         VkSwapchainKHR made = VK_NULL_HANDLE;
-        const bool ok = Check(vkCreateSwapchainKHR(g.device, &info, nullptr, &made),
+        const bool ok = Check(vkCreateSwapchainKHR(DeviceHandle(), &info, nullptr, &made),
                               "vkCreateSwapchainKHR");
         {
             // Nothing waits on a present of the old one once it is gone.
             std::unique_lock life(g.swapchainLife);
-            if (old) vkDestroySwapchainKHR(g.device, old, nullptr);
+            if (old) vkDestroySwapchainKHR(DeviceHandle(), old, nullptr);
             // Image handles belong to the swapchain just destroyed. Do not
             // leave stale handles visible if replacement creation/enumeration
             // fails and the presenter falls back to its no-swapchain path.
@@ -466,12 +469,12 @@ namespace
 
         if (!EnumerateVector(g.images,
                 [](uint32_t* count, VkImage* data) {
-                    return vkGetSwapchainImagesKHR(g.device, g.swapchain, count, data);
+                    return vkGetSwapchainImagesKHR(DeviceHandle(), g.swapchain, count, data);
                 }, "swapchain images") || g.images.empty())
         {
             LOGW("vulkan: the created swapchain exposes no images");
             g.images.clear();
-            vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
+            vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
             g.swapchain = VK_NULL_HANDLE;
             return false;
         }
@@ -484,7 +487,7 @@ namespace
         VkCommandPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         poolInfo.queueFamilyIndex = g.queueFamily;
-        if (!Check(vkCreateCommandPool(g.device, &poolInfo, nullptr, &g.pool), "vkCreateCommandPool"))
+        if (!Check(vkCreateCommandPool(DeviceHandle(), &poolInfo, nullptr, &g.pool), "vkCreateCommandPool"))
             return false;
 
         for (auto& frame : g.frames)
@@ -493,15 +496,15 @@ namespace
             allocate.commandPool = g.pool;
             allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocate.commandBufferCount = 1;
-            if (!Check(vkAllocateCommandBuffers(g.device, &allocate, &frame.commands), "vkAllocateCommandBuffers"))
+            if (!Check(vkAllocateCommandBuffers(DeviceHandle(), &allocate, &frame.commands), "vkAllocateCommandBuffers"))
                 return false;
 
             VkSemaphoreCreateInfo semaphore{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
             VkFenceCreateInfo fence{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
             fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            if (!Check(vkCreateSemaphore(g.device, &semaphore, nullptr, &frame.acquired), "vkCreateSemaphore") ||
-                !Check(vkCreateSemaphore(g.device, &semaphore, nullptr, &frame.rendered), "vkCreateSemaphore") ||
-                !Check(vkCreateFence(g.device, &fence, nullptr, &frame.inFlight), "vkCreateFence"))
+            if (!Check(vkCreateSemaphore(DeviceHandle(), &semaphore, nullptr, &frame.acquired), "vkCreateSemaphore") ||
+                !Check(vkCreateSemaphore(DeviceHandle(), &semaphore, nullptr, &frame.rendered), "vkCreateSemaphore") ||
+                !Check(vkCreateFence(DeviceHandle(), &fence, nullptr, &frame.inFlight), "vkCreateFence"))
                 return false;
         }
         return true;
@@ -515,7 +518,7 @@ namespace
     {
         VkFence fences[kFramesInFlight];
         for (uint32_t i = 0; i < kFramesInFlight; i++) fences[i] = g.frames[i].inFlight;
-        vk::pipeline::Failed(vkWaitForFences(g.device, kFramesInFlight, fences, VK_TRUE, UINT64_MAX),
+        vk::pipeline::Failed(vkWaitForFences(DeviceHandle(), kFramesInFlight, fences, VK_TRUE, UINT64_MAX),
                              "the presenter's fences before a resize");
         if (CreateSwapchain()) g.remakeSwapchain = false;
     }
@@ -665,7 +668,7 @@ namespace
             {
                 std::shared_lock life(g.swapchainLife);
                 if (g.swapchain)
-                    r = g.waitForPresent(g.device, g.swapchain, id, 20'000'000);   // 20 ms
+                    r = g.waitForPresent(DeviceHandle(), g.swapchain, id, 20'000'000);   // 20 ms
             }
             if (r == VK_TIMEOUT) continue;   // still waiting; lets a resize in
             const int64_t at = Nanoseconds();
@@ -695,10 +698,10 @@ namespace
     void DestroyOverlay()
     {
         auto& o = g.overlay;
-        if (o.image) vkDestroyImage(g.device, o.image, nullptr);
-        if (o.imageMemory) vkFreeMemory(g.device, o.imageMemory, nullptr);
-        if (o.staging) vkDestroyBuffer(g.device, o.staging, nullptr);
-        if (o.stagingMemory) vkFreeMemory(g.device, o.stagingMemory, nullptr);
+        if (o.image) vkDestroyImage(DeviceHandle(), o.image, nullptr);
+        if (o.imageMemory) vkFreeMemory(DeviceHandle(), o.imageMemory, nullptr);
+        if (o.staging) vkDestroyBuffer(DeviceHandle(), o.staging, nullptr);
+        if (o.stagingMemory) vkFreeMemory(DeviceHandle(), o.stagingMemory, nullptr);
         o.image = VK_NULL_HANDLE; o.imageMemory = VK_NULL_HANDLE;
         o.staging = VK_NULL_HANDLE; o.stagingMemory = VK_NULL_HANDLE;
         o.mapped = nullptr; o.width = o.height = 0; o.everUploaded = false;
@@ -721,29 +724,29 @@ namespace
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
         image.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         image.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        if (!Check(vkCreateImage(g.device, &image, nullptr, &o.image), "the sign-in screen's image")) return false;
+        if (!Check(vkCreateImage(DeviceHandle(), &image, nullptr, &o.image), "the sign-in screen's image")) return false;
         VkMemoryRequirements needs{};
-        vkGetImageMemoryRequirements(g.device, o.image, &needs);
+        vkGetImageMemoryRequirements(DeviceHandle(), o.image, &needs);
         VkMemoryAllocateInfo allocate{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         allocate.allocationSize = needs.size;
         allocate.memoryTypeIndex = vk::util::FindMemory(memory, needs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         if (allocate.memoryTypeIndex == UINT32_MAX ||
-            !Check(vkAllocateMemory(g.device, &allocate, nullptr, &o.imageMemory), "the sign-in screen's memory") ||
-            !Check(vkBindImageMemory(g.device, o.image, o.imageMemory, 0), "the sign-in screen's memory"))
+            !Check(vkAllocateMemory(DeviceHandle(), &allocate, nullptr, &o.imageMemory), "the sign-in screen's memory") ||
+            !Check(vkBindImageMemory(DeviceHandle(), o.image, o.imageMemory, 0), "the sign-in screen's memory"))
             return false;
 
         VkBufferCreateInfo buffer{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         buffer.size = VkDeviceSize(width) * height * 4;
         buffer.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        if (!Check(vkCreateBuffer(g.device, &buffer, nullptr, &o.staging), "the sign-in screen's buffer")) return false;
-        vkGetBufferMemoryRequirements(g.device, o.staging, &needs);
+        if (!Check(vkCreateBuffer(DeviceHandle(), &buffer, nullptr, &o.staging), "the sign-in screen's buffer")) return false;
+        vkGetBufferMemoryRequirements(DeviceHandle(), o.staging, &needs);
         allocate.allocationSize = needs.size;
         allocate.memoryTypeIndex = vk::util::FindMemory(memory, needs.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (allocate.memoryTypeIndex == UINT32_MAX ||
-            !Check(vkAllocateMemory(g.device, &allocate, nullptr, &o.stagingMemory), "the sign-in screen's buffer") ||
-            !Check(vkBindBufferMemory(g.device, o.staging, o.stagingMemory, 0), "the sign-in screen's buffer") ||
-            !Check(vkMapMemory(g.device, o.stagingMemory, 0, VK_WHOLE_SIZE, 0, &o.mapped), "the sign-in screen's buffer"))
+            !Check(vkAllocateMemory(DeviceHandle(), &allocate, nullptr, &o.stagingMemory), "the sign-in screen's buffer") ||
+            !Check(vkBindBufferMemory(DeviceHandle(), o.staging, o.stagingMemory, 0), "the sign-in screen's buffer") ||
+            !Check(vkMapMemory(DeviceHandle(), o.stagingMemory, 0, VK_WHOLE_SIZE, 0, &o.mapped), "the sign-in screen's buffer"))
             return false;
         o.width = width;
         o.height = height;
@@ -765,7 +768,7 @@ namespace
             // The other frames' commands may still be reading the image and
             // the buffer; this happens at a press of a button, not per frame.
             for (const Frame& other : g.frames)
-                if (&other != &frame) vkWaitForFences(g.device, 1, &other.inFlight, VK_TRUE, UINT64_MAX);
+                if (&other != &frame) vkWaitForFences(DeviceHandle(), 1, &other.inFlight, VK_TRUE, UINT64_MAX);
             if (resized)
             {
                 DestroyOverlay();
@@ -810,14 +813,14 @@ namespace
     bool Acquire(Frame*& slot, uint32_t& imageIndex)
     {
         Frame& frame = g.frames[g.frameIndex];
-        if (vk::pipeline::Failed(vkWaitForFences(g.device, 1, &frame.inFlight, VK_TRUE, UINT64_MAX),
+        if (vk::pipeline::Failed(vkWaitForFences(DeviceHandle(), 1, &frame.inFlight, VK_TRUE, UINT64_MAX),
                                  "the presenter's fence"))
             return false;
 
         // FIFO: this is where the window waits for the display, with the
         // frame it will show still in the queue, so the queue's length is
         // how far the renderer is ahead of the screen.
-        VkResult acquired = vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX,
+        VkResult acquired = vkAcquireNextImageKHR(DeviceHandle(), g.swapchain, UINT64_MAX,
                                                   frame.acquired, VK_NULL_HANDLE, &imageIndex);
         // Out of date: nothing was acquired, and the semaphore is untouched;
         // remade next frame. Suboptimal: an image was acquired and is shown,
@@ -832,7 +835,7 @@ namespace
     // Starts `frame`'s commands with swapchain image `image` made ready to be copied into.
     void Begin(Frame& frame, VkImage image)
     {
-        vkResetFences(g.device, 1, &frame.inFlight);
+        vkResetFences(DeviceHandle(), 1, &frame.inFlight);
         vkResetCommandBuffer(frame.commands, 0);
 
         VkCommandBufferBeginInfo begin{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -876,7 +879,7 @@ namespace
         const uint32_t pictureWidth = uint32_t(blit.dstOffsets[1].x - blit.dstOffsets[0].x);
         const uint32_t pictureHeight = uint32_t(blit.dstOffsets[1].y - blit.dstOffsets[0].y);
         const VkImage upscaled = vk::upscale::Enabled()
-            ? vk::upscale::Record(g.device, g.physical, frame.commands, g.frameIndex, picture,
+            ? vk::upscale::Record(DeviceHandle(), g.physical, frame.commands, g.frameIndex, picture,
                                   width, height, pictureWidth, pictureHeight)
             : VK_NULL_HANDLE;
         (upscaled ? g.upscaledPresents : g.blitPresents).fetch_add(1, std::memory_order_relaxed);
@@ -1018,7 +1021,7 @@ namespace
         const bool picture = shown.image && shown.width && shown.height;
         vk::framegen::Result generated;
         if (picture && vk::framegen::Wanted(frame_rate::Limit(), g.periodNs))
-            generated = vk::framegen::Record(g.device, g.physical, frame.commands, shown.image,
+            generated = vk::framegen::Record(DeviceHandle(), g.physical, frame.commands, shown.image,
                                              shown.width, shown.height, Nanoseconds(), g.periodNs, shown.serial);
         else if (picture)
             vk::framegen::Reset();
@@ -1052,24 +1055,23 @@ namespace
 
     void Teardown()
     {
-        if (g.device)
+        if (DeviceHandle())
         {
-            vkDeviceWaitIdle(g.device);
+            vkDeviceWaitIdle(DeviceHandle());
             DestroyOverlay();
-            vk::upscale::Destroy(g.device);
-            vk::framegen::Destroy(g.device);
+            vk::upscale::Destroy(DeviceHandle());
+            vk::framegen::Destroy(DeviceHandle());
             for (auto& frame : g.frames)
             {
-                if (frame.acquired) vkDestroySemaphore(g.device, frame.acquired, nullptr);
-                if (frame.rendered) vkDestroySemaphore(g.device, frame.rendered, nullptr);
-                if (frame.inFlight) vkDestroyFence(g.device, frame.inFlight, nullptr);
+                if (frame.acquired) vkDestroySemaphore(DeviceHandle(), frame.acquired, nullptr);
+                if (frame.rendered) vkDestroySemaphore(DeviceHandle(), frame.rendered, nullptr);
+                if (frame.inFlight) vkDestroyFence(DeviceHandle(), frame.inFlight, nullptr);
             }
-            if (g.pool) vkDestroyCommandPool(g.device, g.pool, nullptr);
-            if (g.swapchain) vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
-            g.deviceOwner.reset();
+            if (g.pool) vkDestroyCommandPool(DeviceHandle(), g.pool, nullptr);
+            if (g.swapchain) vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
+            DeviceHandle()Owner.reset();
             g.pool = VK_NULL_HANDLE;
             g.swapchain = VK_NULL_HANDLE;
-            g.device = VK_NULL_HANDLE;
             for (auto& frame : g.frames) frame = Frame{};
         }
         if (g.surface) vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
@@ -1136,18 +1138,18 @@ namespace
     {
         const uint64_t generation = android::WindowGeneration();
 
-        if (g.device)
+        if (DeviceHandle())
         {
             // Nothing of ours may still be reading or presenting the images.
             // The renderer submits to the same queue, so its lock is what
             // makes waiting for the device meaningful.
             std::lock_guard held(vk::pipeline::QueueMutex());
-            vk::pipeline::Failed(vkDeviceWaitIdle(g.device), "the device before a surface change");
+            vk::pipeline::Failed(vkDeviceWaitIdle(DeviceHandle()), "the device before a surface change");
         }
         if (g.swapchain)
         {
             std::unique_lock life(g.swapchainLife);
-            vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
+            vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
             g.swapchain = VK_NULL_HANDLE;
             std::lock_guard waiting(g.waitLock);
             g.waiting.clear();
@@ -1179,7 +1181,7 @@ namespace
 
     bool InitialisePipelineOnPresenterDevice()
     {
-        const vk::device::BorrowedContext context{ g.instance, g.deviceOwner.get() };
+        const vk::device::BorrowedContext context{ g.instance, DeviceHandle()Owner.get() };
         return vk::pipeline::Initialise(&context);
     }
 
