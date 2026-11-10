@@ -487,3 +487,9 @@ This ordering is a hard invariant for the BO2 Device extraction: Pipeline resour
 Introduced `vk::device::BorrowedContext` in `runtime/gpu/vulkan/device.h` as a single non-owning tuple for instance, physical device, logical device, queue and queue family. `Pipeline::Initialise` now accepts either `nullptr` (create/own a headless Device) or a complete borrowed context (Presenter-owned Device); partial tuples are rejected by `Complete()`. Android, Switch and SDL Presenter bring-up use one shared helper, removing repeated positional raw-handle calls. This deliberately does not transfer ownership yet: Presenter remains the window-path Device owner, Pipeline borrows; the full BO2-style owning Device object is the next architectural stage.
 
 Validation for B2.19 is pending.
+
+### B2.20 — RAII logical Device ownership introduced (2026-11-11)
+
+Introduced a non-copyable `vk::device::Device` that owns the logical `VkDevice` and retains its physical-device, queue and queue-family identity. The Vulkan instance remains separately owned by Provider/Presenter during this staged transition. Presenter adopts the logical device produced by the existing Pipeline capability-negotiation path, uses `Device` as the destruction authority, and resets it only during final Teardown after Pipeline/renderer resources are gone. `BorrowedContext` now carries the Device object and instance, not positional raw physical/logical/queue arguments. `device.cpp` is included in the runtime source glob and both explicit offline-tool source lists. The large capability-negotiation body remains in Pipeline for now; this is the ownership stage, not the completed BO2 Device port.
+
+Validation for B2.20 is pending.
