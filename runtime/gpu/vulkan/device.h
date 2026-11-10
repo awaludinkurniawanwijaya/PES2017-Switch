@@ -5,7 +5,7 @@
 namespace vk::device
 {
     // Owns a logical Vulkan device and retains the physical-device/queue
-    // identity selected for it. The VkInstance remains owned by Provider.
+    // identity selected for it. The VkInstance remains caller-owned (Presenter currently holds it and uses Provider to create/destroy it).
     class Device final
     {
     public:
@@ -27,7 +27,7 @@ namespace vk::device
         uint32_t queueFamily_ = 0;
     };
 
-    // Pipeline borrows this Device; the instance is separately owned by Provider.
+    // Pipeline borrows this Device; the instance is separately held by Presenter and managed through Provider.
     struct BorrowedContext
     {
         void* instance = nullptr;
