@@ -75,7 +75,9 @@ Each checkpoint requires source diff, CI result, device log and visual confirmat
 - NXVK: stopped, preserved as backup branch `backup/nxvk-before-vulkan-bo2-direction`.
 - BO2 architecture audit: source inspected and mapped above.
 - PES Vulkan native provider/device/presenter: not implemented yet; current presenter remains monolithic.
-- Current CMake target: defaults to BO2 Mesa Horizon SDK (`libvulkan.a`); legacy NXVK can be selected explicitly. The new SDK path has not yet been compiled or linked in CI.
+- Current CMake target: defaults to BO2 Mesa Horizon SDK (`libvulkan.a`); legacy NXVK can be selected explicitly. A standalone BO2 SDK probe compiled, linked, packaged in CI, and was launched on physical Switch.
+- Probe API result: the user confirmed the NRO reached its HOME-to-exit prompt, but has not yet supplied the preceding `GIPA: PASS` or `FAIL` diagnostic line. Do not count the Vulkan API query as passed until that line is verified.
+- Full PES runtime/provider/device/presenter integration: not yet built or tested against this SDK.
 - Visible triangle on Switch: not yet proven.
 
 
@@ -128,7 +130,7 @@ PES changes made in this checkpoint:
 
 ### B2 result and limitations
 
-**Source migration applied; compile/link not yet verified.** No GitHub Actions workflow currently builds the large Mesa SDK; the existing `switch-nro.yml` only builds the libnx bootstrap and does not validate this CMake target. No NRO artifact is claimed from this checkpoint. Next work must provide the pinned Mesa SDK to a build runner, compile/link the PES full runtime, then resolve any real linker or API errors before extracting provider/device/presenter ownership.
+**Source migration applied; standalone SDK probe verified.** The pinned BO2 Mesa SDK was checksum/manifest verified, statically linked into a standalone probe, packaged as NRO, and launched on physical Switch. This does not yet validate the full PES runtime target. Next work is to compile/link the PES runtime against the same SDK, resolve actual compile/link/API errors, and then extract provider/device/presenter ownership.
 
 
 ## B2.1 — BO2 release SDK link probe (2026-11-10)
@@ -148,4 +150,15 @@ The active CMake configuration now also checks for `libzstd.a` and the devkitPro
 
 ### B2.1 verification boundary
 
-The workflow is committed but has not yet returned a GitHub Actions result in this checkpoint. The probe NRO is not yet available. A successful CI run will prove static archive linking and packaging; it will **not** prove the Vulkan entrypoint works on physical Switch hardware. The probe NRO must then be run on the console and its output reviewed before migrating the full PES runtime.
+The workflow completed successfully for commit `8231466c8df55fcff6aac210ed49e2dd83d04757` (run `42857844357`). It verified the pinned BO2 kit checksum and manifest, compiled the probe, linked the static archives in BO2 order, packaged the NRO, and uploaded artifact `pes17-vulkan-bo2-probe` (artifact ID `13782659277`). The user then confirmed that the NRO launched on physical Switch and displayed the HOME-to-exit prompt. This confirms application launch, not necessarily the GIPA/API-version call: the probe prints either `GIPA: PASS; vkEnumerateInstanceVersion result=... API=...` or `FAIL: vkGetInstanceProcAddr did not return vkEnumerateInstanceVersion` before the exit prompt. The exact diagnostic line has not yet been recorded, so the Vulkan entrypoint check remains pending. Full PES runtime/provider/device/presenter integration has not yet been built or tested.
+
+
+## B2.2 — Physical Switch probe launch (2026-11-10)
+
+- CI run: [42857844357](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42857844357), commit `8231466c8df55fcff6aac210ed49e2dd83d04757`.
+- Probe artifact: `pes17-vulkan-bo2-probe`, artifact ID `13782659277`.
+- User hardware report: NRO opened and displayed a black console screen with the instruction to press HOME to exit.
+- Verified scope: application launch and reaching the probe's applet loop.
+- Not yet verified: whether the preceding diagnostic printed `GIPA: PASS` or `FAIL`, exact Vulkan API version, instance creation, device creation, VI surface/swapchain, or any rendered frame.
+
+The probe source prints the GIPA/API-version result before the HOME prompt. Preserve this distinction in progress reports. The next software task is full PES runtime compile/link against the exact same SDK; do not mark triangle rendering or game rendering complete.
