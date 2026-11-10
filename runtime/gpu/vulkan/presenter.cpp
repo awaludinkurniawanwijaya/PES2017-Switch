@@ -79,6 +79,18 @@ namespace
     {
         return g.deviceOwner ? static_cast<VkDevice>(g.deviceOwner->Logical()) : VK_NULL_HANDLE;
     }
+    VkPhysicalDevice PhysicalHandle()
+    {
+        return g.deviceOwner ? static_cast<VkPhysicalDevice>(g.deviceOwner->Physical()) : g.selectedPhysical;
+    }
+    VkQueue QueueHandle()
+    {
+        return g.deviceOwner ? static_cast<VkQueue>(g.deviceOwner->Queue()) : VK_NULL_HANDLE;
+    }
+    uint32_t QueueFamilyIndex()
+    {
+        return g.deviceOwner ? g.deviceOwner->QueueFamily() : g.selectedQueueFamily;
+    }
 
     struct Frame
     {
@@ -102,10 +114,9 @@ namespace
 #endif
         VkInstance instance = VK_NULL_HANDLE;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
-        VkPhysicalDevice physical = VK_NULL_HANDLE;
+        VkPhysicalDevice selectedPhysical = VK_NULL_HANDLE;
+        uint32_t selectedQueueFamily = 0;
         std::unique_ptr<vk::device::Device> deviceOwner;
-        uint32_t queueFamily = 0;
-        VkQueue queue = VK_NULL_HANDLE;
 
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         VkFormat swapchainFormat = VK_FORMAT_UNDEFINED;
@@ -268,13 +279,13 @@ namespace
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
         void* features = nullptr;
         g.presentWait = false;
-        if (vk::provider::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
-            vk::provider::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+        if (vk::provider::DeviceHasExtension(PhysicalHandle(), VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+            vk::provider::DeviceHasExtension(PhysicalHandle(), VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
         {
             presentId.pNext = &presentWaitFeatures;
             VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
             query.pNext = &presentId;
-            vkGetPhysicalDeviceFeatures2(g.physical, &query);
+            vkGetPhysicalDeviceFeatures2(PhysicalHandle(), &query);
             if (presentId.presentId && presentWaitFeatures.presentWait)
             {
                 extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
@@ -286,14 +297,14 @@ namespace
         }
         void* createdDevice = nullptr;
         void* createdQueue = nullptr;
-        if (!vk::pipeline::CreateDevice(g.physical, g.queueFamily, extensions.data(),
+        if (!vk::pipeline::CreateDevice(PhysicalHandle(), QueueFamilyIndex(), extensions.data(),
                                         uint32_t(extensions.size()), &createdDevice,
                                         &createdQueue, features))
         {
             g.presentWait = false;
             return false;
         }
-        g.deviceOwner = vk::device::Device::Adopt(g.physical, createdDevice, createdQueue, g.queueFamily);
+        g.deviceOwner = vk::device::Device::Adopt(PhysicalHandle(), createdDevice, createdQueue, QueueFamilyIndex());
         if (!g.deviceOwner)
         {
             VkDevice orphan = static_cast<VkDevice>(createdDevice);
@@ -301,7 +312,6 @@ namespace
             g.presentWait = false;
             return false;
         }
-        g.queue = static_cast<VkQueue>(g.deviceOwner->Queue());
 #if defined(PES17_VULKAN_DYNAMIC)
         // Swapchain commands are mandatory for every dynamic window-system
         // presenter, not only Horizon. Static-link builds resolve these symbols
@@ -327,7 +337,7 @@ namespace
     bool CreateSwapchain()
     {
         VkSurfaceCapabilitiesKHR caps{};
-        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.physical, g.surface, &caps),
+        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalHandle(), g.surface, &caps),
                    "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
             return false;
         // The renderer copies its completed image into the presentation image.
@@ -367,7 +377,7 @@ namespace
         std::vector<VkSurfaceFormatKHR> formats;
         if (!EnumerateVector(formats,
                 [](uint32_t* count, VkSurfaceFormatKHR* data) {
-                    return vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, count, data);
+                    return vkGetPhysicalDeviceSurfaceFormatsKHR(PhysicalHandle(), g.surface, count, data);
                 }, "surface formats") || formats.empty())
             return false;
         VkSurfaceFormatKHR chosen = formats[0];
@@ -486,7 +496,7 @@ namespace
     {
         VkCommandPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = g.queueFamily;
+        poolInfo.queueFamilyIndex = QueueFamilyIndex();
         if (!Check(vkCreateCommandPool(DeviceHandle(), &poolInfo, nullptr, &g.pool), "vkCreateCommandPool"))
             return false;
 
@@ -879,7 +889,7 @@ namespace
         const uint32_t pictureWidth = uint32_t(blit.dstOffsets[1].x - blit.dstOffsets[0].x);
         const uint32_t pictureHeight = uint32_t(blit.dstOffsets[1].y - blit.dstOffsets[0].y);
         const VkImage upscaled = vk::upscale::Enabled()
-            ? vk::upscale::Record(DeviceHandle(), g.physical, frame.commands, g.frameIndex, picture,
+            ? vk::upscale::Record(DeviceHandle(), PhysicalHandle(), frame.commands, g.frameIndex, picture,
                                   width, height, pictureWidth, pictureHeight)
             : VK_NULL_HANDLE;
         (upscaled ? g.upscaledPresents : g.blitPresents).fetch_add(1, std::memory_order_relaxed);
@@ -924,14 +934,14 @@ namespace
         VkResult submitRes = VK_SUCCESS;
         {
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            submitRes = vkQueueSubmit(g.queue, 1, &submit, frame.inFlight);
+            submitRes = vkQueueSubmit(QueueHandle(), 1, &submit, frame.inFlight);
         }
         if (submitRes != VK_SUCCESS)
         {
             vk::pipeline::Failed(submitRes, "the presenter's submission");
             VkSubmitInfo emptySubmit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            vkQueueSubmit(g.queue, 1, &emptySubmit, frame.inFlight);
+            vkQueueSubmit(QueueHandle(), 1, &emptySubmit, frame.inFlight);
             return false;
         }
         // The copy is in the queue ahead of anything the renderer submits from
@@ -960,7 +970,7 @@ namespace
         // device is a failure.
         const VkResult presented = [&] {
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            return vkQueuePresentKHR(g.queue, &present);
+            return vkQueuePresentKHR(QueueHandle(), &present);
         }();
         if (presented == VK_ERROR_OUT_OF_DATE_KHR ||
             (presented == VK_SUBOPTIMAL_KHR && !g.suboptimalIsExpected))
@@ -1021,7 +1031,7 @@ namespace
         const bool picture = shown.image && shown.width && shown.height;
         vk::framegen::Result generated;
         if (picture && vk::framegen::Wanted(frame_rate::Limit(), g.periodNs))
-            generated = vk::framegen::Record(DeviceHandle(), g.physical, frame.commands, shown.image,
+            generated = vk::framegen::Record(DeviceHandle(), PhysicalHandle(), frame.commands, shown.image,
                                              shown.width, shown.height, Nanoseconds(), g.periodNs, shown.serial);
         else if (picture)
             vk::framegen::Reset();
@@ -1210,7 +1220,7 @@ namespace
             android::SetStatus("Failed to create Vulkan surface for Android window");
             return false;
         }
-        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily)) {
+        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily)) {
             android::SetStatus("No Vulkan physical device found");
             return false;
         }
@@ -1245,7 +1255,7 @@ namespace
             return false;
         }
         if (!CreateInstance() || !CreateSurfaceForWindow() ||
-            !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            !vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         if (!InitialisePipelineOnPresenterDevice())
         {
@@ -1273,7 +1283,7 @@ namespace
             LOGW("vulkan: no surface (%s)", SDL_GetError());
             return false;
         }
-        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.physical, g.queueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+        if (!vk::provider::PickPhysicalDevice(g.instance, g.surface, g.selectedPhysical, g.selectedQueueFamily) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         SDL_ShowWindow(g.window);
         SDL_RaiseWindow(g.window);
@@ -1557,7 +1567,7 @@ std::string vk::PresenterReport()
     add("framegen: %s now, %llu frames made\n", vk::framegen::Wanted(frame_rate::Limit(), g.periodNs) ? "on" : "off",
         (unsigned long long)vk::framegen::MadeFrames());
 
-    if (g.physical)
+    if (PhysicalHandle())
     {
         VkPhysicalDeviceProperties props{};
         if (!vk::pipeline::GetDeviceProperties(&props, sizeof(props)))
@@ -1582,7 +1592,7 @@ std::string vk::PresenterReport()
             std::vector<VkPresentModeKHR> list;
             if (!EnumerateVector(list,
                     [](uint32_t* count, VkPresentModeKHR* data) {
-                        return vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, count, data);
+                        return vkGetPhysicalDeviceSurfacePresentModesKHR(PhysicalHandle(), g.surface, count, data);
                     }, "surface present modes"))
                 list.clear();
             out += "surface present modes:";
@@ -1592,7 +1602,7 @@ std::string vk::PresenterReport()
         std::vector<VkExtensionProperties> extensions;
         if (!EnumerateVector(extensions,
                 [](uint32_t* count, VkExtensionProperties* data) {
-                    return vkEnumerateDeviceExtensionProperties(g.physical, nullptr, count, data);
+                    return vkEnumerateDeviceExtensionProperties(PhysicalHandle(), nullptr, count, data);
                 }, "device extensions"))
             extensions.clear();
         out += "device extensions:";
