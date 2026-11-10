@@ -8,11 +8,7 @@
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
 #elif defined(__SWITCH__)
-// NXVK's static Mesa ICD exports this public adapter entry point. The
-// vk_icdGetInstanceProcAddr symbol is loader-private and must not be used
-// as the runtime's public vkGetInstanceProcAddr implementation.
-extern "C" PFN_vkVoidFunction VKAPI_CALL
-nvk_GetInstanceProcAddr(VkInstance instance, const char* name);
+#include "switch_driver.h"
 #else
 #include <dlfcn.h>
 #endif
@@ -69,10 +65,10 @@ bool vk::loader::Open(std::string& error)
     entry = android::driver::Open(error);
     g_description = android::driver::Description();
 #elif defined(__SWITCH__)
-    // NXVK exports the ICD entry point directly; there is no Vulkan loader
-    // on Horizon. It has the same instance/name dispatch contract needed here.
-    entry = reinterpret_cast<void*>(nvk_GetInstanceProcAddr);
-    g_description = "NXVK static ICD";
+    // Horizon has no system Vulkan loader. Keep the statically linked driver
+    // behind its own adapter; the Vulkan loader/provider code stays driver-agnostic.
+    entry = reinterpret_cast<void*>(vk::switch_driver::GetInstanceProcAddr());
+    g_description = vk::switch_driver::Description();
 #else
     // A desktop build with dynamic loading asked for: the system's loader.
     for (const char* name : { "libvulkan.so.1", "libvulkan.so" })
