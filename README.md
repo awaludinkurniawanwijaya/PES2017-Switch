@@ -214,7 +214,7 @@ Target ini menghasilkan `pes2017-switch-bootstrap.nro`. Fungsinya menguji inisia
 
 ### 6.4 Full runtime Switch
 
-Konfigurasi full runtime menggunakan toolchain `cmake/switch-toolchain.cmake`, opsi `PES17_SWITCH=ON`, PPC hasil recompilation, manifest XEX yang cocok, dan SDK Mesa Horizon statis hasil build mengikuti BO2. Set `PES17_SWITCH_VULKAN_SDK` ke direktori `opt/devkitpro/portlibs/switch` hasil instalasi Mesa. Opsi `PES17_SWITCH_USE_LEGACY_NXVK=ON` hanya untuk jalur cadangan. Build dan link PES dengan SDK baru belum diverifikasi.
+Konfigurasi full runtime menggunakan toolchain `cmake/switch-toolchain.cmake`, opsi `PES17_SWITCH=ON`, PPC hasil recompilation, manifest XEX yang cocok, dan SDK Mesa Horizon statis hasil build mengikuti BO2. Set `PES17_SWITCH_VULKAN_SDK` atau `MESA_SDK` ke direktori `opt/devkitpro/portlibs/switch` hasil instalasi Mesa. Opsi `PES17_SWITCH_USE_LEGACY_NXVK=ON` hanya untuk jalur cadangan. Build dan link PES dengan SDK baru belum diverifikasi.
 
 ## 7. Otomasi GitHub Actions
 
@@ -243,7 +243,7 @@ Backend aktif yang baru adalah **Vulkan native bergaya BO2-360-NX**. BO2-360-NX 
 
 | Jalur | Kebijakan | Status |
 |---|---|---|
-| NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake masih memiliki tautan NXVK sampai backend pengganti siap. | **Dihentikan — cadangan saja** |
+| NXVK | Bekukan; jangan hapus atau tambah fitur. Workflow diubah menjadi manual-only. Source/config dan histori uji dipertahankan. CMake hanya memilih jalur NXVK jika `PES17_SWITCH_USE_LEGACY_NXVK=ON`. | **Dihentikan — opsi legacy eksplisit saja** |
 | Vulkan native (BO2-style) | Satu-satunya arah grafis aktif. CMake kini default ke SDK Mesa Horizon statis; provider/device/presenter PES belum diimplementasikan. | **Arah kerja aktif — jalur SDK mulai dimigrasikan, belum dibuild** |
 
 Dokumen audit dan rencana port: [docs/vulkan-bo2-port-plan.md](docs/vulkan-bo2-port-plan.md).
@@ -269,7 +269,7 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 | Tahap | Pekerjaan | Kriteria lulus | Status |
 |---|---|---|---|
 | V0. Audit BO2 dan baseline PES | Audit lima file BO2 di atas; petakan entrypoint, instance/device dispatch, VI surface, swapchain, queue, synchronization, resource, dan presenter ke struktur proyek PES. Catat perbedaan dan dependensi. | Dokumen mapping file/fungsi BO2 → modul PES; tidak ada asumsi tanpa pemeriksaan source. | **Selesai — `docs/vulkan-bo2-port-plan.md`** |
-| V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Pisahkan adapter driver dari loader generik. Pertahankan source dan build cadangan. | Workflow lama manual-only; entrypoint driver terisolasi; dependency driver tercatat secara eksplisit. | **Sebagian — NXVK menjadi opsi legacy; CMake default meminta SDK Mesa Horizon statis dan menautkan `vulkan`, `expat`, `zstd`, `z`, `nx` mengikuti urutan BO2** |
+| V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Pisahkan adapter driver dari loader generik. Pertahankan source dan build cadangan. | Workflow lama manual-only; entrypoint driver terisolasi; dependency driver tercatat secara eksplisit. | **Sebagian — NXVK menjadi opsi legacy eksplisit; CMake default meminta SDK Mesa Horizon statis dan menautkan `vulkan`, `expat`, `zstd`, `z`, `nx` mengikuti urutan BO2** |
 | V2. Vulkan native foundation | Ekstrak loader/entrypoint Vulkan dan instance/device dispatch menjadi komponen berorientasi objek mengikuti pola BO2; buat pemilihan physical device, queue family, logical device, dan lifecycle cleanup. | Instance/device memiliki ownership dan dispatch terpisah seperti BO2; init NRO berhasil dengan log per tahap. | **Belum dimulai — entrypoint publik `vkGetInstanceProcAddr` diarahkan ke `libvulkan.a`; lifecycle masih monolitik** |
 | V3. VI surface dan swapchain | Port pola BO2 untuk VI surface, capability/format, swapchain, image enumeration, acquire, synchronization, submit, dan present. | Frame dipresentasikan stabil pada Switch fisik; log per tahap lengkap. | **Belum dikerjakan** |
 | V4. Render target dan framebuffer | Implementasikan image/memory/view, render pass atau dynamic rendering sesuai dukungan, framebuffer, dan resource lifetime dengan dispatch yang benar. | Pembuatan resource dan framebuffer sukses; tidak ada null dispatch atau crash. | **Belum dikerjakan** |
