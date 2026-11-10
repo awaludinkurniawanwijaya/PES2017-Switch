@@ -593,3 +593,4 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - CI validation for this migration is pending.
 - Follow-up cleanup: removed Pipeline's now-unused duplicate capability flags and copied memory/core-feature/depth-resolve snapshots. Pipeline keeps only its non-owning Device pointer, operational handle aliases and the physical-properties copy required to validate persistent pipeline-cache identity.
 - Device snapshot cleanup: removed a redundant second copy of `VkPhysicalDeviceFeatures` and the unused physical-device snapshot marker; core supported features are now queried once per Device creation.
+- Context identity guard: `Pipeline::Initialise` is idempotent only for the exact same borrowed Provider Device/Instance or the already-owned headless context. It now rejects attempts to silently reuse a different active Device.
