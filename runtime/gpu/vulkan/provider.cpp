@@ -306,7 +306,7 @@ bool vk::provider::PickPhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
 
             for (uint32_t i = 0; i < properties.size(); i++)
             {
-                if (!(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
+                if (!properties[i].queueCount || !(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
                 VkBool32 canPresent = VK_FALSE;
                 const VkResult supportResult =
                     vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, surface, &canPresent);
