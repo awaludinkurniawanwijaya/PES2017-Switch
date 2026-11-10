@@ -479,3 +479,10 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 **Validation completed for B2.14:** CTest and the BO2 Mesa Switch SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This is not full-game link or scene-rendering validation.
 
 **Validation completed for B2.15:** CTest and the BO2 Mesa Switch SDK probe passed for `147cad0eb0c9ed2f911a548656d5003973e0d98f`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795741590`, ZIP SHA256 `487127e7a5027e117d2a6a8d89e646689599d0e12247db1244196e017951d477`. This does not validate full-game linking or actual scene rendering.
+
+### Device bring-up failure-state isolation (2026-11-11)
+
+- Added a single reset path for physical-device-derived Pipeline state: properties, memory properties, core features, format-derived BC/ASTC support, depth resolve, rendering capabilities, anisotropy and device identity.
+- `CreateDevice` now rejects replacement while a Pipeline device is active, clears previous snapshot/capability state before a fresh attempt, and clears the attempted device metadata if logical-device creation fails.
+- Headless bring-up rollback now destroys the instance and clears the complete failed-device snapshot, rather than only nulling the physical-device handle.
+- CI validation for this change is pending.
