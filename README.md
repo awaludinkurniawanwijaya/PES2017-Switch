@@ -549,3 +549,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Clarified the split: `Instance` owns `VkInstance`; `Device` owns `VkDevice` and borrows the instance lifetime.
 
 **B2.23 validation completed:** CTest, the libnx homebrew NRO build, and the BO2 Mesa Switch SDK probe all passed for implementation commit `ebf8836f0126687ec268fb9c8857a76d302fe51e`. The SDK probe compiled 27 Vulkan runtime translation units, including `instance.cpp`; only `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897472123/artifacts/13800434703 (ZIP SHA256 `870d0761ab0910e8e7b780c10a50a780a76d2046a5689ed52765a0499906ac3c`). This is still not a full PES game link or scene-rendering validation.
+
+### Headless Pipeline now uses the same RAII Device and Instance owners (2026-11-11)
+
+- Replaced the headless path's direct `VkInstance`/`VkDevice` destruction with `vk::instance::Instance` and `vk::device::Device` ownership objects, matching the Presenter path.
+- Pipeline stores owners only for headless bring-up; Presenter-supplied contexts remain borrowed and are never destroyed by Pipeline. On headless rollback and normal shutdown, dependent pipeline resources are released first, then Device, then Instance.
+- The raw handles retained in Pipeline State are non-owning operational aliases; the RAII objects are the destruction authorities. CI validation pending.
