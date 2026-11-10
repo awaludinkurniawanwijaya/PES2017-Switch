@@ -419,3 +419,15 @@ The next diagnostic build instruments the Horizon WSI acquire path in `wsi_switc
 - Tahap 2 masih belum lulus: belum ada bukti queue submit dan present sukses pada Switch fisik.
 
 - Follow-up commit `b480a65ba260f43a1804f3a9a35b6c931bb7c29d` corrects the diagnostic marker newline escapes and verifies that both `[LOG-TRACE]` strings are present as separate log lines. This is a source-level correction; it is not a runtime result or proof of a successful build.
+
+
+## WSI ownership fix based on BO2-360-NX reference (10 November 2026)
+
+The BO2-360-NX 1.1.0 reference wraps `nwindowGetDefault()` in its `ViNWindowSurface` and routes Vulkan presentation through that VI surface. Its Vulkan presenter does not call libnx `consoleUpdate()` while presenting through the same window. The PES smoke test previously continued to print and call `consoleUpdate()` after `vkCreateViSurfaceNN`, even though both the libnx console and Vulkan VI WSI use the default `NWindow`.
+
+This is a concrete ownership conflict in the PES diagnostic harness and a strong explanation for the last observed stop: after `vkAcquireNextImageKHR` returned `VK_SUCCESS`, the next `Log()` call synchronously called `consoleUpdate()` on the same default window. The exact runtime deadlock still requires confirmation on Switch; source inspection alone is not runtime proof.
+
+- Commit `d923082773440f1bdc27bb6fa60a442a5cf10d91` disables screen-console output and `consoleUpdate()` immediately after successful `vkCreateViSurfaceNN`; all later diagnostics continue to be flushed to the SD-card log.
+- Commit `1d130d92a64510ec9be1cbc592b29953effeebe7` corrects the newline escape in the guarded screen-output path.
+- This is a targeted correction to the harness, not a claim that the full frame loop or PES renderer is working. The next hardware result must show command-buffer recording, queue submission, and `vkQueuePresentKHR` completing.
+- The BO2 presenter also documents a separate NVK/Horizon synchronization issue: waiting on the acquire semaphore inside the GPU channel can stall subsequent GPU work. Its optional `present_wait_acquire_on_cpu` path uses an acquire fence and waits on the CPU instead. We will only adopt that path if the new log reaches submit and demonstrates the corresponding stall; it is not mixed into this first fix.
