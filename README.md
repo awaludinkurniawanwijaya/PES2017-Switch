@@ -517,3 +517,9 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - First SDK compile exposed the provider destroy API's `VkDevice&` contract; the RAII destructor and failed-adoption rollback now pass a local lvalue handle and clear the owned handle after destruction. The initial B2.20 SDK attempt failed at this compile point; the corrected commit is queued for CI revalidation.
 
 **B2.20 validation completed:** corrected implementation commit `3aa565024700e5999b0e33ecfd9b2858f49f6240` passed CTest and the BO2 Mesa Switch SDK probe. The SDK job compiled 26 Vulkan runtime translation units, including `device.cpp`; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42895784759/artifacts/13800372412 (ZIP SHA256 `d9dad4840b2c33f78dc0d346a3b94bae83cbff87b604f1d44c9c9784021a53fe`). The first attempt exposed the Provider destroy function's `VkDevice&` signature; the correction passed CI. This does not validate a full PES game link or scene rendering.
+
+### Inactive Pipeline shutdown clears failed bring-up metadata (2026-11-11)
+
+- `pipeline::Shutdown()` previously returned immediately when no logical Pipeline device had been adopted. A Presenter can successfully create a Device and then fail during later WSI bring-up before Pipeline adopts it; the logical Device is subsequently destroyed by Presenter, but Pipeline's earlier capability snapshot remained cached.
+- The no-device shutdown path now clears device-fault dispatch state, borrowed handle copies and all physical-device snapshots/capabilities through `ResetDeviceSnapshot()`. The normal shutdown path now reuses the same reset helper.
+- CI validation pending.
