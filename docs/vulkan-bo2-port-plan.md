@@ -216,3 +216,8 @@ Percobaan pertama setelah isolasi gagal sebelum kompilasi dimulai karena ekspans
 - `renderer_draw.cpp` dan `renderer_resolve.cpp`: belum dikompilasi pada target Switch karena `ppc/ppc_recomp_shared.h` tidak tersedia di CI publik.
 - Probe GIPA/instance/physical-device berhasil dibangun, ditautkan, dan dipaketkan sebagai NRO pada run tersebut; output diagnostik API pada Switch fisik belum dilaporkan.
 - Full PES link, device/WSI, segitiga RGB, dan rendering game: belum terbukti.
+### Pemeriksaan enumerasi presenter (11 November 2026)
+
+- Menambahkan helper enumerasi count/data dengan retry terbatas saat Vulkan mengembalikan `VK_INCOMPLETE`; dipakai untuk instance extensions, physical devices, queue families, surface formats, dan swapchain images.
+- Query `vkGetPhysicalDeviceSurfaceSupportKHR` kini memeriksa `VkResult` sebelum memakai nilai dukungan present.
+- Perubahan ini adalah hardening pada lifecycle yang masih monolitik, bukan pemisahan kelas instance/device ala BO2. Pemisahan ownership/dispatch tetap menjadi pekerjaan berikutnya setelah compile gate selesai.
