@@ -94,3 +94,8 @@ This is stronger than a swapchain-only test: it demonstrates that the transfer-c
 ## Next milestone: visible graphics-pipeline draw
 
 The next test must move beyond color clearing: implement a minimal graphics pipeline and issue `vkCmdDraw` on the PES-owned VI swapchain. Use the already-tested upstream `nvk_tri` shader, pipeline, and draw implementation as the reference, adapting it to the PES-owned swapchain rather than repeating the color-cycle test. The hardware acceptance criterion is an actual rendered primitive visible on the Switch display, with matching shader/pipeline/draw and present success in the log. Only after this passes should work proceed to textures, geometry/material resources, and integration with the PES renderer. A visible primitive is still a graphics smoke test, not a PES 2017 game scene.
+
+
+## PES-owned VI graphics pipeline implementation (10 November 2026)
+
+The next PES-owned NRO revision adapts the pinned upstream NXVK `nvk_tri` sample's `tri.vert` and `solid.frag` shaders. It stages the exact generated SPIR-V headers, creates one image view and framebuffer per VI swapchain image, creates a compatible render pass and graphics pipeline without vertex buffers, and records `vkCmdDraw(3, 1, 0, 0)` using `gl_VertexIndex`. The acquired image is rendered directly and presented through the existing VI WSI path. This source implementation is committed; CI build and physical Switch visual confirmation are pending. Acceptance requires an RGB triangle visibly rendered on the console, not merely successful pipeline creation logs. This still does not constitute PES game-scene rendering.
