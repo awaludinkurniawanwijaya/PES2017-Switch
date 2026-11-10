@@ -8,7 +8,8 @@
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
 #elif defined(__SWITCH__)
-// NXVK is linked as a static, loaderless Vulkan ICD on Horizon.
+// NXVK is linked statically on Horizon; follow BO2 and use its public
+// vkGetInstanceProcAddr export, not Mesa's ICD-private entry point.
 extern "C" PFN_vkVoidFunction VKAPI_CALL
 vkGetInstanceProcAddr(VkInstance instance, const char* name);
 #else
