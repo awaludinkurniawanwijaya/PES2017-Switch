@@ -530,3 +530,5 @@ Validation for B2.23 is pending.
 The offline/headless Pipeline path now creates an `Instance` owner and adopts the created logical device into a `Device` owner, just like the Presenter path. `Pipeline::State` retains `ownedInstance`/`ownedDevice` only for the headless mode; when initialized with a `BorrowedContext`, it retains no owners and cannot destroy Presenter resources. Headless rollback and normal Pipeline shutdown release descriptor/pipeline resources first, then Device, then Instance. Raw `VkInstance`/`VkDevice` fields in Pipeline remain non-owning operational aliases; RAII objects are the sole destruction authorities.
 
 Validation for B2.24 is pending.
+
+**B2.24 validation completed:** CTest and the Switch BO2 Mesa SDK probe passed for `436f3293dd2d4687bbd6f01d7eb882ecebb73595`. SDK result: 27 Vulkan runtime TUs compiled; two private PPC-dependent renderer TUs remain deferred. Diagnostic NRO artifact `13800529967`, ZIP SHA256 `048b5c0df00748be31a1c86b55d6692c7867b4179eaa279fb86e49bc8fc6a9b0`. Full-game linking and scene rendering remain unvalidated.
