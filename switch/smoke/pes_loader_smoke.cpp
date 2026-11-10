@@ -60,7 +60,7 @@ static void Log(const char* fmt, ...)
         va_copy(screenArgs, ap);
         vprintf(fmt, screenArgs);
         va_end(screenArgs);
-        printf("\\n");
+        printf("\n");
         consoleUpdate(nullptr);
     }
     va_end(ap);
