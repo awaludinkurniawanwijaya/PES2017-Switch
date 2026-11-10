@@ -456,3 +456,5 @@ Validation for B2.14 is pending.
 Added an explicit `snapshotPhysical` association for cached physical properties and core features. `CreateDevice` invalidates the association before a new attempt and binds the new snapshots to the selected physical handle. `Pipeline::Initialise` compares the borrowed/headless context's physical handle with that association and refreshes physical-only records if they differ. Shutdown clears the association. This closes the stale-snapshot case where a previous CreateDevice attempt succeeded but a later direct borrowed initialization supplied a different physical device.
 
 Validation pending.
+
+**Validation completed:** CTest and Switch BO2 Mesa SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`; 25 runtime TUs compiled, with two private PPC-dependent TUs deferred. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This does not prove full-game link or scene rendering.
