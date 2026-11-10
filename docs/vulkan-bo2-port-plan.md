@@ -538,3 +538,9 @@ Validation for B2.24 is pending.
 Added `vk::provider::Context` as an aggregate RAII owner for `Instance` and optional `Device`, with member declaration/destruction order guaranteeing Device teardown before Instance. It provides staged window bring-up (`Create(false)` → `SelectPresentationDevice(surface)` → `CreateLogicalDevice(...)`) and a headless selection path (`Create(true)` → `SelectHeadlessDevice()` → `CreateLogicalDevice(...)`). Accessors expose the owned objects and handles so Presenter and Pipeline can borrow them. This establishes the Provider owner/API but does not yet migrate existing Presenter/Pipeline call sites; the actual device capability negotiation still delegates to `pipeline::CreateDevice` pending the next extraction.
 
 Validation for B2.25 is pending.
+
+### B2.26 — Presenter delegates Device and Instance lifetime to Provider (2026-11-11)
+
+Migrated the window path from separate `instanceOwner`, `deviceOwner`, selected-physical and queue-family fields to one `std::unique_ptr<vk::provider::Context>`. Provider now owns the Instance and Device, selects a physical device compatible with the Presenter surface, creates/adopts the logical Device, and exposes its objects/handles. Presenter retains only the WSI surface, swapchain, frames and present-specific extension/feature policy. Pipeline borrows `Context::InstanceObject()` and `DeviceObject()` through `BorrowedContext`. Shutdown order remains: release swapchain/frame resources → Provider destroys Device → Presenter destroys surface → Provider Context releases Instance.
+
+Validation for B2.26 is pending.
