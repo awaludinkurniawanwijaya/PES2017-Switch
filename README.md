@@ -458,3 +458,5 @@ Extraction order: (1) centralize physical-device properties, memory properties a
 - Pipeline now caches the selected physical device's core `VkPhysicalDeviceFeatures` alongside physical-device properties and memory properties, and exposes a size-checked `GetPhysicalDeviceFeatures` accessor.
 - Presenter diagnostics consumes the cached supported-feature record instead of querying the physical device again. Feature-chain negotiation for extension-specific features remains at the subsystem that requests it.
 - This change is committed; CTest and Switch SDK validation are pending.
+
+**Validation completed for B2.12:** CTest and the BO2 Mesa Switch SDK probe passed for `6404803a77719e7edb629f79866df4e4c5ee94ce`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. This does not validate full PES game linking or scene rendering.
