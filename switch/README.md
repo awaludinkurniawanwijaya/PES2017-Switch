@@ -47,9 +47,10 @@ complete game-data launch path.
   completed VI swapchain creation, 120/120 acquire-submit-present cycles, and
   a three-phase `vkCmdClearColorImage` workload on NVK / Tegra X1. The user
   confirmed the changing color background was visible on the physical display.
-  A new PES-owned graphics-pipeline path now adapts the pinned upstream
-  `nvk_tri` shaders and `vkCmdDraw` pattern to the VI swapchain; CI and physical
-  visibility validation are pending.
+  A PES-owned graphics-pipeline path now adapts the pinned upstream
+  `nvk_tri` shaders and `vkCmdDraw` pattern to the VI swapchain. CI build passed
+  on commit `1c4f8e21`; the resulting NRO contains the pipeline and draw paths.
+  Physical visibility validation is the next gate.
 - The separate libnx bootstrap workflow has successfully built
   `pes2017-switch-bootstrap.nro` (about 283 KiB). It is a controller/thread
   diagnostic app, not the PES game.
@@ -57,9 +58,8 @@ complete game-data launch path.
 Host tests passed (11/11), and the bootstrap NRO was packaged successfully (about 759 KiB before compression).
 The runtime XInput translation unit still needs generated PPC headers for its
 full syntax check. The physical VI/GPU-clear smoke test proves that the PES-owned loader can
-acquire, submit, present, and visibly change swapchain pixels. The newly
-committed triangle pipeline is not yet hardware-validated; neither the PES
-renderer nor PES 2017 boot has been proven.
+acquire, submit, present, and visibly change swapchain pixels. The triangle pipeline NRO now builds successfully in CI, but is not yet
+hardware-validated; neither the PES renderer nor PES 2017 boot has been proven.
 
 ## Bootstrap build
 
@@ -145,7 +145,7 @@ PPC output.
 
 Urutan ini mengikuti pola presenter Vulkan pada pembanding BO2-360-NX: window/VI surface → device/queue → swapchain → acquire/synchronization → resource dan pipeline → draw → present. Pola tersebut dipakai sebagai panduan lifecycle, bukan menyalin renderer BO2 secara langsung.
 
-1. **Visible graphics-pipeline draw — aktif.** Source PES-owned sudah mengadaptasi shader `nvk_tri`, image view, render pass/framebuffer, graphics pipeline, dan `vkCmdDraw(3, 1, 0, 0)`. Selesaikan CI build, lalu uji NRO di Switch fisik. Gate hanya lulus jika segitiga RGB benar-benar terlihat dan log membuktikan pipeline, draw, submit, serta present sukses.
+1. **Visible graphics-pipeline draw — menunggu uji fisik.** Source PES-owned sudah mengadaptasi shader `nvk_tri`, image view, render pass/framebuffer, graphics pipeline, dan `vkCmdDraw(3, 1, 0, 0)`. CI build lulus pada commit `1c4f8e21`; NRO berhasil dipaketkan dan string diagnostik pipeline/draw terverifikasi di binary. Gate baru lulus jika segitiga RGB benar-benar terlihat pada Switch fisik dan log membuktikan pipeline, draw, submit, serta present sukses.
 2. **Resource grafis dasar.** Setelah primitive tampil, uji vertex/index buffer, upload buffer, texture/image, sampler, descriptor, depth/stencil, render target, layout transition, dan lifetime resource satu per satu. Jangan gabungkan semua resource dalam satu percobaan pertama.
 3. **Shader dan semantik Xenos.** Validasi Xenos-to-SPIR-V memakai shader PES representatif; periksa konstanta, texture sampling, blending, depth, format dan render-target behavior terhadap output acuan.
 4. **Integrasi renderer PES.** Hubungkan resource, shader, command recording, synchronization dan present ke backend Vulkan. Kriteria bukan sekadar pipeline berhasil dibuat, melainkan geometri/texture PES-owned benar-benar dirender.
@@ -177,4 +177,4 @@ be made until the corresponding test has been run on a physical Switch.
 
 ### Graphics pipeline implementation note (10 November 2026)
 
-The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`) from the same NXVK revision already used by CI. The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The render pass targets the acquired VI swapchain images directly and transitions them to `PRESENT_SRC_KHR`. CI compilation and physical-console display confirmation remain pending.
+The adaptation uses the exact pinned NXVK sample shader sources (`switch/smoke/shaders/tri.vert` and `solid.frag`) and generated headers (`tri_vert.h`, `solid_frag.h`) from the same NXVK revision already used by CI. The triangle is generated from `gl_VertexIndex`, so no vertex buffer or descriptor set is required. The render pass targets the acquired VI swapchain images directly and transitions them to `PRESENT_SRC_KHR`. CI compilation passed on 10 November 2026 (run [42783311807](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42783311807)); the NRO binary includes the pipeline and `vkCmdDraw` diagnostic paths. Physical-console display confirmation remains pending.
