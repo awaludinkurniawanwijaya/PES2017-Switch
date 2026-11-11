@@ -184,11 +184,18 @@ namespace
     void NoteFrameCost()
     {
         if constexpr (!diag::kOn) return;
-        timespec cpu{};
-        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu);
-        const int64_t cpuNow = int64_t(cpu.tv_sec) * 1000000000 + cpu.tv_nsec;
         const int64_t wallNow = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
+
+        // CLOCK_THREAD_CPUTIME_ID is not exposed by devkitA64/newlib.
+        // std::clock() is standard C/C++ and measures process CPU time; use
+        // wall time only if the C library reports that CPU time is unavailable.
+        const std::clock_t cpuTicks = std::clock();
+        const int64_t cpuNow = (cpuTicks == static_cast<std::clock_t>(-1))
+            ? wallNow
+            : static_cast<int64_t>(
+                static_cast<long double>(cpuTicks) * 1000000000.0L / CLOCKS_PER_SEC
+            );
         if (g.lastSwapWall)
         {
             g.frameCpu[FrameBin(double(cpuNow - g.lastSwapCpu) / 1e6)]++;
