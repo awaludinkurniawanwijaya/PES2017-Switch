@@ -164,6 +164,7 @@ jobs:
         with:
           repository: awaludinkurniawanwijaya/PES2017-Switch-PPC
           token: ${{ secrets.PES17_PPC_READ_TOKEN }}
+          ref: main
           path: .private-ppc
           persist-credentials: false
 
