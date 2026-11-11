@@ -9,6 +9,7 @@ on:
       - "switch/mesa/**"
       - "runtime/gpu/vulkan/**"
       - "CMakeLists.txt"
+      - "build-switch.sh"
       - ".github/workflows/switch-vulkan-bo2-sdk.yml"
 
 permissions:
@@ -22,6 +23,9 @@ jobs:
     steps:
       - name: Check out PES2017 source
         uses: actions/checkout@v4
+
+      - name: Validate full-runtime build script syntax
+        run: bash -n build-switch.sh
 
       - name: Download the pinned BO2 Switch build kit
         shell: bash
