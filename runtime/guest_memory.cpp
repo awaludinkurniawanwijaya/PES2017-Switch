@@ -42,6 +42,31 @@ namespace
 #ifdef __SWITCH__
     VirtmemReservation* g_reservation = nullptr;
     Handle g_physicalBank = INVALID_HANDLE;
+
+    constexpr bool SwitchCommitPageRange(uint32_t address, uint32_t size,
+                                         uint64_t& begin, uint64_t& end)
+    {
+        if (!size) return false;
+        constexpr uint64_t kPage = 0x1000;
+        const uint64_t requestBegin = uint64_t(address);
+        const uint64_t requestEnd = requestBegin + uint64_t(size);
+        if (requestEnd > kSpace) return false;
+        begin = requestBegin & ~(kPage - 1);
+        end = (requestEnd + kPage - 1) & ~(kPage - 1);
+        return end <= kSpace;
+    }
+
+    constexpr bool kLastPageRangeValid = [] {
+        uint64_t begin = 0, end = 0;
+        return SwitchCommitPageRange(0xFFFFFFF0u, 0x10u, begin, end) &&
+               begin == 0xFFFFF000ull && end == kSpace;
+    }();
+    constexpr bool kPastGuestEndRejected = [] {
+        uint64_t begin = 0, end = 0;
+        return !SwitchCommitPageRange(0xFFFFFFF0u, 0x11u, begin, end);
+    }();
+    static_assert(kLastPageRangeValid, "last guest page must remain committable");
+    static_assert(kPastGuestEndRejected, "guest commit must reject requests past 4 GiB");
 #endif
 }
 
@@ -53,21 +78,15 @@ bool guest::Commit(uint32_t address, uint32_t size)
     return VirtualAlloc(g_base + address, size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
 #elif defined(__SWITCH__)
     if (!g_base || !size) return false;
-    constexpr uint64_t kPage = 0x1000;
-    const uint64_t requestBegin = uint64_t(address);
-    const uint64_t requestEnd = requestBegin + uint64_t(size);
+    uint64_t begin = 0, end = 0;
     // Guest pointers are 32-bit offsets into exactly one 4 GiB reservation.
-    // Reject wrapped/out-of-range requests before deriving a host pointer or
-    // rounding the end up to a page boundary.
-    if (requestEnd > kSpace)
+    // Reject out-of-range requests before deriving a host pointer.
+    if (!SwitchCommitPageRange(address, size, begin, end))
     {
         LOGE("guest: Switch commit %08X + %08X exceeds the 4 GiB guest address space",
              address, size);
         return false;
     }
-    const uint64_t begin = requestBegin & ~(kPage - 1);
-    const uint64_t end = (requestEnd + kPage - 1) & ~(kPage - 1);
-    if (end > kSpace) return false;
     const uint64_t bankSize = uint64_t(guest::kPhysicalEnd - guest::kPhysicalBase);
     for (uint32_t window : { guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase })
     {
