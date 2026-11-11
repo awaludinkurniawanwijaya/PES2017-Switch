@@ -11,7 +11,7 @@ An experimental Nintendo Switch porting project for **Pro Evolution Soccer 2017 
 | PPC game-code source preparation | Generated source set available |
 | PPC source files | 1,418 files |
 | Runtime/kernel import handling | 212 implemented; 69 currently stubbed |
-| CI source checkout and staging | Passing |
+| Source checkout and staging | Passing |
 | Pinned BO2 Switch build kit download and verification | Passing |
 | Vulkan/Mesa probe build and link | Passing — build-environment smoke test only |
 | Full PES 2017 compilation and NRO packaging | In progress |
@@ -21,23 +21,11 @@ An experimental Nintendo Switch porting project for **Pro Evolution Soccer 2017 
 
 Progress figures describe the current development state and may change as implementation continues.
 
-## Latest build status
-
-The full build is automated with GitHub Actions:
-
-- [View the GitHub Actions workflow](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions)
-- [View the current build run](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42969104798)
-
-The latest recorded run successfully completed source checkout, source validation/staging, and BO2 Switch build-kit verification. The full compilation and packaging step is still running. The NRO upload step will only run after that step succeeds.
-
-A separate Vulkan/Mesa probe NRO has built successfully. It verifies part of the Switch build environment and graphics toolchain; it does **not** contain PES 2017 code or game assets and must not be treated as a playable build.
-
 ## Build environment and tools
 
 The project currently uses:
 
 - **Target platform:** Nintendo Switch
-- **Build automation:** [GitHub Actions](https://github.com/features/actions)
 - **PowerPC recompilation tool:** [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
 - **Switch build environment:** pinned BO2 Switch build kit
 - **Compiler/toolchain:** [devkitPro](https://devkitpro.org/) and [devkitA64](https://github.com/devkitPro/pacman-packages)
@@ -61,14 +49,14 @@ These values identify the executable input; the executable itself is not distrib
 
 ## Build process
 
-The supported full build currently runs through GitHub Actions. See the [Actions page](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions).
+The full build uses the repository's build scripts and the configured Nintendo Switch toolchain.
 
 A build is considered successful only when all of the following are complete:
 
 1. The full PPC source target compiles successfully.
 2. The Switch application links successfully.
 3. The application is packaged as an NRO.
-4. The workflow uploads the full PES 2017 NRO artifact.
+4. The resulting full PES 2017 NRO artifact is produced and made available.
 
 A successful build confirms compilation and packaging only. It does not prove that the game starts, that assets are integrated, or that gameplay works.
 
@@ -104,7 +92,6 @@ The following tools, libraries, and driver projects are relevant to the developm
 - [devkitPro](https://devkitpro.org/) / [devkitA64](https://github.com/devkitPro/pacman-packages) — Nintendo Switch homebrew toolchain.
 - [Vulkan](https://www.vulkan.org/) — graphics API.
 - [Mesa](https://www.mesa3d.org/) — open-source graphics driver project and upstream home of Turnip.
-- [GitHub Actions](https://github.com/features/actions) — automated build and validation workflows.
 
 ### Nintendo Switch Vulkan driver source
 
@@ -122,4 +109,4 @@ The three Turnip package feeds previously listed here (K11MCH1, StevenMXZ, and M
 - [Dear ImGui](https://github.com/ocornut/imgui) — immediate-mode user interface library.
 - [FFmpeg](https://ffmpeg.org/) — multimedia framework; the project includes an XMA-focused component.
 
-When reporting a problem, include the workflow run or build log, the device or emulator environment, and the steps needed to reproduce it. Do not attach copyrighted game files or assets to issue reports.
+When reporting a problem, include the build log, the device or emulator environment, and the steps needed to reproduce it. Do not attach copyrighted game files or assets to issue reports.
