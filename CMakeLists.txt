@@ -57,7 +57,7 @@ if(NOT PPC_RECOMP_SOURCES OR NOT EXISTS "${PPC_MAPPING_SOURCE}" OR NOT EXISTS "$
         "matching pes/default.xex before configuring the full runtime target. "
         "Required: ppc_recomp.*.cpp, ppc_func_mapping.cpp, and stubs_generated.cpp.")
 endif
-set(PPC_SOURCES ${PPC_RECOMP_SOURCES} "${PPC_MAPPING_SOURCE}" "${PPC_STUB_SOURCE}")
+set(PPC_SOURCES ${PPC_RECOMP_SOURCES} "${PPC_MAPPING_SOURCE}")
 
 add_library(ppc_recomp STATIC ${PPC_SOURCES})
 set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/third_party/XenonRecomp/thirdparty/simde")
