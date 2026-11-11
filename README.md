@@ -106,17 +106,16 @@ The following tools, libraries, and driver projects are relevant to the developm
 - [Mesa](https://www.mesa3d.org/) — open-source graphics driver project and upstream home of Turnip.
 - [GitHub Actions](https://github.com/features/actions) — automated build and validation workflows.
 
-### Graphics driver sources
+### Nintendo Switch Vulkan driver source
 
-The project supports custom Adreno Vulkan driver packages. The app's driver downloader currently references these release sources:
+The Switch graphics driver used by the BO2 Switch build kit is **Mesa NVK (Nouveau Vulkan)** for the NVIDIA Tegra X1 GM20B GPU under Horizon OS. It is not the Android Adreno Turnip driver.
 
-- [K11MCH1 / AdrenoToolsDrivers](https://github.com/K11MCH1/AdrenoToolsDrivers/releases) — Turnip release packages used for Adreno 6xx and 7xx devices.
-- [StevenMXZ / freedreno_turnip-CI](https://github.com/StevenMXZ/freedreno_turnip-CI/releases) — Turnip Gen8 release packages.
-- [MrPurple666 / purple-turnip](https://github.com/MrPurple666/purple-turnip/releases) — alternative unified Turnip packages.
-- [libadrenotools](https://github.com/bylaws/libadrenotools) — library used to load a user-selected custom Adreno driver without requiring root access.
+- [danfromtico/mesa-switch](https://github.com/danfromtico/mesa-switch) — upstream Mesa port for Nintendo Switch; the BO2 build kit pins base commit `1a8c1a66d6f`.
+- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — builds the Mesa/NVK driver using `tools/build_mesa.sh` and applies its [`patches/mesa-bo2zm.patch`](https://github.com/AlvaroEPena/bo2-360-nx/blob/main/patches/mesa-bo2zm.patch).
+- The build produces the static `libvulkan.a` library, which is linked into the Switch NRO through the kit's Switch CMake configuration. It is therefore bundled in the NRO, not installed as a separate Android driver package on the SD card.
 
-These are external driver/package sources, not drivers authored by this project. Driver availability and compatibility depend on the device GPU, Android version, and the individual package release. The app may use the device's system Vulkan driver when no compatible custom driver is selected.
-
+The three Turnip package feeds previously listed here (K11MCH1, StevenMXZ, and MrPurple666), together with libadrenotools, belong to the Android port's optional Adreno-driver feature. They are not the Switch NRO's Vulkan driver source.
+ 
 ### Other libraries
 
 - [SDL](https://github.com/libsdl-org/SDL) — cross-platform input and windowing library.
