@@ -163,7 +163,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: awaludinkurniawanwijaya/PES2017-Switch-PPC
-          token: ${{ github.token }}
+          token: ${{ secrets.PES17_PPC_READ_TOKEN }}
           path: .private-ppc
           persist-credentials: false
 
