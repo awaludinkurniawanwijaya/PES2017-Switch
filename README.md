@@ -32,17 +32,32 @@ The latest recorded run successfully completed source checkout, source validatio
 
 A separate Vulkan/Mesa probe NRO has built successfully. It verifies part of the Switch build environment and graphics toolchain; it does **not** contain PES 2017 code or game assets and must not be treated as a playable build.
 
-## Build environment
+## Build environment and tools
 
 The project currently uses:
 
 - **Target platform:** Nintendo Switch
 - **Build automation:** GitHub Actions
+- **PowerPC recompilation tool:** [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
 - **Switch build environment:** pinned BO2 Switch build kit
 - **Compiler/toolchain:** devkitPro and devkitA64
 - **Graphics components:** Vulkan and Mesa components provided by the configured build environment
 
 Build scripts and workflow configuration are maintained in this repository. The full build also requires the prepared PPC source tree to be made available to the workflow. Game assets are handled separately and are not included in this repository.
+
+## Executable information
+
+The Xbox 360 executable used as the input for this project has the following identifying properties:
+
+| Property | Value |
+|---|---|
+| Executable | `default.xex` |
+| Title ID | `0x4A3007D1` |
+| XEX version | `0x00000012` |
+| File size | `32,493,568 bytes` |
+| SHA-256 | `b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6` |
+
+These values identify the executable input; the executable itself is not distributed in this repository.
 
 ## Build process
 
