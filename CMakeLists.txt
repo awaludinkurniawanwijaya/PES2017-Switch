@@ -401,6 +401,14 @@ endif()
 
 # ---- XMA decoder ----------------------------------------------------------
 add_subdirectory(third_party/ffmpeg-xenia)
+# devkitPro's sysroot may also provide FFmpeg headers. The runtime requires
+# Xenia's fork, which adds AV_CODEC_ID_XMAFRAMES; put that exact fetched source
+# tree ahead of sysroot include paths so xma.cpp cannot pick stock FFmpeg.
+FetchContent_GetProperties(ffmpeg_xma SOURCE_DIR PES17_FFMPEG_XMA_SOURCE_DIR)
+if(NOT EXISTS "${PES17_FFMPEG_XMA_SOURCE_DIR}/libavcodec/codec_id.h")
+    message(FATAL_ERROR "Xenia FFmpeg codec_id.h was not fetched")
+endif()
+target_include_directories(pes17 BEFORE PRIVATE "${PES17_FFMPEG_XMA_SOURCE_DIR}")
 target_link_libraries(pes17 PRIVATE ffmpeg_xma)
 
 # ---- Vulkan ----------------------------------------------------------------
