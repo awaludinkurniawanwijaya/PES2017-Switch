@@ -106,12 +106,14 @@ if(PES17_SWITCH)
     # the Switch audio and HID adapters. The bootstrap main is a separate app.
     list(REMOVE_ITEM RUNTIME_SOURCES
         "${CMAKE_SOURCE_DIR}/runtime/platform.cpp"
-        # debug_watch uses POSIX mprotect and is only called by the desktop/
-        # Android signal-fault handler; the Switch crash path has no such hook.
-        "${CMAKE_SOURCE_DIR}/runtime/gpu/debug_watch.cpp")
+        # These write-watch implementations depend on POSIX mprotect and the
+        # desktop signal-fault handler. Switch uses explicit no-watch fallbacks.
+        "${CMAKE_SOURCE_DIR}/runtime/gpu/debug_watch.cpp"
+        "${CMAKE_SOURCE_DIR}/runtime/gpu/memory_watch.cpp")
     list(APPEND RUNTIME_SOURCES
         "${CMAKE_SOURCE_DIR}/runtime/switch/platform.cpp"
         "${CMAKE_SOURCE_DIR}/runtime/switch/audio.cpp"
+        "${CMAKE_SOURCE_DIR}/runtime/switch/memory_watch.cpp"
         "${CMAKE_SOURCE_DIR}/switch/source/input.cpp")
 endif()
 
