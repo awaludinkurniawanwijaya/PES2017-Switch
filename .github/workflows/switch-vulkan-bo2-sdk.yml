@@ -105,6 +105,23 @@ jobs:
                 --icon=/opt/devkitpro/libnx/default_icon.jpg --nacp=/work/pes17-vulkan-bo2-probe.nacp
               test -s /work/pes17-vulkan-bo2-probe.nro
               ls -lh /work/pes17-vulkan-bo2-probe.nro
+
+              echo "==> Configure the native PES17_SWITCH CMake target with CI-only PPC stand-ins"
+              # The private title-specific PPC output and XEX are intentionally
+              # absent from public CI. Empty stand-ins validate CMake target,
+              # toolchain, SDK, archive and NRO packaging configuration only;
+              # they are never compiled or shipped as game code.
+              trap 'rm -rf /work/ppc /tmp/pes17-switch-cmake' EXIT
+              mkdir -p /work/ppc
+              : > /work/ppc/ppc_recomp.ci.cpp
+              : > /work/ppc/ppc_func_mapping.cpp
+              : > /work/ppc/stubs_generated.cpp
+              cmake -S /work -B /tmp/pes17-switch-cmake \
+                -DCMAKE_TOOLCHAIN_FILE=/work/cmake/switch-toolchain.cmake \
+                -DPES17_SWITCH=ON -DPES17_USE_SDL=OFF \
+                -DPES17_SWITCH_VULKAN_SDK=/mesa-sdk \
+                -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
+              echo "PASS: native Switch CMake target configured against the pinned BO2 Mesa SDK"
             '
 
       - name: Upload BO2 Mesa Vulkan probe NRO
