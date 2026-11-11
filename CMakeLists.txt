@@ -104,7 +104,11 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS
 if(PES17_SWITCH)
     # Replace the desktop POSIX platform implementation with libnx and add
     # the Switch audio and HID adapters. The bootstrap main is a separate app.
-    list(REMOVE_ITEM RUNTIME_SOURCES "${CMAKE_SOURCE_DIR}/runtime/platform.cpp")
+    list(REMOVE_ITEM RUNTIME_SOURCES
+        "${CMAKE_SOURCE_DIR}/runtime/platform.cpp"
+        # debug_watch uses POSIX mprotect and is only called by the desktop/
+        # Android signal-fault handler; the Switch crash path has no such hook.
+        "${CMAKE_SOURCE_DIR}/runtime/gpu/debug_watch.cpp")
     list(APPEND RUNTIME_SOURCES
         "${CMAKE_SOURCE_DIR}/runtime/switch/platform.cpp"
         "${CMAKE_SOURCE_DIR}/runtime/switch/audio.cpp"
