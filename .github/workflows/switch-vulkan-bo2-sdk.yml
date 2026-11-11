@@ -8,6 +8,7 @@ on:
     paths:
       - "switch/mesa/**"
       - "runtime/gpu/vulkan/**"
+      - "runtime/**"
       - "CMakeLists.txt"
       - "build-switch.sh"
       - ".github/workflows/switch-vulkan-bo2-sdk.yml"
