@@ -47,11 +47,17 @@ set(PES17_TITLE "sp")
 set(PES17_VERSION "tu0")
 set(PES17_PPC_DIR "${CMAKE_SOURCE_DIR}/ppc")
 
-file(GLOB PPC_SOURCES CONFIGURE_DEPENDS "${PES17_PPC_DIR}/ppc_recomp.*.cpp")
-list(APPEND PPC_SOURCES "${PES17_PPC_DIR}/ppc_func_mapping.cpp")
-if(NOT PPC_SOURCES)
-    message(FATAL_ERROR "${PES17_PPC_DIR} is empty -- run TITLE=${PES17_TITLE} VERSION=${PES17_VERSION} ./build.sh first to generate it")
-endif()
+file(GLOB PPC_RECOMP_SOURCES CONFIGURE_DEPENDS "${PES17_PPC_DIR}/ppc_recomp.*.cpp")
+set(PPC_MAPPING_SOURCE "${PES17_PPC_DIR}/ppc_func_mapping.cpp")
+set(PPC_STUB_SOURCE "${PES17_PPC_DIR}/stubs_generated.cpp")
+if(NOT PPC_RECOMP_SOURCES OR NOT EXISTS "${PPC_MAPPING_SOURCE}" OR NOT EXISTS "${PPC_STUB_SOURCE}")
+    message(FATAL_ERROR
+        "Generated PES 2017 PPC output is incomplete in ${PES17_PPC_DIR}. "
+        "Run TITLE=${PES17_TITLE} VERSION=${PES17_VERSION} ./build.sh with the legally obtained "
+        "matching pes/default.xex before configuring the full runtime target. "
+        "Required: ppc_recomp.*.cpp, ppc_func_mapping.cpp, and stubs_generated.cpp.")
+endif
+set(PPC_SOURCES ${PPC_RECOMP_SOURCES} "${PPC_MAPPING_SOURCE}")()
 
 add_library(ppc_recomp STATIC ${PPC_SOURCES})
 set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/third_party/XenonRecomp/thirdparty/simde")
