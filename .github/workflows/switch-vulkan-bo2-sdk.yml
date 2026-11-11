@@ -111,7 +111,7 @@ jobs:
               # absent from public CI. Empty stand-ins validate CMake target,
               # toolchain, SDK, archive and NRO packaging configuration only;
               # they are never compiled or shipped as game code.
-              trap 'rm -rf /work/ppc /tmp/pes17-switch-cmake' EXIT
+              trap "rm -rf /work/ppc /tmp/pes17-switch-cmake" EXIT
               mkdir -p /work/ppc
               : > /work/ppc/ppc_recomp.ci.cpp
               : > /work/ppc/ppc_func_mapping.cpp
