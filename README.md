@@ -37,11 +37,11 @@ A separate Vulkan/Mesa probe NRO has built successfully. It verifies part of the
 The project currently uses:
 
 - **Target platform:** Nintendo Switch
-- **Build automation:** GitHub Actions
+- **Build automation:** [GitHub Actions](https://github.com/features/actions)
 - **PowerPC recompilation tool:** [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
 - **Switch build environment:** pinned BO2 Switch build kit
-- **Compiler/toolchain:** devkitPro and devkitA64
-- **Graphics components:** Vulkan and Mesa components provided by the configured build environment
+- **Compiler/toolchain:** [devkitPro](https://devkitpro.org/) and [devkitA64](https://github.com/devkitPro/pacman-packages)
+- **Graphics components:** [Vulkan](https://www.vulkan.org/) and [Mesa](https://www.mesa3d.org/) components provided by the configured build environment
 
 Build scripts and workflow configuration are maintained in this repository. The full build also requires the prepared PPC source tree to be made available to the workflow. Game assets are handled separately and are not included in this repository.
 
@@ -91,8 +91,36 @@ This is an independent, experimental project and is not affiliated with, endorse
 
 Third-party build tools and libraries remain subject to their own licenses and terms. Review and comply with those terms when building or redistributing binaries.
 
-## Contributing and issue reports
+## Contributing, tools, and acknowledgements
 
-The project is experimental. Please report reproducible build errors, startup failures, missing-resource problems, or runtime issues through [GitHub Issues](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/issues).
+The project is experimental. Contributions, reproducible bug reports, build fixes, compatibility reports, and testing feedback are welcome through [GitHub Issues](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/issues).
+
+The following tools, libraries, and driver projects are relevant to the development and graphics-driver support:
+
+### Build and development tools
+
+- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — PowerPC recompilation tool.
+- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — Switch build environment reference used for the configured build kit.
+- [devkitPro](https://devkitpro.org/) / [devkitA64](https://github.com/devkitPro/pacman-packages) — Nintendo Switch homebrew toolchain.
+- [Vulkan](https://www.vulkan.org/) — graphics API.
+- [Mesa](https://www.mesa3d.org/) — open-source graphics driver project and upstream home of Turnip.
+- [GitHub Actions](https://github.com/features/actions) — automated build and validation workflows.
+
+### Graphics driver sources
+
+The project supports custom Adreno Vulkan driver packages. The app's driver downloader currently references these release sources:
+
+- [K11MCH1 / AdrenoToolsDrivers](https://github.com/K11MCH1/AdrenoToolsDrivers/releases) — Turnip release packages used for Adreno 6xx and 7xx devices.
+- [StevenMXZ / freedreno_turnip-CI](https://github.com/StevenMXZ/freedreno_turnip-CI/releases) — Turnip Gen8 release packages.
+- [MrPurple666 / purple-turnip](https://github.com/MrPurple666/purple-turnip/releases) — alternative unified Turnip packages.
+- [libadrenotools](https://github.com/bylaws/libadrenotools) — library used to load a user-selected custom Adreno driver without requiring root access.
+
+These are external driver/package sources, not drivers authored by this project. Driver availability and compatibility depend on the device GPU, Android version, and the individual package release. The app may use the device's system Vulkan driver when no compatible custom driver is selected.
+
+### Other libraries
+
+- [SDL](https://github.com/libsdl-org/SDL) — cross-platform input and windowing library.
+- [Dear ImGui](https://github.com/ocornut/imgui) — immediate-mode user interface library.
+- [FFmpeg](https://ffmpeg.org/) — multimedia framework; the project includes an XMA-focused component.
 
 When reporting a problem, include the workflow run or build log, the device or emulator environment, and the steps needed to reproduce it. Do not attach copyrighted game files or assets to issue reports.
