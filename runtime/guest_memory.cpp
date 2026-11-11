@@ -54,8 +54,20 @@ bool guest::Commit(uint32_t address, uint32_t size)
 #elif defined(__SWITCH__)
     if (!g_base || !size) return false;
     constexpr uint64_t kPage = 0x1000;
-    const uint64_t begin = uint64_t(address) & ~(kPage - 1);
-    const uint64_t end = (uint64_t(address) + size + kPage - 1) & ~(kPage - 1);
+    const uint64_t requestBegin = uint64_t(address);
+    const uint64_t requestEnd = requestBegin + uint64_t(size);
+    // Guest pointers are 32-bit offsets into exactly one 4 GiB reservation.
+    // Reject wrapped/out-of-range requests before deriving a host pointer or
+    // rounding the end up to a page boundary.
+    if (requestEnd > kSpace)
+    {
+        LOGE("guest: Switch commit %08X + %08X exceeds the 4 GiB guest address space",
+             address, size);
+        return false;
+    }
+    const uint64_t begin = requestBegin & ~(kPage - 1);
+    const uint64_t end = (requestEnd + kPage - 1) & ~(kPage - 1);
+    if (end > kSpace) return false;
     const uint64_t bankSize = uint64_t(guest::kPhysicalEnd - guest::kPhysicalBase);
     for (uint32_t window : { guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase })
     {
