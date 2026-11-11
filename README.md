@@ -215,7 +215,17 @@ Target ini menghasilkan `pes2017-switch-bootstrap.nro`. Fungsinya menguji inisia
 
 ### 6.4 Full runtime Switch
 
-Konfigurasi full runtime menggunakan toolchain `cmake/switch-toolchain.cmake`, opsi `PES17_SWITCH=ON`, PPC hasil recompilation, manifest XEX yang cocok, dan SDK Mesa Horizon statis hasil build mengikuti BO2. Set `PES17_SWITCH_VULKAN_SDK` atau `MESA_SDK` ke direktori `opt/devkitpro/portlibs/switch` hasil instalasi Mesa. Opsi `PES17_SWITCH_USE_LEGACY_NXVK=ON` hanya untuk jalur cadangan. SDK untuk probe di CI diambil dari build kit BO2 rilis yang dipatok; build full runtime PES tetap belum diverifikasi.
+Konfigurasi full runtime menggunakan toolchain `cmake/switch-toolchain.cmake`, opsi `PES17_SWITCH=ON`, PPC hasil recompilation, manifest XEX yang cocok, dan SDK Mesa Horizon statis hasil build mengikuti BO2. Set `PES17_SWITCH_VULKAN_SDK` atau `MESA_SDK` ke direktori `opt/devkitpro/portlibs/switch` hasil instalasi Mesa. Opsi `PES17_SWITCH_USE_LEGACY_NXVK=ON` hanya untuk jalur cadangan. Script `build-switch.sh` memeriksa SDK aktif (header Vulkan, `libvulkan.a`, `libzstd.a`, serta arsip devkitPro) sebelum menjalankan CMake dan menghasilkan NRO.
+
+Contoh setelah `build.sh` berhasil membuat `ppc/` dari XEX milik sendiri:
+
+```sh
+export DEVKITPRO=/opt/devkitpro
+export PES17_SWITCH_VULKAN_SDK=/opt/devkitpro/portlibs/switch
+./build-switch.sh
+```
+
+Letakkan `build-switch/pes17.nro` di SD card sebagai `switch/PES2017/pes17.nro`. Salin XEX yang sama dengan yang dipakai saat recompilation beserta seluruh data game hasil ekstraksi ke `sdmc:/switch/PES2017/game/`; runtime memverifikasi SHA-256 `default.xex` terhadap manifest PPC sebelum menjalankan entry point. SDK probe CI memakai build kit BO2 rilis yang dipatok; validasi konfigurasi CMake dan kompilasi adapter bukan bukti full-game link atau gameplay.
 
 ## 7. Otomasi GitHub Actions
 
