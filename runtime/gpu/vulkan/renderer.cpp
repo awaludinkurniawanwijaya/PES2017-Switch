@@ -103,6 +103,17 @@ static void RollbackInitialise()
         vkDestroyQueryPool(g.device, g.guestQueries, nullptr);
         g.guestQueries = VK_NULL_HANDLE;
     }
+    // Timestamp pools may have been created before a later initialisation
+    // step failed (for example, fence or arena allocation). Roll them back
+    // here as well, so a retry does not leak one pool per failed attempt.
+    for (auto& timing : g.passTiming)
+    {
+        if (timing.pool) vkDestroyQueryPool(g.device, timing.pool, nullptr);
+        timing.pool = VK_NULL_HANDLE;
+        timing.count = 0;
+    }
+    g.timingOn = false;
+    g.timedPass = ~0u;
     if (g.setupCommands)
     {
         vkDestroyCommandPool(g.device, g.setupCommands, nullptr);
