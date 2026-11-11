@@ -89,6 +89,18 @@ jobs:
                 compiled=$((compiled + 1))
               done
               echo "PASS: compiled all $compiled PES Vulkan runtime translation units, including draw and resolve"
+              # Compile the actual Switch platform adapters as well; the
+              # bootstrap workflow does not include these full-runtime sources.
+              for source in runtime/switch/platform.cpp runtime/switch/audio.cpp switch/source/input.cpp; do
+                object="/tmp/$(basename "${source%.cpp}").switch.o"
+                echo "Compile PES Switch platform adapter: $source"
+                "${compiler}-g++" -std=c++20 -O2 $common -pthread \
+                  -D__SWITCH__=1 -DPES17_SWITCH=1 -D_GNU_SOURCE=1 -D_DEFAULT_SOURCE=1 \
+                  -Iruntime -Iswitch/source -Iswitch/include \
+                  -I/opt/devkitpro/libnx/include -I/opt/devkitpro/portlibs/switch/include \
+                  -c "$source" -o "$object"
+              done
+              echo "PASS: compiled libnx platform, audio, and controller adapters"
               "${compiler}-gcc" $common -c switch/mesa/elf_stubs.c -o /tmp/pes-elf-stubs.o
               "${compiler}-g++" -std=c++20 -O2 $common -D__SWITCH__=1 \
                 -I/mesa-sdk/include -I/opt/devkitpro/libnx/include \
