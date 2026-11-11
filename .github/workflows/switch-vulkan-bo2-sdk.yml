@@ -159,21 +159,11 @@ jobs:
       - name: Check out PES2017 source
         uses: actions/checkout@v4
 
-      - name: Validate private PPC repository settings
-        env:
-          PPC_REPOSITORY: ${{ vars.PES17_PPC_REPOSITORY }}
-          PPC_READ_TOKEN: ${{ secrets.PES17_PPC_READ_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$PPC_REPOSITORY" || { echo "::error::Set repository variable PES17_PPC_REPOSITORY to owner/private-repo"; exit 1; }
-          test -n "$PPC_READ_TOKEN" || { echo "::error::Set secret PES17_PPC_READ_TOKEN (read-only access to the private PPC repo)"; exit 1; }
-
       - name: Check out private generated PPC
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.PES17_PPC_REPOSITORY }}
-          token: ${{ secrets.PES17_PPC_READ_TOKEN }}
+          repository: awaludinkurniawanwijaya/PES2017-Switch-PPC
+          token: ${{ github.token }}
           path: .private-ppc
           persist-credentials: false
 
