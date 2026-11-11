@@ -188,7 +188,7 @@ namespace
             std::chrono::steady_clock::now().time_since_epoch()).count();
 
         // CLOCK_THREAD_CPUTIME_ID is not exposed by devkitA64/newlib.
-        // std::clock() is standard C/C++ and measures process CPU time; use
+        // std::clock() is standard C/C++ and measures process-wide CPU time; use
         // wall time only if the C library reports that CPU time is unavailable.
         const std::clock_t cpuTicks = std::clock();
         const int64_t cpuNow = (cpuTicks == static_cast<std::clock_t>(-1))
