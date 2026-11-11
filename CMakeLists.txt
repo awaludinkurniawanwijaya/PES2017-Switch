@@ -56,7 +56,7 @@ if(NOT PPC_RECOMP_SOURCES OR NOT EXISTS "${PPC_MAPPING_SOURCE}" OR NOT EXISTS "$
         "Run TITLE=${PES17_TITLE} VERSION=${PES17_VERSION} ./build.sh with the legally obtained "
         "matching pes/default.xex before configuring the full runtime target. "
         "Required: ppc_recomp.*.cpp, ppc_func_mapping.cpp, and stubs_generated.cpp.")
-endif
+endif()
 set(PPC_SOURCES ${PPC_RECOMP_SOURCES} "${PPC_MAPPING_SOURCE}")
 
 add_library(ppc_recomp STATIC ${PPC_SOURCES})
