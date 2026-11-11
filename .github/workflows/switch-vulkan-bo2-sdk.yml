@@ -154,7 +154,7 @@ jobs:
     name: Build full PES 2017 Switch NRO (private PPC)
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     steps:
       - name: Check out PES2017 source
         uses: actions/checkout@v4
