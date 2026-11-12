@@ -102,14 +102,18 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/*.cpp")
 
 if(PES17_SWITCH)
-    # Replace the desktop POSIX platform implementation with libnx and add
-    # the Switch audio and HID adapters. The bootstrap main is a separate app.
-    list(REMOVE_ITEM RUNTIME_SOURCES
-        "${CMAKE_SOURCE_DIR}/runtime/platform.cpp"
-        # These write-watch implementations depend on POSIX mprotect and the
-        # desktop signal-fault handler. Switch uses explicit no-watch fallbacks.
-        "${CMAKE_SOURCE_DIR}/runtime/gpu/debug_watch.cpp"
-        "${CMAKE_SOURCE_DIR}/runtime/gpu/memory_watch.cpp")
+    # Replace desktop POSIX implementations with libnx adapters. Filter by
+    # suffix rather than exact absolute path: CMake's glob may retain a
+    # differently-normalized path, which would otherwise compile POSIX-only
+    # sources (for example debug_watch.cpp includes sys/mman.h) for Horizon.
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/platform\\.cpp$")
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/gpu/debug_watch\\.cpp$")
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/gpu/memory_watch\\.cpp$")
+    foreach(_PES17_SWITCH_SOURCE IN LISTS RUNTIME_SOURCES)
+        if(_PES17_SWITCH_SOURCE MATCHES "/runtime/(platform\\.cpp|gpu/(debug_watch|memory_watch)\\.cpp)$")
+            message(FATAL_ERROR "POSIX-only source unexpectedly selected for Switch: ${_PES17_SWITCH_SOURCE}")
+        endif()
+    endforeach()
     list(APPEND RUNTIME_SOURCES
         "${CMAKE_SOURCE_DIR}/runtime/switch/platform.cpp"
         "${CMAKE_SOURCE_DIR}/runtime/switch/audio.cpp"
