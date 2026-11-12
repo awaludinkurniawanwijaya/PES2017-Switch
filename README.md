@@ -133,7 +133,7 @@ Keberadaan source code adapter tidak berarti semua fungsi sudah diuji pada beban
 
 ### 4.4 Backend Vulkan native (arah utama: BO2-360-NX)
 
-Arah utama grafis diubah: hentikan pengembangan/integrasi NXVK sebagai backend aktif dan gunakan implementasi Vulkan native dengan pola arsitektur BO2-360-NX. BO2 menjadi referensi utama untuk lifecycle aplikasi, Vulkan instance/device, dispatch fungsi, VI surface, swapchain, presenter, resource, command submission, dan present. NXVK beserta source, konfigurasi, dan hasil eksperimennya tetap disimpan pada branch cadangan; jangan dihapus atau dicampur ke jalur Vulkan baru.
+Arah utama grafis diubah: hentikan pengembangan/integrasi NXVK sebagai backend aktif dan gunakan implementasi Vulkan native dengan pola arsitektur BO2-360-NX. BO2 menjadi referensi utama untuk lifecycle aplikasi, Vulkan instance/device, dispatch fungsi, VI surface, swapchain, presenter, resource, commdan submission, dan present. NXVK beserta source, konfigurasi, dan hasil eksperimennya tetap disimpan pada branch cadangan; jangan dihapus atau dicampur ke jalur Vulkan baru.
 
 Hasil lama NXVK/NVK (VI swapchain dan GPU color-clear yang terlihat pada Switch fisik) dicatat sebagai bukti eksperimen historis, bukan fondasi backend aktif. Belum ada bukti bahwa backend Vulkan native bergaya BO2 telah berjalan di PES pada perangkat fisik. Target visual pertama tetap segitiga RGB, kemudian resource/shader, lalu renderer PES.
 
@@ -195,8 +195,8 @@ GAME="$HOME/storage/shared/PES2017-Extracted" \
 XEX_VERSION=0x00000012 \
 RECOMPILE_ONLY=1 \
 JOBS=4 \
-CMAKE_CC="$(command -v clang)" \
-CMAKE_CXX="$(command -v clang++)" \
+CMAKE_CC="$(commdan -v clang)" \
+CMAKE_CXX="$(commdan -v clang++)" \
 ./build.sh
 ```
 
@@ -235,7 +235,7 @@ Workflow yang berada di repositori:
 |---|---|---|
 | `main.yml` | Test otomatis di GitHub Actions | Menguji test suite, bukan menjalankan game |
 | `switch-nro.yml` | Build dan verifikasi bootstrap libnx NRO | Membuktikan bootstrap dapat dikompilasi dan dipaketkan |
-| `switch-nvk-spike.yml` | Workflow historis NXVK, manual-only | Tidak berjalan otomatis dan bukan workflow validasi backend aktif |
+| `switch-nvk-spike.yml` | Workflow historis NXVK, manual-hanya | Tidak berjalan otomatis dan bukan workflow validasi backend aktif |
 
 
 Lihat [riwayat GitHub Actions](../../actions) untuk status run dan artefak yang tersedia.
@@ -266,7 +266,7 @@ Branch cadangan NXVK: [backup/nxvk-before-vulkan-bo2-direction](https://github.c
 Gunakan source BO2-360-NX sebagai referensi utama, terutama:
 
 - `sdk/src/ui/windowed_app_context_switch.cpp` — lifecycle aplikasi/window dan konteks Switch.
-- `sdk/src/ui/vulkan/vulkan_device.cpp` — instance, physical device, logical device, queue, dan pemuatan fungsi.
+- `sdk/src/ui/vulkan/vulkan_device.cpp` — instance, perangkat fisik, perangkat logis, queue, dan pemuatan fungsi.
 - `sdk/src/ui/vulkan/vulkan_presenter.cpp` — VI surface, swapchain, acquire, synchronization, dan present.
 - `app/src/native/bo2zm_native_system.cpp` — integrasi sistem native.
 - `app/src/native/render/bo2zm_native_render.cpp` — alur renderer native.
@@ -281,10 +281,10 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 |---|---|---|---|
 | V0. Audit BO2 dan baseline PES | Audit lima file BO2 di atas; petakan entrypoint, instance/device dispatch, VI surface, swapchain, queue, synchronization, resource, dan presenter ke struktur proyek PES. Catat perbedaan dan dependensi. | Dokumen mapping file/fungsi BO2 → modul PES; tidak ada asumsi tanpa pemeriksaan source. | **Selesai — `docs/vulkan-bo2-port-plan.md`** |
 | V1. Isolasi NXVK | Inventarisasi dependency, include/link path, ICD entrypoint, workflow, dan smoke test. Pisahkan adapter driver dari loader generik. Pertahankan source dan build cadangan. | Workflow lama manual-only; entrypoint driver terisolasi; dependency driver tercatat secara eksplisit. | **Sebagian — NXVK menjadi opsi legacy eksplisit; CMake default meminta SDK Mesa Horizon statis dan menautkan `vulkan`, `expat`, `zstd`, `z`, `nx` mengikuti urutan BO2** |
-| V2. Vulkan native foundation | Ekstrak loader/entrypoint Vulkan dan instance/device dispatch menjadi komponen berorientasi objek mengikuti pola BO2; buat pemilihan physical device, queue family, logical device, dan lifecycle cleanup. | Instance/device memiliki ownership dan dispatch terpisah seperti BO2; init NRO berhasil dengan log per tahap. | **Sebagian — entrypoint publik `vkGetInstanceProcAddr` diarahkan ke `libvulkan.a`; provider kini memiliki instance lifecycle dan physical-device selection, serta factory logical-device untuk presenter; pipeline-global device policy tetap dipakai** |
+| V2. Vulkan native foundation | Ekstrak loader/entrypoint Vulkan dan instance/device dispatch menjadi komponen berorientasi objek mengikuti pola BO2; buat pemilihan perangkat fisik, keluarga antrean, perangkat logis, dan lifecycle cleanup. | Instance/device memiliki ownership dan dispatch terpisah seperti BO2; init NRO berhasil dengan log per tahap. | **Sebagian — entrypoint publik `vkGetInstanceProcAddr` diarahkan ke `libvulkan.a`; provider kini memiliki instance lifecycle dan physical-device selection, serta factory logical-device untuk presenter; pipeline-global device policy tetap dipakai** |
 | V3. VI surface dan swapchain | Port pola BO2 untuk VI surface, capability/format, swapchain, image enumeration, acquire, synchronization, submit, dan present. | Frame dipresentasikan stabil pada Switch fisik; log per tahap lengkap. | **Belum dikerjakan** |
-| V4. Render target dan framebuffer | Implementasikan image/memory/view, render pass atau dynamic rendering sesuai dukungan, framebuffer, dan resource lifetime dengan dispatch yang benar. | Pembuatan resource dan framebuffer sukses; tidak ada null dispatch atau crash. | **Belum dikerjakan** |
-| V5. Shader, pipeline, dan draw | Buat shader vertex/fragment sederhana, pipeline layout, graphics pipeline, viewport/scissor, dan `vkCmdDraw(3,1,0,0)`. | Segitiga RGB benar-benar terlihat di layar Switch; log pipeline, draw, submit, dan present sukses. | **Belum dikerjakan** |
+| V4. Render target dan framebuffer | Implementasikan image/memory/view, render pass atau dynamic rendering sesuai dukungan, framebuffer, dan masa hidup resource dengan dispatch yang benar. | Pembuatan resource dan framebuffer sukses; tidak ada null dispatch atau crash. | **Belum dikerjakan** |
+| V5. Shader, pipeline, dan draw | Buat shader vertex/fragment sederhana, layout pipeline, graphics pipeline, viewport/scissor, dan `vkCmdDraw(3,1,0,0)`. | Segitiga RGB benar-benar terlihat di layar Switch; log pipeline, draw, submit, dan present sukses. | **Belum dikerjakan** |
 | V6. Resource grafis | Tambahkan vertex/index buffer, upload, texture/image, sampler, descriptor, depth/stencil, dan render target. | Tiap jenis resource memiliki smoke test terpisah yang lulus pada hardware. | **Belum dikerjakan** |
 | V7. Shader dan semantik Xenos | Implementasikan/validasi translator shader PES/Xenos ke SPIR-V, konstanta, texture sampling, blending, depth, dan render target. | Fixture shader/scene representatif menghasilkan output yang dapat dibandingkan. | **Belum dikerjakan** |
 | V8. Renderer PES | Hubungkan command/resource model Xenos dan shader PES ke backend Vulkan native. | Scene PES-owned dengan aset lokal milik pengguna tampil benar; bukan hanya segitiga tes. | **Belum dikerjakan** |
@@ -298,7 +298,7 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 - Jalur default CMake sekarang memakai `PES17_SWITCH_VULKAN_SDK` dan `libvulkan.a`, dengan urutan dependensi statis yang disalin dari `sdk/cmake/rexglue_switch.cmake` BO2. NXVK hanya dipilih melalui `PES17_SWITCH_USE_LEGACY_NXVK=ON`.
 - `switch_driver.cpp` pada jalur aktif meminta simbol publik `vkGetInstanceProcAddr` yang diekspor Mesa, sesuai `sdk/src/ui/vulkan/vulkan_instance.cpp` BO2.
 - Stub libelf PES disertakan pada target SDK baru, mengikuti fungsi stub BO2.
-- `switch/mesa/vulkan_link_probe.cpp` diperluas: GIPA publik, versi API, `vkCreateInstance`, enumerasi physical device, dan nama GPU.
+- `switch/mesa/vulkan_link_probe.cpp` diperluas: GIPA publik, versi API, `vkCreateInstance`, enumerasi perangkat fisik, dan nama GPU.
 - Workflow `.github/workflows/switch-vulkan-bo2-sdk.yml` memverifikasi SHA-256 build kit BO2 rilis `Release-1.1.0`, memeriksa manifest Mesa, menautkan static archive dengan urutan BO2, lalu mengemas probe NRO.
 - Workflow historis NXVK sudah benar-benar manual-only; pemicu otomatis `push` dihapus.
 - CMake dan toolchain kini menjelaskan bahwa arsitektur Vulkan BO2-style dan implementasi driver NVK adalah dua lapisan berbeda.
@@ -321,28 +321,28 @@ Target grafis awal adalah **segitiga RGB nyata yang tampil stabil pada layar Swi
 - **Vulkan native:** catat audit BO2, port source, perubahan dependency/build, hasil CI, log perangkat, dan bukti visual di bagian tersendiri. Jangan gabungkan hasil NXVK lama sebagai bukti keberhasilan Vulkan native.
 - `presenter.cpp` kini membersihkan handle `g.images` saat swapchain lama dihancurkan dan ketika enumerasi image swapchain baru gagal; ini mencegah daftar image menyimpan handle yang sudah tidak valid saat resize/recreate. Source commit `e69b540f6db57a1eda41782b975619ddf6d6d216`; CI run `42866248741` selesai **success**.
 - Run `42866248741` menghasilkan artefak probe NRO, tetapi SHA-256 NRO `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3` identik dengan probe tahap 2 sebelumnya. Karena isi probe tidak berubah, artefak ini bukan checkpoint baru untuk diuji ulang di Switch.
-- Enumerasi Vulkan pada presenter diperkeras: daftar instance extension, physical device, queue family, surface format, dan swapchain image menggunakan pola count/data dengan retry terbatas untuk `VK_INCOMPLETE`; kegagalan query surface-support kini dicatat dan tidak dianggap sebagai queue yang valid.
+- Enumerasi Vulkan pada presenter diperkeras: daftar instance extension, perangkat fisik, keluarga antrean, surface format, dan swapchain image menggunakan pola count/data dengan retry terbatas untuk `VK_INCOMPLETE`; kegagalan query surface-support kini dicatat dan tidak dianggap sebagai queue yang valid.
 - Ini memperbaiki ketahanan enumerasi, tetapi belum memecah ownership instance/device menjadi kelas terpisah seperti BO2. Belum ada klaim full-link PES, startup PES, atau hasil render game.
 
 #### Progres arsitektur Vulkan/BO2
 
-Jalur Switch aktif sedang ditata ulang agar mengikuti batas provider/device/presenter milik BO2. Batas instance-provider pertama yang dimiliki PES kini berada di `runtime/gpu/vulkan/provider.h/.cpp`; `presenter.cpp` menyerahkan pembuatan dan penghentian instance kepada komponen tersebut, sementara tetap menangani VI surface, pemilihan device, swapchain, dan presentasi. Ekstraksi pertama lolos gerbang kompilasi SDK Switch: 25 translation unit runtime Vulkan berhasil dikompilasi, sedangkan hanya dua translation unit yang bergantung pada PPC hasil generate ditunda. NRO probe mandiri identik byte demi byte dengan tahap sebelumnya sehingga bukan checkpoint pengujian perangkat keras yang baru. Hasil ini tidak membuktikan linking PES penuh, pembuatan physical device Vulkan, atau rendering game. Source NXVK tetap dipertahankan sebagai cadangan legacy terpisah.
+Jalur Switch aktif sedang ditata ulang agar mengikuti batas provider/device/presenter milik BO2. Batas instance-provider pertama yang dimiliki PES kini berada di `runtime/gpu/vulkan/provider.h/.cpp`; `presenter.cpp` menyerahkan pembuatan dan penghentian instance kepada komponen tersebut, sementara tetap menangani VI surface, pemilihan device, swapchain, dan presentasi. Ekstraksi pertama lolos gerbang kompilasi SDK Switch: 25 translation unit runtime Vulkan berhasil dikompilasi, sedangkan hanya dua translation unit yang bergantung pada PPC hasil generate ditunda. NRO probe mandiri identik byte demi byte dengan tahap sebelumnya sehingga bukan checkpoint pengujian perangkat keras yang baru. Hasil ini tidak membuktikan linking PES penuh, pembuatan perangkat fisik Vulkan, atau rendering game. Source NXVK tetap dipertahankan sebagai cadangan legacy terpisah.
 
 #### Pembaruan ekstraksi Provider/Device (2026-11-11)
 
-- `provider.cpp/.h` kini memiliki tiga batas eksplisit: instance create/destroy dan dispatch/validation; physical-device serta queue-family selection dengan surface milik caller; logical-device creation untuk Presenter termasuk optional `VK_KHR_present_id`/`VK_KHR_present_wait` feature chain.
-- `presenter.cpp` mendelegasikan pembuatan logical device ke Provider. Pemeriksaan swapchain dispatch Switch dan pemuatan `vkWaitForPresentKHR` tetap berada di Presenter karena keduanya bagian WSI/presentation.
+- `provider.cpp/.h` kini memiliki tiga batas eksplisit: instance create/destroy dan dispatch/validation; physical-device serta queue-family selection dengan surface milik caller; logical-pembuatan perangkat untuk Presenter termasuk opsional `VK_KHR_present_id`/`VK_KHR_present_wait` feature chain.
+- `presenter.cpp` mendelegasikan pembuatan perangkat logis ke Provider. Pemeriksaan swapchain dispatch Switch dan pemuatan `vkWaitForPresentKHR` tetap berada di Presenter karena keduanya bagian WSI/presentation.
 - Workflow final pada commit `dd6faa3c1011586177736e50d911a4244f0552cd`, run `42869421006`, **success**. Compile gate menghasilkan **25 Vulkan runtime translation units compiled; 2 deferred** (`renderer_draw.cpp`, `renderer_resolve.cpp`) karena memerlukan private XenonRecomp output. Probe NRO berhasil di-link dan dipaketkan.
 - Artefak run `42869421006` ID `13788841794` diperiksa. SHA-256 ZIP `f13218ba55c82c7090971d7a0f7401feb98a784e6821ddc1f6cda6c5c3f8a597`; SHA-256 NRO `a6078bf57310939d0edaf3b395a0978946332762fb4f4589179f50773ebe8ef3`, masih identik dengan probe tahap 2. Tidak perlu uji fisik ulang.
 - Satu run antara (`42869404449`) gagal karena commit provider.cpp berjalan sebelum header deklarasi tiba pada branch; run final setelah header dan presenter commit (`42869421006`) sukses. Tidak ada error kompilasi tersisa pada commit final.
-- Batas yang belum selesai: pipeline-global `vk::pipeline::CreateDevice` masih mengelola feature policy dan dispatch device bersama; belum ada class `VulkanDevice` mandiri. Full PES link, physical Switch API initialization, triangle, dan PES scene rendering tetap belum terbukti.
+- Batas yang belum selesai: pipeline-global `vk::pipeline::CreateDevice` masih mengelola feature policy dan dispatch device bersama; belum ada class `VulkanDevice` mandiri. Full PES link, physical Switch API initialization, triangle, dan PES rendering scene tetap belum terbukti.
 
 ### Pembaruan siklus hidup Vulkan Provider/Device (2026-11-11)
 
 - `provider::CreateLogicalDevice` kini menjalankan pemanggilan langsung `vkCreateDevice`, memuat device dispatch untuk konfigurasi dynamic-loader, mengambil queue yang diminta, serta membersihkan device/dispatch jika pengambilan queue gagal.
 - `pipeline::CreateDevice` tetap menangani kebijakan fitur/ekstensi GPU, negosiasi dan percobaan ulang prioritas queue global yang bersifat opsional, serta pemilihan kapabilitas khusus renderer. Ini merupakan batas peralihan yang disengaja, bukan kelas `VulkanDevice` mandiri.
 - Penghentian headless-device yang dimiliki sendiri kini menghancurkan `VkDevice` sebelum melepas dynamic device dispatch, sehingga pointer fungsi penghancur tetap tersedia sampai pemanggilannya selesai.
-- SDK workflow run [42875642739](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42875642739) on commit `db8a50ef4e84949ed3162ab5c4976e7aa81714e6` completed successfully: 25 Vulkan runtime translation units compiled; 2 remain deferred because private generated PPC output is unavailable; the standalone static BO2 Mesa SDK probe NRO linked and packaged. This is partial compile validation, not a full PES link or physical-device/game-render test.
+- SDK workflow run [42875642739](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42875642739) on commit `db8a50ef4e84949ed3162ab5c4976e7aa81714e6` completed successfully: 25 Vulkan runtime translation units compiled; 2 masih ditunda because private generated PPC output is unavailable; the standalone static BO2 Mesa SDK probe NRO linked dan packaged. This is partial compile validation, not a full PES link or physical-device/game-render test.
 - NRO probe masih merupakan program diagnostik yang sama dan bukan checkpoint pengujian perangkat keras yang baru. Pengujian Switch tidak perlu diulang.
 
 
@@ -352,285 +352,285 @@ Jalur Switch aktif sedang ditata ulang agar mengikuti batas provider/device/pres
 - Pemilihan headless memverifikasi bahwa kandidat benar-benar memiliki graphics queue yang tidak kosong sebelum memilihnya; sistem tidak lagi memilih device diskret/terintegrasi terlebih dahulu lalu gagal karena device tersebut tidak memiliki queue yang mendukung grafis.
 - Presenter tetap menangani kebijakan window-system: VI surface, swapchain, ekstensi/fitur waktu presentasi, acquire/submit/present, dan pembuatan ulang. Pipeline tetap menangani kebijakan fitur renderer/device, negosiasi/fallback prioritas queue, pelaporan fault, dan status kapabilitas renderer.
 - Jalur penghancuran logical-device dipusatkan di Provider untuk Presenter maupun Pipeline headless, sehingga `vkDestroyDevice` dijalankan ketika device dispatch masih dimuat; setelah itu dynamic dispatch dikembalikan ke fungsi tingkat instance.
-- Validation: SDK workflow [42877892242](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877892242) on commit `b2e34b0a1d8a0d0456966c67e7d9e9fd7a182188` succeeded. It compiled 25 Vulkan runtime translation units, deferred only `renderer_draw.cpp` and `renderer_resolve.cpp` for private generated PPC output, and linked/packaged the static BO2 Mesa probe NRO. The tests workflow [42877901988](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877901988) also passed.
+- Validation: SDK workflow [42877892242](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877892242) on commit `b2e34b0a1d8a0d0456966c67e7d9e9fd7a182188` succeeded. It compiled 25 Vulkan runtime translation units, deferred hanya `renderer_draw.cpp` dan `renderer_resolve.cpp` untuk private generated PPC output, dan linked/packaged the static BO2 Mesa probe NRO. The tests workflow [42877901988](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42877901988) also passed.
 - Hasil ini tetap merupakan validasi source secara parsial. Ini bukan full-link PES, inisialisasi Vulkan pada Switch, atau pengujian rendering scene PES. NRO probe bersifat diagnostik dan bukan permintaan untuk melakukan pengujian fisik baru.
 - Objek kapabilitas/kepemilikan `VulkanDevice` yang mandiri belum diekstrak; Pipeline masih menyimpan status kapabilitas yang digunakan renderer. Jadikan hal ini batas arsitektur berikutnya, bukan memindahkan kebijakan fitur ke Presenter atau menggandakannya di Provider.
 
 
 ### Penguatan jalur kegagalan Provider (2026-11-11)
 
-- `CreateInstance` now clears its output handle before work and rolls back the just-created instance plus dynamic dispatch if the Switch VI surface entry points are incomplete. This prevents a partially initialized Provider from leaking when Presenter startup aborts.
-- Physical-device selection now clears output handles on entry and rejects invalid instance/surface inputs or a missing surface-support entry point. Both presentation and headless selection verify usable queue families.
-- `pipeline::CreateDevice` now rejects incomplete arguments, initializes output handles to null, checks that the requested queue family exists and has at least one queue, and avoids constructing a vector range from a null optional extension pointer when no extra extensions are supplied.
-- Presenter startup now treats a failed `pipeline::Initialise` as a startup failure on Android, Switch, and SDL; the worker's existing partial-graph teardown then releases the surface/device/instance instead of reporting a running presenter with an unusable renderer pipeline.
-- Validation on commit `c98c5a31e2974dbe3642213b2043c5a15a831939`: SDK workflow [42879873577](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42879873577) succeeded; 25 Vulkan runtime translation units compiled, with only `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp output; static BO2 Mesa probe NRO linked and uploaded (artifact ID `13793461923`, ZIP SHA-256 `fe538cc3a50e2b6674cc232d74fb8c4bbedf48da6da5532a20e279fadf26bce5`). CTest [42879886281](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42879886281) also passed.
-- Validation scope remains partial: this does not establish a full PES link, physical Switch Vulkan initialization, or PES scene rendering. The diagnostic probe does not require another user test.
+- `CreateInstance` kini clears its output handle sebelum work dan rolls back the just-created instance plus dynamic dispatch if the Switch VI surface entry points are incomplete. Hal ini mencegah a partially initialized Provider dari leaking when Presenter startup aborts.
+- Physical-device selection kini clears output handles on entry dan rejects invalid instance/surface inputs or a missing surface-support entry point. Pemilihan jalur presentasi maupun headless verify usable keluarga antrean.
+- `pipeline::CreateDevice` kini rejects incomplete arguments, initializes output handles to null, checks that the requested keluarga antrean exists dan has at least one queue, dan avoids constructing a vector range dari a null opsional extension pointer when no extra extensions are supplied.
+- Presenter startup kini treats a failed `pipeline::Initialise` as a startup failure on Android, Switch, dan SDL; the worker's existing partial-graph teardown then releases the surface/device/instance alih-alih reporting a running presenter dengan an unusable renderer pipeline.
+- Validation on commit `c98c5a31e2974dbe3642213b2043c5a15a831939`: SDK workflow [42879873577](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42879873577) succeeded; 25 Vulkan runtime translation units compiled, dengan hanya `renderer_draw.cpp` dan `renderer_resolve.cpp` deferred untuk private XenonRecomp output; static BO2 Mesa probe NRO linked dan uploaded (artifact ID `13793461923`, ZIP SHA-256 `fe538cc3a50e2b6674cc232d74fb8c4bbedf48da6da5532a20e279fadf26bce5`). CTest [42879886281](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42879886281) also passed.
+- Validation scope masih partial: this does not establish a full PES link, physical Switch Vulkan initialization, or PES rendering scene. The diagnostic probe does not require another user test.
 
 
 ### Masa hidup fault-dispatch pada lingkup Device (2026-11-11)
 
-- The renderer Pipeline's optional `VK_EXT_device_fault` diagnostic dispatch and device handle are now cleared at the beginning of every logical-device creation attempt, preventing a new device that lacks the extension from inheriting a stale pointer from an earlier device.
-- Pipeline shutdown clears both values after its cache/resources are released and before the owned device is destroyed (or before control returns to Presenter for destruction of a borrowed device). This preserves the existing ownership split: Pipeline owns renderer resources; Provider owns device destruction; Presenter owns the window/swapchain lifetime.
-- This is a targeted lifetime correction, not yet the BO2 `VulkanDevice` extraction. BO2's reference object owns physical-device properties, feature/extension negotiation, enabled device, queue families and dispatch; PES currently keeps renderer capability policy in Pipeline and low-level instance/device lifecycle in Provider. The extraction remains staged to avoid moving feature policy into WSI or changing ownership accidentally.
+- The renderer Pipeline's opsional `VK_EXT_device_fault` diagnostic dispatch dan device handle are kini cleared at the beginning of every logical-pembuatan perangkat attempt, preventing a new device that lacks the extension dari inheriting a stale pointer dari an earlier device.
+- Pipeline shutdown clears both values setelah its cache/resources are released dan sebelum the owned device is destroyed (or sebelum control returns to Presenter untuk destruction of a borrowed device). This preserves the existing ownership split: Pipeline memiliki renderer resources; Provider owns device destruction; Presenter memiliki the window/swapchain lifetime.
+- This is a targeted lifetime correction, belum the BO2 `VulkanDevice` extraction. BO2's reference object owns physical-device properties, feature/extension negotiation, enabled device, keluarga antrean dan dispatch; PES currently keeps renderer capability policy in Pipeline dan low-level instance/device lifecycle in Provider. The extraction masih staged to avoid moving feature policy into WSI or changing ownership accidentally.
 
 
 ### Invalidasi konteks borrowed-device (2026-11-11)
 
-- `pipeline::Shutdown` now clears its local instance, physical-device, queue and queue-family copies for both owned headless devices and borrowed Presenter devices. Borrowed handles are not destroyed by Pipeline; they are merely invalidated locally after renderer resources are released, so Pipeline accessors cannot expose stale context after shutdown.
-- The ownership contract remains explicit: Pipeline destroys the logical device and instance only when it created the headless context; Presenter remains responsible for its own surface/device/instance teardown.
+- `pipeline::Shutdown` kini clears its local instance, physical-device, queue dan queue-family copies untuk both owned headless devices dan borrowed Presenter devices. Borrowed handles are not destroyed by Pipeline; they are merely invalidated locally setelah renderer resources are released, so Pipeline accessors cannot expose stale context setelah shutdown.
+- The ownership contract masih explicit: Pipeline destroys the perangkat logis dan instance hanya when it created the headless context; Presenter masih responsible untuk its own surface/device/instance teardown.
 
 
 ### Validasi batas logical-device Provider (2026-11-11)
 
-- `provider::CreateLogicalDevice` now independently validates its physical-device handle, create-info shape, requested queue-family index, available queue count, and that the create-info actually requests that family before calling the driver. Pipeline still validates its renderer-facing request, while Provider enforces its own low-level boundary instead of relying on one caller's checks.
-- This keeps the BO2-style separation intact: Provider owns Vulkan object creation/dispatch lifetime; Pipeline owns feature and extension policy; Presenter owns WSI policy.
+- `provider::CreateLogicalDevice` kini independently validates its physical-device handle, create-info shape, requested queue-family index, tersedia queue count, dan that the create-info actually requests that family sebelum calling the driver. Pipeline still validates its renderer-facing request, while Provider enforces its own low-level boundary alih-alih relying on one caller's checks.
+- This keeps the BO2-style separation intact: Provider owns Vulkan object creation/dispatch lifetime; Pipeline memiliki feature dan extension policy; Presenter memiliki WSI policy.
 
 
 ### Validasi record pembuatan queue Provider (2026-11-11)
 
-- Extended the Provider boundary audit beyond the selected queue family: every requested queue-create record must have the correct structure type, nonzero queue count, a priority array, an in-range family index, and a queue count no greater than that family's reported capacity.
-- Each requested priority is checked against Vulkan's `[0, 1]` range, duplicate queue-family records are rejected, and the family whose queue Provider returns must actually be included in the create info. Invalid requests fail before `vkCreateDevice`, with output handles left null.
-- This is input-contract hardening only. It does not change selected GPU policy, queue priority fallback, feature negotiation, or Presenter ownership. BO2 `VulkanDevice` capability extraction remains a separate future milestone.
+- Extended the Provider boundary audit beyond the yang dipilih keluarga antrean: every requested queue-create record must have the correct structure type, nonzero queue count, a priority array, an in-range family index, dan a queue count no greater than that family's reported capacity.
+- Each requested priority is checked against Vulkan's `[0, 1]` range, duplikat queue-family records are rejected, dan the family whose queue Provider returns must actually be included in the create info. Invalid requests fail sebelum `vkCreateDevice`, dengan output handles left null.
+- This is input-contract hardening only. It does not change yang dipilih GPU policy, queue priority fallback, feature negotiation, or Presenter ownership. BO2 `VulkanDevice` capability extraction masih a separate future milestone.
 
 
 ### Validasi device-dispatch Vulkan yang diwajibkan (2026-11-11)
 
-- Dynamic loading now treats every core device entry point used by the runtime as required, while KHR/EXT entry points remain optional at the generic loader boundary and are checked by the feature/WSI paths that enable them.
-- Provider refuses to publish a logical device if any required core device function is missing: it destroys the just-created device while instance dispatch is still valid, restores instance-level dispatch, clears the output handle, and returns initialization failure.
-- This follows BO2 `VulkanDevice`'s explicit function-table validation instead of merely logging how many symbols were loaded. Switch Presenter still performs its separate required swapchain-dispatch checks.
+- Dynamic loading kini treats every core device entry point used by the runtime as required, while KHR/EXT entry points remain opsional at the generic loader boundary dan are checked by the feature/WSI paths that enable them.
+- Provider refuses to publish a perangkat logis if any diperlukan core device function is missing: it destroys the just-created device while instance dispatch is still valid, restores instance-level dispatch, clears the output handle, dan returns initialization failure.
+- This follows BO2 `VulkanDevice`'s explicit function-table validation alih-alih merely logging how many symbols were loaded. Switch Presenter still performs its separate diperlukan swapchain-dispatch checks.
 
 
 ### Gerbang swapchain-dispatch lintas platform (2026-11-11)
 
-- Moved the required swapchain entry-point check out of the Switch-only compile guard. Android and SDL dynamic-loader paths now reject a device with missing `VK_KHR_swapchain` commands before attempting swapchain creation or presentation, just as the Switch path already did.
-- The generic loader continues to require core device dispatch; the Presenter validates WSI dispatch because swapchain is a presenter-owned extension. This is consistent with BO2's separation of device function availability and presentation responsibilities.
+- Moved the diperlukan swapchain entry-point check out of the Switch-hanya compile guard. Android dan SDL dynamic-loader paths kini reject a device dengan missing `VK_KHR_swapchain` commands sebelum mencoba swapchain creation or presentation, just as the Switch path already did.
+- The generic loader continues to require core device dispatch; the Presenter validates WSI dispatch because swapchain is a presenter-owned extension. This is consistent dengan BO2's separation of device function availability dan presentation responsibilities.
 
 
 ### Gerbang swapchain yang dibatasi pada dynamic dispatch (2026-11-11)
 
-- Scoped the cross-platform WSI pointer check to `PES17_VULKAN_DYNAMIC`. Dynamic Switch, Android and SDL loader paths validate the five commands; static-link builds rely on link-time symbol resolution and avoid testing non-null function designators at runtime.
+- Scoped the cross-platform WSI pointer check to `PES17_VULKAN_DYNAMIC`. Dynamic Switch, Android dan SDL loader paths validate the five commands; static-link builds rely on link-time symbol resolution dan avoid testing non-null function designators at runtime.
 
 
 ### Ekstraksi BO2 VulkanDevice — peta kepemilikan (2026-11-11)
 
-Tahapan arsitektur berikutnya sengaja **bukan** sekadar wrapper `Device` yang tipis. The pinned BO2 `VulkanDevice` groups physical-device identity/properties, supported and enabled features/extensions, logical-device lifetime, device dispatch, queue-family/queue objects, and memory-type information. PES currently distributes those responsibilities:
+Tahapan arsitektur berikutnya sengaja **bukan** sekadar wrapper `Device` yang tipis. `VulkanDevice` BO2 yang versinya dipatok mengelompokkan physical-device identity/properties, didukung dan enabled features/extensions, logical-device lifetime, device dispatch, queue-family/queue objects, dan memory-type information. Saat ini PES membagi tanggung jawab tersebut sebagai berikut:
 
-- `pipeline.cpp::State`: physical/logical device handles, selected queue/family, cached `VkPhysicalDeviceProperties`, device name, renderer feature/format capabilities, and headless-vs-borrowed ownership.
-- `provider.cpp`: instance lifecycle, physical-device selection, extension enumeration, logical-device creation/destruction and dynamic device-dispatch load/rollback.
-- `presenter.cpp::Presenter`: WSI surface/swapchain, selected present-capable graphics family, and its device/queue handles; the worker stops separately from final teardown so renderer resources can die before the device.
-- `renderer.cpp` and `texture_cache.cpp`: each independently query physical-device memory properties and selected physical-device properties; `framegen.cpp` and `upscaler.cpp` also query physical memory properties for allocations.
-- `pipeline.h`: exposes opaque context handles and renderer capability getters consumed by renderer/texture code.
+- `pipeline.cpp::State`: physical/perangkat logis handles, yang dipilih queue/family, tersimpan `VkPhysicalDeviceProperties`, device name, renderer feature/format capabilities, dan headless-vs-borrowed ownership.
+- `provider.cpp`: instance lifecycle, physical-device selection, extension enumeration, logical-pembuatan perangkat/destruction dan dynamic device-dispatch load/rollback.
+- `presenter.cpp::Presenter`: WSI surface/swapchain, yang dipilih present-capable graphics family, dan its device/queue handles; the worker stops separately dari final teardown so renderer resources can die sebelum the device.
+- `renderer.cpp` dan `texture_cache.cpp`: each independently query physical-device memory properties dan yang dipilih physical-device properties; `framegen.cpp` dan `upscaler.cpp` also query physical memory properties untuk allocations.
+- `pipeline.h`: exposes opaque context handles dan renderer capability getters consumed by renderer/texture code.
 
-Extraction order: (1) centralize physical-device properties, memory properties and queue-family metadata in a real device context; (2) move supported/enabled feature and extension negotiation with the corresponding state; (3) move logical-device handle and dispatch ownership under a single destruction contract; (4) adapt Pipeline and Presenter through typed accessors while preserving borrowed/headless ownership; (5) remove duplicated physical-device queries only after all consumers use the context. The surface/swapchain and present policy stay in Presenter. This mapping is the baseline; no Device object extraction is claimed complete yet.
+Extraction order: (1) centralize physical-device properties, memory properties dan queue-family metadata in a real device context; (2) move supported/enabled feature dan extension negotiation dengan the corresponding state; (3) move logical-device handle dan dispatch ownership under a single destruction contract; (4) adapt Pipeline dan Presenter through typed accessors while preserving borrowed/headless ownership; (5) remove duplicated physical-device queries hanya setelah all consumers use the context. The surface/swapchain dan present policy stay in Presenter. This mapping is the baseline; no Device object extraction is claimed complete yet.
 
 ### Audit konsumen metadata Device (2026-11-11)
 
-- Audited the first BO2 `VulkanDevice` extraction slice against actual PES call sites. `pipeline.cpp::State` already owns a cached `VkPhysicalDeviceProperties` record, but Renderer and Texture Cache independently query physical-device properties again; Renderer and Texture Cache also each keep a separate copy of `VkPhysicalDeviceMemoryProperties`.
-- Frame Generation, Upscaler and Presenter query physical-device memory properties inside image-allocation/resizing paths. This is redundant device metadata access, not a distinct allocation policy: each call feeds the same `vk::util::FindMemory` selector with required memory-property flags.
-- This audit establishes the first safe migration target: one device-scoped immutable physical-memory-properties snapshot, populated once per selected physical device and invalidated with the device context. Existing per-subsystem allocation decisions and required memory flags must remain local.
-- No code extraction is claimed in this checkpoint. The next implementation must preserve the offline `translate-shader` / `upload-texture` tool builds, which compile selected Vulkan translation units independently of the full runtime.
+- Mengaudit the first BO2 `VulkanDevice` extraction slice against sebenarnya PES call sites. `pipeline.cpp::State` already owns a tersimpan `VkPhysicalDeviceProperties` record, but Renderer dan Texture Cache independently query physical-device properties again; Renderer dan Texture Cache also each keep a separate copy of `VkPhysicalDeviceMemoryProperties`.
+- Frame Generation, Upscaler dan Presenter query physical-device memory properties inside image-allocation/resizing paths. This is redundant device metadata access, not a distinct allocation policy: each call feeds the same `vk::util::FindMemory` selector dengan diperlukan memory-property flags.
+- This audit establishes the first safe migration target: one device-scoped immutable physical-memory-properties snapshot, populated satu kali per yang dipilih perangkat fisik dan invalidated dengan the device context. Existing per-subsystem allocation decisions dan diperlukan memory flags must remain local.
+- No code extraction is claimed in this checkpoint. The next implementation must preserve the offline `translate-shader` / `upload-texture` tool builds, which compile yang dipilih Vulkan translation units independently of the full runtime.
 
 ### Perbandingan model tipe memori Device BO2 (2026-11-11)
 
-- Inspected the pinned BO2 `VulkanDevice` header and implementation (`dd189961e8876079087d6f0843af8013bd154277`), not just its class name. BO2 exposes device-scoped `MemoryTypes` bitmasks (`device_local`, `host_visible`, `host_coherent`, `host_cached`) derived once from physical-device memory properties after logical-device creation.
-- PES currently retains raw `VkPhysicalDeviceMemoryProperties` in Renderer and Texture Cache, while Frame Generation, Upscaler and Presenter query it locally. The safe first migration should therefore expose a compact device-scoped memory-type capability view (or a typed immutable snapshot) rather than letting each subsystem own a physical-device query.
-- Keep per-allocation `memoryTypeBits` filtering: BO2's cached property categories do not eliminate Vulkan's per-resource allowed-type mask. Required flags and allocation failure handling remain with the caller.
-- This comparison refines the design only; no BO2 class or memory allocator has been copied wholesale, and no runtime behavior change is claimed.
+- Inspected the pinned BO2 `VulkanDevice` header dan implementation (`dd189961e8876079087d6f0843af8013bd154277`), not just its class name. BO2 exposes device-scoped `MemoryTypes` bitmasks (`device_local`, `host_visible`, `host_coherent`, `host_cached`) derived satu kali dari physical-device memory properties setelah logical-pembuatan perangkat.
+- PES currently retains raw `VkPhysicalDeviceMemoryProperties` in Renderer dan Texture Cache, while Frame Generation, Upscaler dan Presenter query it locally. The safe first migration should therefore expose a compact device-scoped memory-type capability view (or a typed immutable snapshot) rather than letting each subsystem own a physical-device query.
+- Pertahankan per-allocation `memoryTypeBits` filtering: BO2's tersimpan property categories do not eliminate Vulkan's per-resource allowed-type mask. Required flags dan allocation failure handling remain dengan the caller.
+- This comparison refines the design only; no BO2 class or memory allocator telah copied wholesale, dan no runtime behavior change is claimed.
 
 ### Snapshot memori fisik pada lingkup Device (2026-11-11)
 
-- Implemented a single physical-device memory-properties snapshot in Pipeline device context. It is captured once after the borrowed or headless device context is selected, exposed through `vk::pipeline::GetMemoryProperties`, and cleared during Pipeline shutdown.
-- Renderer and Texture Cache now obtain their memory properties from that device-scoped snapshot. Frame Generation, Upscaler and Presenter no longer issue their own `vkGetPhysicalDeviceMemoryProperties` query; they request a snapshot copy before resource allocation.
-- Resource allocation policy remains local: each subsystem still applies its own `memoryTypeBits` and required property flags through the existing `FindMemory` helper. Texture Cache still reads heap sizes from the snapshot for its budget calculation.
-- This is the first implemented Device-metadata extraction slice, not a complete VulkanDevice object. CI compilation and tests are required before treating it as validated.
+- Implemented a single physical-device memory-properties snapshot in Pipeline device context. It is captured satu kali setelah the borrowed or headless device context is selected, exposed through `vk::pipeline::GetMemoryProperties`, dan cleared during Pipeline shutdown.
+- Renderer dan Texture Cache kini obtain their memory properties dari that device-scoped snapshot. Frame Generation, Upscaler dan Presenter no longer issue their own `vkGetPhysicalDeviceMemoryProperties` query; they request a snapshot copy sebelum resource allocation.
+- Resource allocation policy masih local: each subsystem still applies its own `memoryTypeBits` dan diperlukan property flags through the existing `FindMemory` helper. Texture Cache still reads heap sizes dari the snapshot untuk its budget calculation.
+- This is the first implemented Device-metadata extraction slice, not a complete VulkanDevice object. CI compilation dan tests are diperlukan sebelum treating it as validated.
 
-**Validation update:** CTest for `53b464bb8145e24e9499ae519eae948155d4eae5` passed. The Switch BO2 Mesa SDK probe job remains in progress, so this change is not yet marked fully validated.
+**Validation update:** CTest untuk `53b464bb8145e24e9499ae519eae948155d4eae5` passed. The Switch BO2 Mesa SDK probe job masih in progress, so this change is belum marked fully validated.
 
-**Validation completed:** CTest passed and the BO2 Mesa Switch SDK probe job passed for implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5`. The SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. The diagnostic NRO was packaged as artifact `13795401108` (ZIP SHA256 `739048ccefe61e156b403851535e19e5352d8aafa2e568584f88c5aa6eb222b8`). This validates the SDK probe and listed TUs, not a complete PES game link or scene rendering.
+**Validation completed:** CTest passed dan the BO2 Mesa Switch SDK probe job passed untuk implementation commit `53b464bb8145e24e9499ae519eae948155d4eae5`. Job SDK berhasil mengompilasi 25 Vulkan runtime translation units; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because output PPC privat hasil XenonRecomp is unavailable. The diagnostic NRO was packaged as artifact `13795401108` (ZIP SHA256 `739048ccefe61e156b403851535e19e5352d8aafa2e568584f88c5aa6eb222b8`). Hal ini memvalidasi the SDK probe dan listed TUs, not a complete PES game link or rendering scene.
 
 ### Properti fisik pada lingkup Device (2026-11-11)
 
-- Extended the Pipeline device-context snapshot to physical-device properties and exposed a size-checked `vk::pipeline::GetDeviceProperties` accessor.
-- Renderer now reads the cached limits for uniform/storage alignment, render scaling and timestamp capability; Texture Cache reads max image dimension from the same snapshot; Presenter diagnostics reads device identity, API and limits from it.
-- These consumers no longer issue their own `vkGetPhysicalDeviceProperties` queries. Pipeline remains the sole runtime owner of the cached immutable physical-device property record. Device feature queries remain separate because they have distinct feature-chain/extension requirements.
-- CI validation for this follow-up is pending.
+- Extended the Pipeline device-context snapshot to physical-device properties dan exposed a size-checked `vk::pipeline::GetDeviceProperties` accessor.
+- Renderer kini reads the tersimpan limits untuk uniform/storage alignment, render scaling dan timestamp capability; Texture Cache reads max image dimension dari the same snapshot; Presenter diagnostics reads device identity, API dan limits dari it.
+- These consumers no longer issue their own `vkGetPhysicalDeviceProperties` queries. Pipeline masih the sole runtime owner of the tersimpan immutable physical-device property record. Device feature queries remain separate because they have distinct feature-chain/extension requirements.
+- CI validation untuk this follow-up is pending.
 
-**Validation completed for B2.11:** CTest passed and the BO2 Mesa Switch SDK probe passed for implementation commit `f10aece7ae651fc4322f5a2f0be77985058adc19`. The SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. The diagnostic NRO artifact is available at https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42883304861/artifacts/13794483544 (ZIP SHA256 `9f1ca88ed09e33b6c9fffcbae146ded166eb5b1eec7dcf65d33d745fe2674771`). This is not a complete PES game link or scene-rendering validation.
+**Validation completed untuk B2.11:** CTest passed dan the BO2 Mesa Switch SDK probe passed untuk implementation commit `f10aece7ae651fc4322f5a2f0be77985058adc19`. Job SDK berhasil mengompilasi 25 Vulkan runtime translation units; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because output PPC privat hasil XenonRecomp is unavailable. The diagnostic NRO artifact is tersedia at https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42883304861/artifacts/13794483544 (ZIP SHA256 `9f1ca88ed09e33b6c9fffcbae146ded166eb5b1eec7dcf65d33d745fe2674771`). Ini bukan a complete PES game link or scene-rendering validation.
 
 ### Snapshot kapabilitas Device: depth resolve (2026-11-11)
 
-- Moved the `VK_KHR_depth_stencil_resolve` / Vulkan 1.2 sample-zero resolve capability query from Renderer into Pipeline device initialization.
-- Pipeline now records `DepthStencilResolveSampleZero()` as a device capability; Renderer consumes that result for its MSAA decision. WSI-specific present feature negotiation remains in Presenter.
-- This keeps capability discovery with the selected physical device while leaving the renderer's policy (whether to enable MSAA) in Renderer. CI validation is pending.
+- Moved the `VK_KHR_depth_stencil_resolve` / Vulkan 1.2 sample-zero resolve capability query dari Renderer into Pipeline device initialization.
+- Pipeline kini records `DepthStencilResolveSampleZero()` as a device capability; Renderer consumes that result untuk its MSAA decision. WSI-specific present feature negotiation masih in Presenter.
+- This keeps capability discovery dengan the yang dipilih perangkat fisik while leaving the renderer's policy (whether to enable MSAA) in Renderer. CI validation is pending.
 
 ### Snapshot kapabilitas Device: fitur fisik inti (2026-11-11)
 
-- Pipeline now caches the selected physical device's core `VkPhysicalDeviceFeatures` alongside physical-device properties and memory properties, and exposes a size-checked `GetPhysicalDeviceFeatures` accessor.
-- Presenter diagnostics consumes the cached supported-feature record instead of querying the physical device again. Feature-chain negotiation for extension-specific features remains at the subsystem that requests it.
-- This change is committed; CTest and Switch SDK validation are pending.
+- Pipeline kini caches the yang dipilih perangkat fisik's core `VkPhysicalDeviceFeatures` alongside physical-device properties dan memory properties, dan exposes a size-checked `GetPhysicalDeviceFeatures` accessor.
+- Presenter diagnostics consumes the tersimpan supported-feature record alih-alih querying the perangkat fisik again. Feature-chain negotiation untuk extension-specific features masih at the subsystem that requests it.
+- This change is committed; CTest dan Switch SDK validation are pending.
 
-**Validation completed for B2.12:** CTest and the BO2 Mesa Switch SDK probe passed for `6404803a77719e7edb629f79866df4e4c5ee94ce`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. This does not validate full PES game linking or scene rendering.
+**Validation completed untuk B2.12:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `6404803a77719e7edb629f79866df4e4c5ee94ce`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` dan `renderer_resolve.cpp` deferred untuk output PPC privat hasil XenonRecomp. Diagnostic NRO artifact `13795207426`, ZIP SHA256 `910b5312d29fa7b9a2d22012d061e0c73b75a477657ea18cdf26b1259deb60aa`. Hal ini tidak validate link game PES secara penuhing or rendering scene.
 
-**Validation completed for B2.13:** CTest and the BO2 Mesa Switch SDK probe passed for `ec82f9e71fc92924ec587ed7d84107cc4a9ab0fd`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact `13795297981`, ZIP SHA256 `ab5e114ca6dfc542b66a1be9c1fe1a8f5e27f67e5cb1a73556ea27e6c633e942`. No full PES game link or scene rendering is claimed.
+**Validation completed untuk B2.13:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `ec82f9e71fc92924ec587ed7d84107cc4a9ab0fd`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because output PPC privat hasil XenonRecomp is unavailable. Diagnostic NRO artifact `13795297981`, ZIP SHA256 `ab5e114ca6dfc542b66a1be9c1fe1a8f5e27f67e5cb1a73556ea27e6c633e942`. No link game PES secara penuh or rendering scene is claimed.
 
 ### Penggunaan ulang snapshot Device saat inisialisasi logical-device (2026-11-11)
 
-- `CreateDevice` now records the core physical properties and supported core features it already queried for device negotiation. `Pipeline::Initialise` reuses those records rather than querying the same physical device a second time.
-- Direct borrowed-context initialization remains supported: if no snapshot exists (the caller did not use `pipeline::CreateDevice`), Pipeline queries and fills the missing records itself.
-- New creation attempts invalidate the prior property/feature readiness flags before probing a new physical device; shutdown clears all snapshots. This avoids stale metadata crossing device lifetimes.
+- `CreateDevice` kini records the core physical properties dan didukung core features it already queried untuk device negotiation. `Pipeline::Initialise` reuses those records rather than querying the same perangkat fisik a second time.
+- Direct borrowed-context initialization masih supported: if no snapshot exists (the caller did not use `pipeline::CreateDevice`), Pipeline queries dan fills the missing records itself.
+- New creation attempts invalidate the prior property/feature readiness flags sebelum probing a new perangkat fisik; shutdown clears all snapshots. This avoids stale metadata crossing device lifetimes.
 - Validation pending.
 
 ### Pengaman kepemilikan physical-handle pada snapshot Device (2026-11-11)
 
-- Bound the cached physical properties/features to the exact `VkPhysicalDevice` handle they describe. A new CreateDevice attempt invalidates the prior association; Pipeline::Initialise refreshes the snapshots if a directly borrowed context supplies a different physical device.
-- Shutdown clears the association. This prevents cached physical-device data from leaking across device changes while retaining the fast reuse path for the same selected physical device.
+- Bound the tersimpan physical properties/features to the exact `VkPhysicalDevice` handle they describe. A new CreateDevice attempt invalidates the prior association; Pipeline::Initialise refreshes the snapshots if a directly borrowed context supplies a different perangkat fisik.
+- Shutdown clears the association. Hal ini mencegah tersimpan physical-device data dari leaking across device changes while retaining the fast reuse path untuk the same yang dipilih perangkat fisik.
 - B2.14 validation is still running; this follow-up is pending CI as well.
 
-**Validation completed for B2.14:** CTest and the BO2 Mesa Switch SDK probe passed for `2723795a6f7ec90c041467947f01e3db5f584d74`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. This is not full-game link or scene-rendering validation.
+**Validation completed untuk B2.14:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `2723795a6f7ec90c041467947f01e3db5f584d74`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` dan `renderer_resolve.cpp` deferred untuk output PPC privat hasil XenonRecomp. Diagnostic NRO artifact `13794259180`, ZIP SHA256 `e2d3020f890252399558751792797faef6bdd882a62d593a3cccf8c2a46716fb`. Ini bukan full-game link or scene-rendering validation.
 
-**Validation completed for B2.15:** CTest and the BO2 Mesa Switch SDK probe passed for `147cad0eb0c9ed2f911a548656d5003973e0d98f`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` and `renderer_resolve.cpp` deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact `13795741590`, ZIP SHA256 `487127e7a5027e117d2a6a8d89e646689599d0e12247db1244196e017951d477`. This does not validate full-game linking or actual scene rendering.
+**Validation completed untuk B2.15:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `147cad0eb0c9ed2f911a548656d5003973e0d98f`. SDK result: 25 Vulkan runtime TUs compiled; `renderer_draw.cpp` dan `renderer_resolve.cpp` deferred untuk output PPC privat hasil XenonRecomp. Diagnostic NRO artifact `13795741590`, ZIP SHA256 `487127e7a5027e117d2a6a8d89e646689599d0e12247db1244196e017951d477`. Hal ini tidak validate full-game linking or sebenarnya rendering scene.
 
 ### Isolasi status kegagalan saat inisialisasi Device (2026-11-11)
 
-- Added a single reset path for physical-device-derived Pipeline state: properties, memory properties, core features, format-derived BC/ASTC support, depth resolve, rendering capabilities, anisotropy and device identity.
-- `CreateDevice` now rejects replacement while a Pipeline device is active, clears previous snapshot/capability state before a fresh attempt, and clears the attempted device metadata if logical-device creation fails.
-- Headless bring-up rollback now destroys the instance and clears the complete failed-device snapshot, rather than only nulling the physical-device handle.
-- CI validation for this change is pending.
-- Portability refinement: the fixed BC capability array is reset with a range-for loop, avoiding reliance on `std::begin` header exposure.
+- Menambahkan a single reset path untuk physical-device-derived Pipeline state: properties, memory properties, core features, format-derived BC/ASTC support, depth resolve, rendering capabilities, anisotropy dan device identity.
+- `CreateDevice` kini rejects replacement while a Pipeline device is active, clears previous snapshot/capability state sebelum a fresh attempt, dan clears the attempted device metadata if logical-pembuatan perangkat fails.
+- Headless bring-up rollback kini destroys the instance dan clears the complete failed-device snapshot, rather than hanya nulling the physical-device handle.
+- CI validation untuk this change is pending.
+- Portability refinement: the fixed BC capability array is reset dengan a range-untuk loop, avoiding reliance on `std::begin` header exposure.
 
 ### Pemetaan kepemilikan Device BO2 (2026-11-11)
 
-- Compared the pinned BO2 `VulkanDevice` implementation (`sdk/include/rex/ui/vulkan/device.h`, `sdk/src/ui/vulkan/vulkan_device.cpp`) with PES2017's `pipeline.cpp` and Presenter.
-- BO2's Device object owns the selected physical device, logical device, negotiated properties/features/extensions, device function table, queue families/queues and memory-type summary. Provider owns the Device lifetime; Presenter receives it and retains only WSI surface/swapchain/present policy.
-- PES2017 currently combines logical-device creation, capability negotiation/snapshots, queue synchronization and pipeline layout/cache in `vk::pipeline::State`, while Presenter owns the window-system device handles and passes them back as a borrowed tuple. A direct move would risk double ownership and break the headless path.
-- The next extraction is therefore gated on an explicit ownership contract: Provider/Device will own instance + physical/logical device + queue; Presenter will borrow that Device for WSI; Pipeline will borrow Device handles but retain descriptor/pipeline layout/cache. Do not mechanically move `CreateDevice` until lifecycle rollback and both headless/presenting call paths are migrated together.
+- Compared the pinned BO2 `VulkanDevice` implementation (`sdk/include/rex/ui/vulkan/device.h`, `sdk/src/ui/vulkan/vulkan_device.cpp`) dengan PES2017's `pipeline.cpp` dan Presenter.
+- BO2's Device object owns the yang dipilih perangkat fisik, perangkat logis, negotiated properties/features/extensions, device function table, keluarga antrean/queues dan memory-type summary. Provider owns the Device lifetime; Presenter receives it dan retains hanya WSI surface/swapchain/present policy.
+- PES2017 currently combines logical-pembuatan perangkat, capability negotiation/snapshots, queue synchronization dan layout pipeline/cache in `vk::pipeline::State`, while Presenter memiliki the window-system device handles dan passes them back as a borrowed tuple. A direct move would risk double ownership dan break the headless path.
+- The next extraction is therefore gated on an explicit ownership contract: Provider/Device will own instance + physical/perangkat logis + queue; Presenter will borrow that Device untuk WSI; Pipeline will borrow Device handles but retain descriptor/layout pipeline/cache. Do not mechanically move `CreateDevice` until lifecycle rollback dan both headless/presenting call paths are migrated together.
 
-**B2.16 validation completed:** CTest passed and the BO2 Mesa Switch SDK probe passed for implementation commit `27a9b44e9d4132117f82e3f37c85031ee3c93393`. SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42894360651/artifacts/13798748685 (ZIP SHA256 `79259f1ce7ab09e32602e5fc431923df95ff1d040bbe55daf2e6737e8a7113c0`). This validates the probe, not full PES game linking or scene rendering.
+**B2.16 validation completed:** CTest passed dan the BO2 Mesa Switch SDK probe passed untuk implementation commit `27a9b44e9d4132117f82e3f37c85031ee3c93393`. SDK job compiled 25 Vulkan runtime translation units; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because output PPC privat hasil XenonRecomp is unavailable. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42894360651/artifacts/13798748685 (ZIP SHA256 `79259f1ce7ab09e32602e5fc431923df95ff1d040bbe55daf2e6737e8a7113c0`). Hal ini memvalidasi the probe, not link game PES secara penuhing or rendering scene.
 
 ### Audit masa hidup Presenter dan Pipeline (2026-11-11)
 
-- Verified shutdown ordering in `gpu::backend::Shutdown`: `StopPresenting` joins the WSI worker first; Renderer and Texture Cache release their resources next; Pipeline releases descriptor/pipeline-layout/cache state and clears its borrowed Device handles; only then `vk::Stop` calls Presenter `Teardown` to destroy the logical device, surface and instance.
-- Presenter `Worker` failure path calls `Teardown` for a partially created WSI/device graph and reports headless fallback. Normal worker exit does not destroy the device; this preserves the required two-phase stop/destroy order.
-- This confirms the intended borrow boundary: Pipeline must never destroy Presenter-owned device/instance; Presenter teardown must remain after Pipeline resource shutdown. Headless Pipeline-owned device teardown remains separate.
+- Memverifikasi shutdown ordering in `gpu::backend::Shutdown`: `StopPresenting` joins the WSI worker first; Renderer dan Texture Cache release their resources next; Pipeline releases descriptor/pipeline-layout/cache state dan clears its borrowed Device handles; hanya then `vk::Stop` calls Presenter `Teardown` to destroy the perangkat logis, surface dan instance.
+- Presenter `Worker` failure path calls `Teardown` untuk a partially created WSI/device graph dan reports headless fallback. Normal worker exit does not destroy the device; this preserves the diperlukan two-phase stop/destroy order.
+- Hal ini mengonfirmasi the intended borrow boundary: Pipeline tidak boleh destroy Presenter-owned device/instance; Presenter teardown must remain setelah Pipeline resource shutdown. Headless Pipeline-owned device teardown masih separate.
 
 ### Batas eksplisit konteks borrowed Device (2026-11-11)
 
-- Added `runtime/gpu/vulkan/device.h` with a non-owning `vk::device::BorrowedContext` that groups instance, physical/logical device, queue and queue-family handles and validates the complete tuple.
-- Pipeline's initialization API now accepts either no context (owned headless bring-up) or one explicit borrowed context (Presenter path). The three Presenter platform branches use one helper to pass the same contract.
-- This is an ownership-boundary step, not yet the BO2 `Device` owner: Presenter still owns the window-path Vulkan handles and Pipeline only borrows them. CI validation pending.
+- Menambahkan `runtime/gpu/vulkan/device.h` dengan a non-owning `vk::device::BorrowedContext` that groups instance, physical/perangkat logis, queue dan queue-family handles dan validates the complete tuple.
+- Pipeline's initialization API kini accepts either no context (owned headless bring-up) or one explicit borrowed context (Presenter path). The three Presenter platform branches use one helper to pass the same contract.
+- This is an ownership-boundary step, belum the BO2 `Device` owner: Presenter masih memiliki the window-path Vulkan handles dan Pipeline hanya borrows them. Validasi CI masih menunggu.
 
 ### Objek kepemilikan logical-handle Device (2026-11-11)
 
-- Added `vk::device::Device`, a non-copyable RAII owner for the logical `VkDevice` plus its selected physical-device, queue and family identity. `VkInstance` remains owned by Provider/Presenter for this transition.
-- Presenter adopts the logical device returned by the existing capability negotiation path into this object; its teardown now releases the Device object after Pipeline/renderer resources have been shut down. Pipeline borrows a `Device` object through `BorrowedContext`, rather than receiving five positional raw handles.
-- Added `device.cpp` to the runtime glob and both explicit offline-tool source lists. The full capability negotiation still lives in Pipeline and will be migrated in a later step. CI validation pending.
-- First SDK compile exposed the provider destroy API's `VkDevice&` contract; the RAII destructor and failed-adoption rollback now pass a local lvalue handle and clear the owned handle after destruction. The initial B2.20 SDK attempt failed at this compile point; the corrected commit is queued for CI revalidation.
+- Menambahkan `vk::device::Device`, a non-copyable RAII owner untuk the logical `VkDevice` plus its yang dipilih physical-device, queue dan family identity. `VkInstance` masih owned by Provider/Presenter untuk this transition.
+- Presenter adopts the perangkat logis returned by the existing capability negotiation path into this object; its teardown kini releases the Device object setelah Pipeline/renderer resources telah shut down. Pipeline meminjam a `Device` object through `BorrowedContext`, rather than receiving five positional raw handles.
+- Menambahkan `device.cpp` to the runtime glob dan both explicit offline-tool source lists. Proses penuh capability negotiation masih berada in Pipeline dan will be migrated in a later step. Validasi CI masih menunggu.
+- First SDK compile exposed the provider destroy API's `VkDevice&` contract; the RAII destructor dan failed-adoption rollback kini pass a local lvalue handle dan clear the owned handle setelah destruction. Percobaan awal B2.20 SDK attempt failed at this compile point; the corrected commit is queued untuk CI revalidation.
 
-**B2.20 validation completed:** corrected implementation commit `3aa565024700e5999b0e33ecfd9b2858f49f6240` passed CTest and the BO2 Mesa Switch SDK probe. The SDK job compiled 26 Vulkan runtime translation units, including `device.cpp`; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42895784759/artifacts/13800372412 (ZIP SHA256 `d9dad4840b2c33f78dc0d346a3b94bae83cbff87b604f1d44c9c9784021a53fe`). The first attempt exposed the Provider destroy function's `VkDevice&` signature; the correction passed CI. This does not validate a full PES game link or scene rendering.
+**B2.20 validation completed:** corrected implementation commit `3aa565024700e5999b0e33ecfd9b2858f49f6240` passed CTest dan the BO2 Mesa Switch SDK probe. Job SDK berhasil mengompilasi 26 Vulkan runtime translation units, termasuk `device.cpp`; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda untuk output PPC privat hasil XenonRecomp. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42895784759/artifacts/13800372412 (ZIP SHA256 `d9dad4840b2c33f78dc0d346a3b94bae83cbff87b604f1d44c9c9784021a53fe`). Percobaan pertama attempt exposed the Provider destroy function's `VkDevice&` signature; the correction passed CI. Hal ini tidak validate a link game PES secara penuh or rendering scene.
 
 ### Shutdown Pipeline nonaktif membersihkan metadata inisialisasi yang gagal (2026-11-11)
 
-- `pipeline::Shutdown()` previously returned immediately when no logical Pipeline device had been adopted. A Presenter can successfully create a Device and then fail during later WSI bring-up before Pipeline adopts it; the logical Device is subsequently destroyed by Presenter, but Pipeline's earlier capability snapshot remained cached.
-- The no-device shutdown path now clears device-fault dispatch state, borrowed handle copies and all physical-device snapshots/capabilities through `ResetDeviceSnapshot()`. The normal shutdown path now reuses the same reset helper.
-- CI validation pending.
+- `pipeline::Shutdown()` sebelumnya returned immediately when no logical Pipeline device had been adopted. A Presenter can successfully create a Device dan then fail during later WSI bring-up sebelum Pipeline adopts it; the logical Device is subsequently destroyed by Presenter, but Pipeline's earlier snapshot kapabilitas remained cached.
+- The no-device shutdown path kini clears device-dispatch pelaporan gangguan state, borrowed handle copies dan all physical-device snapshots/capabilities through `ResetDeviceSnapshot()`. The normal shutdown path kini reuses the same reset helper.
+- Validasi CI masih menunggu.
 
 ### Presenter menggunakan Device sebagai satu-satunya otoritas logical-handle (2026-11-11)
 
-- Removed the duplicate raw `VkDevice` field from Presenter state. All device operations now resolve the handle through `deviceOwner` (`DeviceHandle()`), and the Device object's lifetime is the sole authority for logical-device destruction.
-- Pipeline receives the same owner object through `BorrowedContext`; no raw logical-device tuple is separately cached in Presenter state. Physical device and queue metadata remain transitional fields pending their next consolidation.
-- A mechanical replacement briefly touched the `deviceOwner` identifier; it was corrected before the validated follow-up commit. CI validation pending.
+- Menghapus duplikat raw `VkDevice` field dari Presenter state. All device operations kini resolve the handle through `deviceOwner` (`DeviceHandle()`), dan the Device object's lifetime is the sole authority untuk logical-device destruction.
+- Pipeline receives the same owner object through `BorrowedContext`; no raw logical-device tuple is separately tersimpan in Presenter state. Physical device dan queue metadata remain transitional fields pending their next consolidation.
+- A mechanical replacement briefly touched the `deviceOwner` identifier; it telah diperbaiki sebelum the validated follow-up commit. Validasi CI masih menunggu.
 
-**B2.21 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `5803a69c6d754b592a83d3735055aea6371ce81e`. The SDK probe compiled 26 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. This is not full PES game-link or scene-rendering validation.
+**B2.21 validation completed:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `5803a69c6d754b592a83d3735055aea6371ce81e`. Probe SDK berhasil mengompilasi 26 Vulkan runtime TUs; two translation unit renderer yang bergantung pada PPC privat masih ditunda. Ini bukan full PES game-link or scene-rendering validation.
 
 ### Objek Device menjadi satu-satunya sumber Vulkan-handle Presenter (2026-11-11)
 
-- Removed the duplicated raw `VkDevice`, `VkPhysicalDevice`, `VkQueue` and queue-family fields from Presenter state. The pre-creation selection outputs are now explicitly named `selectedPhysical` and `selectedQueueFamily`; once Device is adopted, all device/physical/queue/family reads come from Device accessors.
-- Presenter teardown clears the pre-creation selection fields after destroying Device and WSI objects, preventing stale adapter references after shutdown.
-- Pipeline receives the Device object through `BorrowedContext`; the instance remains separately owned by Provider/Presenter. CI validation pending.
-- Ownership wording corrected: the logical `Device` owns `VkDevice`; Presenter currently retains the `VkInstance` and uses Provider's create/destroy functions. Provider is not yet an owning C++ instance object.
+- Menghapus duplicated raw `VkDevice`, `VkPhysicalDevice`, `VkQueue` dan queue-family fields dari Presenter state. The pre-creation selection outputs are kini explicitly named `selectedPhysical` dan `selectedQueueFamily`; satu kali Device is adopted, all device/physical/queue/family reads come dari Device accessors.
+- Presenter teardown clears the pre-creation selection fields setelah destroying Device dan WSI objects, preventing stale adapter references setelah shutdown.
+- Pipeline receives the Device object through `BorrowedContext`; the instance masih separately owned by Provider/Presenter. Validasi CI masih menunggu.
+- Ownership wording corrected: the logical `Device` owns `VkDevice`; Presenter currently retains the `VkInstance` dan uses Provider's create/destroy functions. Provider is belum an owning C++ instance object.
 
-**B2.22 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `97632d08aee9598e7abaf90eb0954a8d42969d71`. The SDK job compiled 26 Vulkan runtime TUs, including the new Device ownership/accessor path; two renderer TUs remain deferred for private XenonRecomp-generated PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42896857395/artifacts/13799734628 (ZIP SHA256 `f3ab3850f520cb08e64442e2b6fe266212e2fd8a95ea90d32c8db88f907729f5`). No full PES game link or scene-rendering validation is claimed.
+**B2.22 validation completed:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `97632d08aee9598e7abaf90eb0954a8d42969d71`. Job SDK berhasil mengompilasi 26 Vulkan runtime TUs, termasuk the new Device ownership/accessor path; two renderer TUs masih ditunda untuk output PPC privat hasil XenonRecomp. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42896857395/artifacts/13799734628 (ZIP SHA256 `f3ab3850f520cb08e64442e2b6fe266212e2fd8a95ea90d32c8db88f907729f5`). No link game PES secara penuh or scene-rendering validation is claimed.
 
 ### Kepemilikan Instance RAII oleh Presenter (2026-11-11)
 
-- Added `vk::instance::Instance`, a non-copyable RAII owner for the Vulkan instance. Presenter no longer stores a duplicate raw `VkInstance`; surface creation/destruction and physical-device selection use `InstanceHandle()` from the owner.
-- `BorrowedContext` now carries both the owning Instance object and Device object. Pipeline receives their handles but does not own either on the presentation path.
-- Presenter teardown destroys surface, then Device, then Instance. The headless Pipeline path still owns its existing raw instance path and is intentionally not migrated in this step. CI validation pending.
-- Clarified the split: `Instance` owns `VkInstance`; `Device` owns `VkDevice` and borrows the instance lifetime.
+- Menambahkan `vk::instance::Instance`, a non-copyable RAII owner untuk the Vulkan instance. Presenter no longer stores a duplikat raw `VkInstance`; surface creation/destruction dan physical-device selection use `InstanceHandle()` dari the owner.
+- `BorrowedContext` kini carries both the owning Instance object dan Device object. Pipeline receives their handles but does not own either on the presentation path.
+- Presenter teardown destroys surface, then Device, then Instance. The headless Pipeline path masih memiliki its existing raw instance path dan is intentionally not migrated in this step. Validasi CI masih menunggu.
+- Clarified the split: `Instance` owns `VkInstance`; `Device` owns `VkDevice` dan borrows the instance lifetime.
 
-**B2.23 validation completed:** CTest, the libnx homebrew NRO build, and the BO2 Mesa Switch SDK probe all passed for implementation commit `ebf8836f0126687ec268fb9c8857a76d302fe51e`. The SDK probe compiled 27 Vulkan runtime translation units, including `instance.cpp`; only `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred for private PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897472123/artifacts/13800434703 (ZIP SHA256 `870d0761ab0910e8e7b780c10a50a780a76d2046a5689ed52765a0499906ac3c`). This is still not a full PES game link or scene-rendering validation.
+**B2.23 validation completed:** CTest, the libnx homebrew NRO build, dan the BO2 Mesa Switch SDK probe all passed untuk implementation commit `ebf8836f0126687ec268fb9c8857a76d302fe51e`. Probe SDK berhasil mengompilasi 27 Vulkan runtime translation units, termasuk `instance.cpp`; hanya `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda untuk private PPC output. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897472123/artifacts/13800434703 (ZIP SHA256 `870d0761ab0910e8e7b780c10a50a780a76d2046a5689ed52765a0499906ac3c`). This is still not a link game PES secara penuh or scene-rendering validation.
 
 ### Pipeline headless kini menggunakan pemilik Device dan Instance RAII yang sama (2026-11-11)
 
-- Replaced the headless path's direct `VkInstance`/`VkDevice` destruction with `vk::instance::Instance` and `vk::device::Device` ownership objects, matching the Presenter path.
-- Pipeline stores owners only for headless bring-up; Presenter-supplied contexts remain borrowed and are never destroyed by Pipeline. On headless rollback and normal shutdown, dependent pipeline resources are released first, then Device, then Instance.
-- The raw handles retained in Pipeline State are non-owning operational aliases; the RAII objects are the destruction authorities. CI validation pending.
+- Mengganti headless path's direct `VkInstance`/`VkDevice` destruction dengan `vk::instance::Instance` dan `vk::device::Device` ownership objects, matching the Presenter path.
+- Pipeline stores owners hanya untuk headless bring-up; Presenter-supplied contexts remain borrowed dan are never destroyed by Pipeline. On headless rollback dan normal shutdown, dependent pipeline resources are released first, then Device, then Instance.
+- Handle mentah yang disimpan in Pipeline State merupakan alias operasional yang tidak memiliki kepemilikan; objek RAII menjadi otoritas untuk penghancuran. Validasi CI masih menunggu.
 
-**B2.24 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `436f3293dd2d4687bbd6f01d7eb882ecebb73595`. The SDK probe compiled 27 Vulkan runtime TUs; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because private XenonRecomp-generated PPC output is unavailable. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897814184/artifacts/13800529967 (ZIP SHA256 `048b5c0df00748be31a1c86b55d6692c7867b4179eaa279fb86e49bc8fc6a9b0`). This validates the diagnostic SDK probe, not full PES linking or scene rendering.
+**B2.24 validation completed:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `436f3293dd2d4687bbd6f01d7eb882ecebb73595`. Probe SDK berhasil mengompilasi 27 Vulkan runtime TUs; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because output PPC privat hasil XenonRecomp is unavailable. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42897814184/artifacts/13800529967 (ZIP SHA256 `048b5c0df00748be31a1c86b55d6692c7867b4179eaa279fb86e49bc8fc6a9b0`). Hal ini memvalidasi the diagnostic SDK probe, not proses link PES secara penuh or rendering scene.
 
 ### Pengenalan pemilik konteks Provider bergaya BO2 (2026-11-11)
 
-- Added `vk::provider::Context`, an aggregate RAII owner for an `Instance` and optional `Device`, with deterministic Device-before-Instance destruction.
-- Context supports a staged window flow (create presentation-capable Instance → select a surface-compatible physical device → create/adopt logical Device) and a headless selection path. It exposes the owned objects and their handles for Pipeline/Presenter borrowing.
-- This commit establishes the owner/API; current Presenter and Pipeline paths have not yet been switched to it. Device capability negotiation still delegates to the existing Pipeline implementation. CI validation pending.
+- Menambahkan `vk::provider::Context`, an aggregate RAII owner untuk an `Instance` dan opsional `Device`, dengan deterministic Device-before-Instance destruction.
+- Context supports a staged window flow (create presentation-capable Instance → select a kompatibel dengan surface perangkat fisik → create/adopt logical Device) dan a headless selection path. It exposes the owned objects dan their handles untuk Pipeline/Presenter borrowing.
+- This commit establishes the owner/API; current Presenter dan Pipeline paths have belum been switched to it. Device capability negotiation still delegates to the existing Pipeline implementation. Validasi CI masih menunggu.
 
 ### Presenter kini menyerahkan kepemilikan konteks Vulkan kepada Provider (2026-11-11)
 
-- Presenter State now owns one `vk::provider::Context` instead of separate Instance and Device owners plus duplicate physical-device/queue-family selection fields.
-- Provider Context now performs surface-compatible physical-device selection, logical-device creation/adoption, and Device teardown. Presenter retains only WSI surface/swapchain/frame policy and obtains handles through Context accessors.
-- `BorrowedContext` passes Provider's Instance and Device objects to Pipeline. Presenter teardown asks Provider to destroy Device after swapchain resources, destroys the surface, then releases Provider/Instance. CI validation pending.
+- Presenter State kini owns one `vk::provider::Context` alih-alih separate Instance dan Device owners plus duplikat physical-device/queue-family selection fields.
+- Provider Context kini performs kompatibel dengan surface physical-device selection, logical-pembuatan perangkat/adoption, dan Device teardown. Presenter mempertahankan hanya WSI surface/swapchain/frame policy dan obtains handles through Context accessors.
+- `BorrowedContext` passes Provider's Instance dan Device objects to Pipeline. Presenter teardown asks Provider to destroy Device setelah swapchain resources, destroys the surface, then releases Provider/Instance. Validasi CI masih menunggu.
 
 ### Pipeline headless kini menggunakan Provider Context (2026-11-11)
 
-- Replaced Pipeline's separate headless Instance/Device owners with one `vk::provider::Context`, matching the Presenter path.
-- Headless Pipeline now requests a headless Instance, selects a graphics-capable physical device, and asks Provider Context to create/adopt the logical Device. Pipeline borrows raw handles from the Provider Context while retaining renderer-facing descriptor layouts/cache.
-- Pipeline owns the Context only in headless mode; presentation mode continues to borrow Presenter-owned Provider Context. Both paths now share the same Instance/Device lifetime implementation. CI validation pending.
+- Replaced Pipeline's separate headless Instance/Device owners dengan one `vk::provider::Context`, matching the Presenter path.
+- Headless Pipeline kini requests a headless Instance, selects a mendukung grafis perangkat fisik, dan asks Provider Context to create/adopt the logical Device. Pipeline meminjam raw handles dari the Provider Context while retaining renderer-facing descriptor layouts/cache.
+- Pipeline memiliki the Context hanya in mode tanpa tampilan; mode presentasi continues to borrow Presenter-owned Provider Context. Both paths kini share the same Instance/Device lifetime implementation. Validasi CI masih menunggu.
 
 ### Batas migrasi kapabilitas Device yang tersisa (2026-11-11)
 
-- Audited the remaining `pipeline::CreateDevice` implementation against BO2 `VulkanDevice::CreateIfSupported`. Provider Context now owns Instance/Device lifetimes and selection, but the actual logical-device negotiation still runs in Pipeline.
-- Device-owned work to migrate next: queue-family/device queue creation, supported core properties/features, device-extension inventory, core/extension feature chains, format support (BC/ASTC), queue priority negotiation, fault-report function binding, and logical-device creation.
-- Keep Presenter's swapchain/present-ID/present-wait negotiation in Presenter. Keep Pipeline's descriptor-set layouts, pipeline layout/cache and shader-module/pipeline resource operations in Pipeline. Move only device discovery/creation/capability ownership into Device, then make Provider Context call Device::Create directly.
+- Mengaudit the remaining `pipeline::CreateDevice` implementation against BO2 `VulkanDevice::CreateIfSupported`. Provider Context kini owns Instance/Device lifetimes dan selection, but the sebenarnya logical-device negotiation still runs in Pipeline.
+- Device-owned work to migrate next: queue-family/device queue creation, didukung core properties/features, device-daftar ekstensi, core/extension feature chains, format support (BC/ASTC), queue priority negotiation, fault-report function binding, dan logical-pembuatan perangkat.
+- Pertahankan Presenter's swapchain/present-ID/present-wait negotiation in Presenter. Pertahankan Pipeline's layout descriptor-set, layout pipeline/cache dan shader-module/pipeline resource operations in Pipeline. Move hanya device discovery/creation/capability ownership into Device, then make Provider Context call Device::Create directly.
 
-**B2.27 validation completed:** CTest and the BO2 Mesa Switch SDK probe passed for `d1868eb23cbf26879432155a485a6fbe15b730e1`. The SDK job compiled 27 Vulkan runtime TUs; two private PPC-dependent renderer TUs remain deferred. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42898842463/artifacts/13800489828 (ZIP SHA256 `059bc5209216400aebbbd8013cd427302fb87c7b8858a0d7e49e4ff2c225c7ed`). This is not full PES linking or scene rendering.
+**B2.27 validation completed:** CTest dan the BO2 Mesa Switch SDK probe passed untuk `d1868eb23cbf26879432155a485a6fbe15b730e1`. Job SDK berhasil mengompilasi 27 Vulkan runtime TUs; two translation unit renderer yang bergantung pada PPC privat masih ditunda. Diagnostic NRO artifact: https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42898842463/artifacts/13800489828 (ZIP SHA256 `059bc5209216400aebbbd8013cd427302fb87c7b8858a0d7e49e4ff2c225c7ed`). Ini bukan proses link PES secara penuh or rendering scene.
 
 ### Pipeline kini menggunakan snapshot kapabilitas milik Device (2026-11-11)
 
-- Pipeline retains a non-owning `Device` pointer alongside its raw operational handles. Both headless Provider-owned and Presenter-borrowed paths set this pointer from the actual Provider Context.
-- Physical-device properties used by Pipeline Cache and crash diagnostics are copied from the Device snapshot. Memory properties, core physical features, depth-resolve support, device name, BC/ASTC support, anisotropy, precise queries, dynamic rendering/state, pipeline-library and legacy/static-state capability accessors now delegate to Device.
-- Removed the superseded `pipeline::CreateDevice` API and its duplicate 400-line device creation/capability negotiation implementation. Device::Create is now the single logical-device creation and capability owner; Pipeline remains responsible for descriptor/pipeline layout, cache and shader modules.
-- Device fault reports now delegate to `Device::ReportFault()`; the duplicate Pipeline-level device-fault dispatch cache was removed.
-- CI validation for this migration is pending.
-- Follow-up cleanup: removed Pipeline's now-unused duplicate capability flags and copied memory/core-feature/depth-resolve snapshots. Pipeline keeps only its non-owning Device pointer, operational handle aliases and the physical-properties copy required to validate persistent pipeline-cache identity.
-- Device snapshot cleanup: removed a redundant second copy of `VkPhysicalDeviceFeatures` and the unused physical-device snapshot marker; core supported features are now queried once per Device creation.
-- Context identity guard: `Pipeline::Initialise` is idempotent only for the exact same borrowed Provider Device/Instance or the already-owned headless context. It now rejects attempts to silently reuse a different active Device.
-- Device extension inventory: `Device::Create` now enumerates the selected physical device's advertised extensions once, then answers its optional-extension checks against that cached inventory instead of repeatedly calling `vkEnumerateDeviceExtensionProperties` for each capability.
-- Driver identity is now part of the Device snapshot as well: `VkPhysicalDeviceDriverProperties` is queried once when Vulkan 1.2 core or `VK_KHR_driver_properties` is available. Pipeline crash-report logging consumes that snapshot rather than issuing its own physical-device properties query.
-- Follow-up: all optional device-extension checks in `Device::Create` now use the single cached extension inventory, including global queue priority, image-format list, depth-resolve, maintenance/properties2, non-seamless cube, dynamic-rendering/state, pipeline-library and device-fault checks. No repeated Provider extension-enumeration calls remain in Device creation.
-- Extension-list hardening: Device now removes duplicate extension names after combining caller/WSI requirements with optional capabilities. This prevents duplicate names when an extension is requested both by Presenter and Device policy.
+- Pipeline mempertahankan a non-owning `Device` pointer alongside its raw operational handles. Both headless Provider-owned dan Presenter-borrowed paths set this pointer dari the sebenarnya Provider Context.
+- Properti physical-device used by Pipeline Cache dan diagnostik crash are copied dari the Device snapshot. Properti memori, core physical features, depth-resolve support, device name, BC/ASTC support, anisotropy, precise queries, dynamic rendering/state, pipeline-library dan legacy/static-state capability accessors kini delegate to Device.
+- Menghapus superseded `pipeline::CreateDevice` API dan its duplikat 400-line pembuatan perangkat/capability negotiation implementation. Device::Create is kini the single logical-pembuatan perangkat dan capability owner; Pipeline masih responsible untuk descriptor/layout pipeline, cache dan modul shader.
+- Device fault reports kini delegate to `Device::ReportFault()`; the duplikat Pipeline-level device-dispatch pelaporan gangguan cache telah dihapus.
+- Validasi CI untuk migrasi ini masih menunggu.
+- Follow-up cleanup: removed Pipeline's now-unused duplikat capability flags dan copied memory/core-feature/depth-resolve snapshots. Pipeline keeps hanya its non-owning Device pointer, operational handle aliases dan the physical-properties copy diperlukan to validate persistent pipeline-cache identity.
+- Device snapshot cleanup: removed a redundant second copy of `VkPhysicalDeviceFeatures` dan the unused physical-device snapshot marker; core didukung features are kini queried satu kali per Device creation.
+- Context identity guard: `Pipeline::Initialise` is idempotent hanya untuk the exact same borrowed Provider Device/Instance or the already-owned headless context. It kini rejects attempts to silently reuse a different active Device.
+- Device daftar ekstensi: `Device::Create` kini enumerates the yang dipilih perangkat fisik's advertised extensions once, then answers its optional-extension checks against that tersimpan inventory alih-alih repeatedly calling `vkEnumerateDeviceExtensionProperties` untuk each capability.
+- Driver identity is kini part of the Device snapshot as well: `VkPhysicalDeviceDriverProperties` is queried satu kali when Vulkan 1.2 core or `VK_KHR_driver_properties` tersedia. Pipeline crash-report logging consumes that snapshot rather than issuing its own physical-device properties query.
+- Follow-up: all opsional device-extension checks in `Device::Create` kini use the single tersimpan daftar ekstensi, termasuk global queue priority, image-format list, depth-resolve, maintenance/properties2, non-seamless cube, dynamic-rendering/state, pipeline-library dan device-fault checks. Tidak ada lagi Provider extension-enumeration calls remain in Device creation.
+- Extension-list hardening: Device kini removes duplikat nama ekstensi setelah combining caller/WSI requirements dengan opsional capabilities. Hal ini mencegah duplikat names when an extension is requested both by Presenter dan Device policy.
 
 ### Audit siklus hidup Provider / Device / Pipeline (2026-11-11)
 
-- Confirmed Provider Context owns Instance and Device in both Presenter and headless Pipeline paths. Presenter tears down swapchain/frame resources and surface before releasing Provider Context; Pipeline borrows the Presenter context and owns a Provider Context only in headless mode.
-- Device owns logical-device creation, queue acquisition, capability snapshots/negotiation, extension inventory and fault dispatch. Presenter retains WSI policy; Pipeline retains descriptor/pipeline layouts, cache and shader resources.
-- No ownership refactor was made from inspection alone; the next audit is renderer startup/rollback/shutdown versus Presenter worker teardown, then the actual frame submission path. The two PPC-dependent renderer translation units remain a build gate until private XenonRecomp output is supplied.
+- Memastikan Provider Context owns Instance dan Device in both Presenter dan headless Pipeline paths. Presenter tears down swapchain/frame resources dan surface sebelum releasing Provider Context; Pipeline meminjam the Presenter context dan owns a Provider Context hanya in mode tanpa tampilan.
+- Device memiliki logical-pembuatan perangkat, queue acquisition, snapshot kapabilitass/negotiation, daftar ekstensi dan dispatch pelaporan gangguan. Presenter mempertahankan WSI policy; Pipeline mempertahankan descriptor/layout pipelines, cache dan shader resources.
+- No ownership refactor was made dari inspection alone; the next audit is renderer startup/rollback/shutdown versus Presenter worker teardown, then the sebenarnya frame submission path. The two PPC-dependent renderer translation units remain a build gate until private XenonRecomp output is supplied.
 
 ### Validasi ekstensi Device yang diwajibkan (2026-11-11)
 
-- `Device::Create` now checks caller-required extension names against its cached device extension inventory before attempting `vkCreateDevice`. Invalid/empty names and unsupported required extensions fail with a targeted diagnostic. This does not trigger a second extension enumeration.
-- CTest and the Switch BO2 Mesa SDK probe are running for commit `6348024af52e3a565aefb4aa16aa325594953e8d`; results are recorded in the [CTest run](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926195764) and [SDK run](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926188345).
+- `Device::Create` kini checks caller-diperlukan nama ekstensi against its tersimpan ekstensi perangkat inventory sebelum mencoba `vkCreateDevice`. Nama yang tidak valid/kosong dan ekstensi wajib yang tidak didukung fail dengan a diagnostik yang spesifik. Hal ini tidak trigger a enumerasi ekstensi kedua.
+- CTest dan the Switch BO2 Mesa SDK probe sedang berjalan untuk commit `6348024af52e3a565aefb4aa16aa325594953e8d`; results are recorded in the [CTest run](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926195764) dan [SDK run](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926188345).
 
 ### Vulkan draw/resolve kini dapat dikompilasi tanpa header PPC privat (2026-11-11)
 
-- Removed the broad `kernel/kernel.h` include from `renderer_draw.cpp` and `renderer_resolve.cpp`. They now use the narrow physical-address declaration and, for resolve diagnostics, only the `DumpYieldStacks(int)` function declaration they need.
-- The Switch SDK workflow now attempts to compile every Vulkan runtime translation unit, including draw and resolve, instead of deferring those two files. This does not remove the private PPC requirement from the full PES game build/link.
+- Menghapus broad `kernel/kernel.h` include dari `renderer_draw.cpp` dan `renderer_resolve.cpp`. They kini use the narrow physical-address declaration and, untuk resolve diagnostics, hanya the `DumpYieldStacks(int)` function declaration they need.
+- The Switch SDK workflow kini attempts to compile every Vulkan runtime translation unit, termasuk draw dan resolve, alih-alih deferring those two files. Hal ini tidak remove the private PPC requirement dari the full PES game build/link.
 - Final full-renderer SDK probe queued: [run 42926468631](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926468631). Intermediate commits are also in CI; the final run is the acceptance gate.
 
 - Repository cleanup: removed the zero-byte hidden file `runtime/gpu/vulkan/.!28804!renderer_resolve.cpp`; the real renderer source is preserved.
 
 ### Pengaman platform pada jalur resolve (2026-11-11)
 
-- Full Switch SDK compilation reached `renderer_resolve.cpp` after `renderer_draw.cpp` compiled, then found two Android app-path debug toggles outside `PES17_ANDROID`. Both are now guarded; non-Android builds explicitly disable those file-based toggles.
+- Full Switch SDK compilation reached `renderer_resolve.cpp` setelah `renderer_draw.cpp` compiled, then found two Android app-path debug toggles outside `PES17_ANDROID`. Both are kini guarded; non-Android builds explicitly disable those file-based toggles.
 - Refreshed full-renderer SDK probe queued: [run 42926688441](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42926688441).
 
-**Latest validation (2026-11-11):** CTest passed for the current documentation HEAD `baafb1ebf46d1af316fbfd0eadf49a6eb9397f74` (run [42925400050](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925400050)). The BO2 Mesa Switch SDK probe also completed successfully for the Device extension-deduplication code commit `dc9d788ed72ecac4bb31538069d4138d62de63e4` (run [42925275792](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792)); artifact `pes17-vulkan-bo2-probe` ID `13813836384`, 8,114,137 bytes, SHA-256 `82645e76d3736495d4a8d650022c22f206074d774372faf2334c8f91b0277e2e`, is available [here](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792/artifacts/13813836384). The probe compiled the Vulkan runtime translation units selected by the workflow; `renderer_draw.cpp` and `renderer_resolve.cpp` remain deferred because they require private XenonRecomp-generated PPC output. This is a diagnostic entrypoint probe, not proof of full PES game linking, Vulkan rendering, boot, or gameplay.
+**Latest validation (2026-11-11):** CTest passed untuk the current documentation HEAD `baafb1ebf46d1af316fbfd0eadf49a6eb9397f74` (run [42925400050](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925400050)). The BO2 Mesa Switch SDK probe also completed successfully untuk the Device extension-deduplication code commit `dc9d788ed72ecac4bb31538069d4138d62de63e4` (run [42925275792](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792)); artifact `pes17-vulkan-bo2-probe` ID `13813836384`, 8,114,137 bytes, SHA-256 `82645e76d3736495d4a8d650022c22f206074d774372faf2334c8f91b0277e2e`, is tersedia [here](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/42925275792/artifacts/13813836384). The probe compiled the Vulkan runtime translation units yang dipilih by the workflow; `renderer_draw.cpp` dan `renderer_resolve.cpp` masih ditunda because they require output PPC privat hasil XenonRecomp. This is a diagnostic entrypoint probe, not proof of link game PES secara penuhing, Vulkan rendering, boot, or gameplay.
