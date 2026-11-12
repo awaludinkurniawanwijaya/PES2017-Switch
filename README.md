@@ -413,7 +413,7 @@ Jalur Switch aktif sedang ditata ulang agar mengikuti batas provider/device/pres
 
 ### Ekstraksi BO2 VulkanDevice — peta kepemilikan (2026-11-11)
 
-The next architectural milestone is deliberately **not** a thin `Device` wrapper. The pinned BO2 `VulkanDevice` groups physical-device identity/properties, supported and enabled features/extensions, logical-device lifetime, device dispatch, queue-family/queue objects, and memory-type information. PES currently distributes those responsibilities:
+Tahapan arsitektur berikutnya sengaja **bukan** sekadar wrapper `Device` yang tipis. The pinned BO2 `VulkanDevice` groups physical-device identity/properties, supported and enabled features/extensions, logical-device lifetime, device dispatch, queue-family/queue objects, and memory-type information. PES currently distributes those responsibilities:
 
 - `pipeline.cpp::State`: physical/logical device handles, selected queue/family, cached `VkPhysicalDeviceProperties`, device name, renderer feature/format capabilities, and headless-vs-borrowed ownership.
 - `provider.cpp`: instance lifecycle, physical-device selection, extension enumeration, logical-device creation/destruction and dynamic device-dispatch load/rollback.
