@@ -229,6 +229,37 @@ namespace
     bool MapPhysicalAperture()
     {
         const size_t size = size_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+
+        // Capture Horizon's actual process memory budget before requesting the
+        // 512 MiB Xbox 360 physical bank. This distinguishes a process resource
+        // limit from an address-space reservation or alias-mapping failure.
+        u64 resourceLimitValue = 0;
+        const Result limitHandleResult = svcGetInfo(
+            &resourceLimitValue, InfoType_ResourceLimit, CUR_PROCESS_HANDLE, 0);
+        if (R_SUCCEEDED(limitHandleResult))
+        {
+            const Handle resourceLimit = static_cast<Handle>(resourceLimitValue);
+            s64 memoryCurrent = -1;
+            s64 memoryLimit = -1;
+            s64 memoryPeak = -1;
+            const Result currentResult = svcGetResourceLimitCurrentValue(
+                &memoryCurrent, resourceLimit, LimitableResource_Memory);
+            const Result maximumResult = svcGetResourceLimitLimitValue(
+                &memoryLimit, resourceLimit, LimitableResource_Memory);
+            const Result peakResult = svcGetResourceLimitPeakValue(
+                &memoryPeak, resourceLimit, LimitableResource_Memory);
+            LOGI("guest: Horizon memory resource current=%lld limit=%lld peak=%lld (MiB), query rc=%08X/%08X/%08X",
+                 (long long)(memoryCurrent < 0 ? -1 : memoryCurrent / 1048576),
+                 (long long)(memoryLimit < 0 ? -1 : memoryLimit / 1048576),
+                 (long long)(memoryPeak < 0 ? -1 : memoryPeak / 1048576),
+                 unsigned(currentResult), unsigned(maximumResult), unsigned(peakResult));
+        }
+        else
+        {
+            LOGW("guest: could not query Horizon resource-limit handle: 0x%08X",
+                 unsigned(limitHandleResult));
+        }
+
         Result rc = svcCreateSharedMemory(&g_physicalBank, size, Perm_Rw, Perm_DontCare);
         if (R_FAILED(rc))
         {
