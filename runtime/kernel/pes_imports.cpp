@@ -488,9 +488,9 @@ PPC_FUNC(__imp__RtlTimeFieldsToTime)
     const int64_t era = (y >= 0 ? y : y - 399) / 400;
     const uint32_t yoe = uint32_t(y - era * 400);
     const uint32_t mp = uint32_t(month + (month > 2 ? -3 : 9));
-    const uint32_t doy = (153 * mp + 2) / 5 + uint32_t(day - 1);
-    const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    const int64_t days = era * 146097 + int64_t(doe) - 719468;
+    const int64_t doy = (153 * int64_t(mp) + 2) / 5 + day - 1;
+    const int64_t doe = int64_t(yoe) * 365 + yoe / 4 - yoe / 100 + doy;
+    const int64_t days = era * 146097 + doe - 719468;
     const int64_t seconds = days * 86400
         + int64_t(Load16(f + 6)) * 3600
         + int64_t(Load16(f + 8)) * 60
