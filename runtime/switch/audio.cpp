@@ -1,6 +1,9 @@
 #include "audio.h"
 
+extern "C"
+{
 #include <switch/services/audout.h>
+}
 
 #include <algorithm>
 #include <cmath>
