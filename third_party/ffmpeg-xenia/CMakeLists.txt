@@ -258,7 +258,7 @@ if(MW2_FFMPEG_PORTABLE)
     # the XMA decoder does not need mmap semantics on Switch.
     if(PES17_SWITCH)
         file(APPEND "${MW2_FFMPEG_PORTABLE_DIR}/config.h"
-"\n/* Horizon has no POSIX mmap interface: use FFmpeg's read() fallback. */\n#undef HAVE_MMAP\n#define HAVE_MMAP 0\n")
+"\n/* Horizon has no POSIX mmap, sysconf, or iconv interfaces. */\n#undef HAVE_MMAP\n#define HAVE_MMAP 0\n#undef HAVE_SYSCONF\n#define HAVE_SYSCONF 0\n#undef CONFIG_ICONV\n#define CONFIG_ICONV 0\n")
     endif()
     target_include_directories(ffmpeg_xma BEFORE PRIVATE "${MW2_FFMPEG_PORTABLE_DIR}")
     message(STATUS "XMA decoder: portable C (${CMAKE_SYSTEM_PROCESSOR}); no NEON dispatch")
