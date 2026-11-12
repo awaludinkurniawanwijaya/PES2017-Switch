@@ -1025,6 +1025,7 @@ void vk::renderer::Swap(uint32_t frontBuffer)
                 // The process's CPU time (user + system, every thread) over the window, a frame, and
                 // whether the crowd was drawn in it (the flip is made after this report's frame).
                 static double lastCpu = 0.0;
+#if !defined(__SWITCH__)
                 rusage usage{};
                 getrusage(RUSAGE_SELF, &usage);
                 const double cpu = double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) +
@@ -1032,6 +1033,9 @@ void vk::renderer::Swap(uint32_t frontBuffer)
                 LOGI("perf: cpu %.2f ms a frame (%.0f%% of a core), crowd %s", (cpu - lastCpu) * 1000.0 / 600.0,
                      (cpu - lastCpu) / took * 100.0, CrowdOff() ? "off" : "on");
                 lastCpu = cpu;
+#else
+                (void)lastCpu;
+#endif
             }
             {
                 FenceWaits& waits = gpu::detail::g_fenceWaits;
