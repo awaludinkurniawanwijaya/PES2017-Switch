@@ -506,9 +506,9 @@ bool install::Prepare(int, char**, Launch& launch, int& exitCode)
 
     std::string error;
     LOGI("install: checking %s/%s", Utf8(g_gameFolder).c_str(), kXex);
-    const Installed installed = LoadInstalled(launch.image, error);
+    const auto installed = LoadInstalled(launch.image, error);
     LOGI("install: executable check returned %s (%zu image bytes)",
-         installed == Installed::Yes ? "yes" : installed == Installed::No ? "no" : "unreadable",
+         installed == decltype(installed)::Yes ? "yes" : installed == decltype(installed)::No ? "no" : "unreadable",
          launch.image.size());
     switch (installed)
     {
