@@ -512,13 +512,13 @@ bool install::Prepare(int, char**, Launch& launch, int& exitCode)
          launch.image.size());
     switch (installed)
     {
-    case Installed::Yes:
+    case decltype(installed)::Yes:
         launch.gameRoot = g_gameFolder;
         return true;
-    case Installed::Unreadable:
+    case decltype(installed)::Unreadable:
         ShowError(error);
         return false;
-    case Installed::No:
+    case decltype(installed)::No:
         break;
     }
     // Not installed, or installed for another version of this build: both are
