@@ -262,10 +262,18 @@ int pes17::Run(int argc, char** argv)
     // A player starts the executable with no arguments (runtime/install/); a
     // development run names the image, a flat PE or the XEX, and the game folder.
     install::Launch launch;
-    if (install::PlayerStart(argc, argv))
+    const bool playerStart = install::PlayerStart(argc, argv);
+    LOGI("startup: argc=%d, player-start=%s", argc, playerStart ? "yes" : "no");
+    if (playerStart)
     {
         int exitCode = 0;
-        if (!install::Prepare(argc, argv, launch, exitCode)) return exitCode;
+        LOGI("startup: entering installed-game preparation");
+        if (!install::Prepare(argc, argv, launch, exitCode))
+        {
+            LOGE("startup: installed-game preparation stopped (exit %d)", exitCode);
+            return exitCode;
+        }
+        LOGI("startup: installed-game preparation complete (%zu image bytes)", launch.image.size());
     }
     else
     {
