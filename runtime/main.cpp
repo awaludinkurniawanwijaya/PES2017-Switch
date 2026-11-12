@@ -151,6 +151,8 @@ void crash::RequestExit(const char* why)
     }
 }
 
+namespace
+{
     bool LoadImage(const std::vector<uint8_t>& image)
     {
         if (uint64_t(image.size()) > PPC_IMAGE_SIZE)
