@@ -269,6 +269,9 @@ target_include_directories(ffmpeg_xma
 target_compile_definitions(ffmpeg_xma PRIVATE
     HAVE_AV_CONFIG_H _ISOC11_SOURCE _FILE_OFFSET_BITS=64 _LARGEFILE_SOURCE
     _POSIX_C_SOURCE=200112 _XOPEN_SOURCE=600 _GNU_SOURCE PIC)
+if(PES17_SWITCH)
+    target_compile_definitions(ffmpeg_xma PRIVATE __SWITCH__=1)
+endif()
 # Third-party C; its warnings are not ours to fix.
 # Newer clang makes an incompatible pointer an error; FFmpeg's codec tables rely on it.
 target_compile_options(ffmpeg_xma PRIVATE -w -std=gnu17 -fno-strict-aliasing -fomit-frame-pointer
