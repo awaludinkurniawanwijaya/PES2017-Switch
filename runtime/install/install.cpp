@@ -483,18 +483,34 @@ fs::path install::Folder(int argc, char** argv)
 
 bool install::Prepare(int, char**, Launch& launch, int& exitCode)
 {
+    LOGI("install: Prepare entered");
     exitCode = 1;
     g_playerStart = true;
     // Everything a player's copy keeps -- game/, saves/ -- is beside the executable.
     std::error_code ec;
-    if (const fs::path folder = ExecutableFolder(); !folder.empty()) fs::current_path(folder, ec);
+    const fs::path executableFolder = ExecutableFolder();
+    LOGI("install: executable folder is %s", Utf8(executableFolder).c_str());
+    if (!executableFolder.empty())
+    {
+        fs::current_path(executableFolder, ec);
+        if (ec) LOGE("install: cannot change current directory: %s", ec.message().c_str());
+        else LOGI("install: current directory changed");
+    }
     // ...unless the launcher put the game files on another drive (INSTALL
     // LOCATION): same file it wrote, beside this program too.
-    if (const fs::path at = InstallLocation(ExecutableFolder()); !at.empty())
+    LOGI("install: reading optional install location");
+    if (const fs::path at = InstallLocation(executableFolder); !at.empty())
         SetGameFolder(at / kGameFolder);
+    else
+        LOGI("install: using game/ beside the NRO");
 
     std::string error;
-    switch (LoadInstalled(launch.image, error))
+    LOGI("install: checking %s/%s", Utf8(g_gameFolder).c_str(), kXex);
+    const Installed installed = LoadInstalled(launch.image, error);
+    LOGI("install: executable check returned %s (%zu image bytes)",
+         installed == Installed::Yes ? "yes" : installed == Installed::No ? "no" : "unreadable",
+         launch.image.size());
+    switch (installed)
     {
     case Installed::Yes:
         launch.gameRoot = g_gameFolder;
