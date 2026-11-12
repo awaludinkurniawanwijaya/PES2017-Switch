@@ -184,6 +184,9 @@ jobs:
           mkdir -p ppc
           cp -a .private-ppc/ppc/. ppc/
           echo "Private PPC source files staged locally on this ephemeral runner."
+          # Regenerate import stubs against this runtime's current kernel API.
+          # The private PPC snapshot can lag behind runtime signature changes.
+          python3 tools/gen_kernel_stubs.py
 
       - name: Download and verify pinned BO2 Switch build kit
         shell: bash
