@@ -235,7 +235,7 @@ namespace
         // limit from an address-space reservation or alias-mapping failure.
         u64 resourceLimitValue = 0;
         const Result limitHandleResult = svcGetInfo(
-            &resourceLimitValue, InfoType_ResourceLimit, CUR_PROCESS_HANDLE, 0);
+            &resourceLimitValue, InfoType_ResourceLimit, 0, 0);
         if (R_SUCCEEDED(limitHandleResult))
         {
             const Handle resourceLimit = static_cast<Handle>(resourceLimitValue);
