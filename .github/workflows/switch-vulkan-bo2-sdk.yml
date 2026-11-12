@@ -234,7 +234,7 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DPES17_SWITCH=ON \
                 -DPES17_DIAGNOSTICS=OFF \
-                -DPES17_LOGGING=OFF \
+                -DPES17_LOGGING=ON \
                 -DPES17_USE_SDL=OFF \
                 -DPES17_SWITCH_VULKAN_SDK=/mesa-sdk \
                 -DPES17_XEX_SHA256_SP=b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6
