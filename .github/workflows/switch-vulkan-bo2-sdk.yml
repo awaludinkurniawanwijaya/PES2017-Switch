@@ -9,6 +9,7 @@ on:
       - "switch/mesa/**"
       - "runtime/gpu/vulkan/**"
       - "runtime/**"
+      - "third_party/ffmpeg-xenia/**"
       - "CMakeLists.txt"
       - "build-switch.sh"
       - ".github/workflows/switch-vulkan-bo2-sdk.yml"
