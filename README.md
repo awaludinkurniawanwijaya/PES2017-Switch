@@ -1,112 +1,112 @@
-# PES 2017 for Nintendo Switch
+# PES 2017 untuk Nintendo Switch
 
-An experimental Nintendo Switch porting project for **Pro Evolution Soccer 2017 (PES 2017)**.
+Proyek eksperimental untuk mem-porting **Pro Evolution Soccer 2017 (PES 2017)** ke Nintendo Switch.
 
-> **Project status: work in progress.** The full PES 2017 NRO is currently being compiled. A complete game NRO has not yet been produced, launched, or verified as playable. The separate Vulkan probe is only a build-environment test and is not the game.
+> **Status proyek: masih dalam pengembangan.** NRO penuh PES 2017 sedang dalam proses kompilasi. NRO game lengkap belum berhasil diproduksi, dijalankan, atau diverifikasi dapat dimainkan. Probe Vulkan terpisah hanya digunakan untuk menguji lingkungan build dan bukan merupakan game.
 
-## Current progress
+## Progres saat ini
 
-| Area | Status |
+| Bagian | Status |
 |---|---|
-| PPC game-code source preparation | Generated source set available |
-| PPC source files | 1,418 files |
-| Runtime/kernel import handling | 212 implemented; 69 currently stubbed |
-| Source checkout and staging | Passing |
-| Pinned BO2 Switch build kit download and verification | Passing |
-| Vulkan/Mesa probe build and link | Passing — build-environment smoke test only |
-| Full PES 2017 compilation and NRO packaging | In progress |
-| Full PES 2017 NRO artifact | Not yet available |
-| Launch and runtime validation | Not yet started |
-| Gameplay validation | Not yet started |
+| Persiapan source code game PPC | Source hasil generate tersedia |
+| Jumlah file source PPC | 1.418 file |
+| Penanganan kernel import/runtime | 212 sudah diimplementasikan; 69 masih berupa stub |
+| Checkout dan staging source | Berhasil |
+| Pengunduhan dan verifikasi BO2 Switch build kit yang dipatok | Berhasil |
+| Build dan linking probe Vulkan/Mesa | Berhasil — hanya smoke test lingkungan build |
+| Kompilasi penuh dan pengemasan NRO PES 2017 | Sedang berlangsung |
+| Artefak NRO penuh PES 2017 | Belum tersedia |
+| Pengujian peluncuran dan runtime | Belum dimulai |
+| Pengujian gameplay | Belum dimulai |
 
-Progress figures describe the current development state and may change as implementation continues.
+Angka progres menggambarkan kondisi pengembangan saat ini dan dapat berubah seiring berjalannya pekerjaan.
 
-## Build environment and tools
+## Lingkungan build dan tools
 
-The project currently uses:
+Proyek ini saat ini menggunakan:
 
-- **Target platform:** Nintendo Switch
-- **PowerPC recompilation tool:** [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
-- **Switch build environment:** pinned BO2 Switch build kit
-- **Compiler/toolchain:** [devkitPro](https://devkitpro.org/) and [devkitA64](https://github.com/devkitPro/pacman-packages)
-- **Graphics components:** [Vulkan](https://www.vulkan.org/) and [Mesa](https://www.mesa3d.org/) components provided by the configured build environment
+- **Platform tujuan:** Nintendo Switch
+- **Alat recompilation PowerPC:** [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
+- **Lingkungan build Switch:** BO2 Switch build kit dengan versi yang dipatok
+- **Compiler/toolchain:** [devkitPro](https://devkitpro.org/) dan [devkitA64](https://github.com/devkitPro/pacman-packages)
+- **Komponen grafis:** [Vulkan](https://www.vulkan.org/) dan komponen [Mesa](https://www.mesa3d.org/) yang disediakan oleh lingkungan build yang dikonfigurasi
 
-Build scripts and workflow configuration are maintained in this repository. The full build also requires the prepared PPC source tree to be made available to the workflow. Game assets are handled separately and are not included in this repository.
+Skrip build dan konfigurasi proyek dikelola di repositori ini. Build penuh juga membutuhkan direktori source PPC yang telah disiapkan agar tersedia bagi proses build. Aset game dikelola secara terpisah dan tidak disertakan di repositori ini.
 
-## Executable information
+## Informasi executable
 
-The Xbox 360 executable used as the input for this project has the following identifying properties:
+Executable Xbox 360 yang digunakan sebagai input proyek memiliki identitas berikut:
 
-| Property | Value |
+| Properti | Nilai |
 |---|---|
 | Executable | `default.xex` |
 | Title ID | `0x4A3007D1` |
-| XEX version | `0x00000012` |
-| File size | `32,493,568 bytes` |
+| Versi XEX | `0x00000012` |
+| Ukuran file | `32,493,568 bytes` |
 | SHA-256 | `b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6` |
 
-These values identify the executable input; the executable itself is not distributed in this repository.
+Nilai tersebut digunakan untuk mengidentifikasi executable input. File executable itu sendiri tidak didistribusikan di repositori ini.
 
-## Build process
+## Proses build
 
-The full build uses the repository's build scripts and the configured Nintendo Switch toolchain.
+Build penuh menggunakan skrip build repositori dan toolchain Nintendo Switch yang telah dikonfigurasi.
 
-A build is considered successful only when all of the following are complete:
+Build baru dapat dinyatakan berhasil apabila seluruh tahapan berikut selesai:
 
-1. The full PPC source target compiles successfully.
-2. The Switch application links successfully.
-3. The application is packaged as an NRO.
-4. The resulting full PES 2017 NRO artifact is produced and made available.
+1. Seluruh target source PPC berhasil dikompilasi.
+2. Aplikasi Switch berhasil di-link.
+3. Aplikasi berhasil dikemas menjadi NRO.
+4. Artefak NRO penuh PES 2017 berhasil dibuat dan tersedia.
 
-A successful build confirms compilation and packaging only. It does not prove that the game starts, that assets are integrated, or that gameplay works.
+Build yang berhasil hanya membuktikan proses kompilasi dan pengemasan. Hal tersebut belum membuktikan bahwa game dapat dijalankan, aset telah terintegrasi, atau gameplay berfungsi.
 
-## Next validation stages
+## Tahapan pengujian berikutnya
 
-After a full NRO is produced, the next work is expected to proceed in stages:
+Setelah NRO penuh berhasil dibuat, pekerjaan validasi direncanakan berlangsung secara bertahap:
 
-1. **NRO validation** — verify that the packaged file exists and is structurally valid.
-2. **Game-data and asset integration** — ensure required game data such as textures, models, stadium data, audio, and other resources can be located and read by the application. These resources are not automatically included just because the NRO compiled.
-3. **Launch testing** — run the application in a suitable emulator or on Nintendo Switch hardware and check for startup failures.
-4. **Menu and rendering tests** — check the title screen, menus, models, textures, stadiums, and graphics output.
-5. **Gameplay tests** — test team selection, match startup, player controls, audio, and a complete match.
-6. **Stability and performance work** — investigate crashes, missing resources, graphics issues, memory use, frame rate, and compatibility.
+1. **Validasi NRO** — memastikan file hasil pengemasan tersedia dan memiliki struktur yang valid.
+2. **Integrasi data dan aset game** — memastikan data game yang dibutuhkan, seperti tekstur, model, data stadion, audio, dan sumber daya lainnya, dapat ditemukan serta dibaca oleh aplikasi. Sumber daya tersebut tidak otomatis ikut disertakan hanya karena NRO berhasil dikompilasi.
+3. **Pengujian peluncuran** — menjalankan aplikasi pada emulator yang sesuai atau perangkat Nintendo Switch dan memeriksa kegagalan saat startup.
+4. **Pengujian menu dan rendering** — memeriksa layar judul, menu, model, tekstur, stadion, serta keluaran grafis.
+5. **Pengujian gameplay** — menguji pemilihan tim, memulai pertandingan, kontrol pemain, audio, dan satu pertandingan penuh.
+6. **Stabilitas dan performa** — menyelidiki crash, sumber daya yang hilang, masalah grafis, penggunaan memori, frame rate, dan kompatibilitas.
 
-These are planned validation stages, not tests that have already passed.
+Tahapan tersebut merupakan rencana validasi, bukan pengujian yang sudah dinyatakan berhasil.
 
-## Legal notice
+## Pemberitahuan hukum
 
-This is an independent, experimental project and is not affiliated with, endorsed by, or sponsored by Konami. PES 2017 and its game content remain the property of their respective rights holders. This repository does not provide the commercial game or its copyrighted assets. Use only game data that you are legally entitled to use.
+Proyek ini merupakan proyek independen dan eksperimental, serta tidak berafiliasi dengan, didukung oleh, atau disponsori oleh Konami. PES 2017 dan seluruh konten gamenya tetap menjadi milik pemegang hak masing-masing. Repositori ini tidak menyediakan game komersial maupun aset berhak cipta miliknya. Gunakan hanya data game yang secara hukum berhak Anda gunakan.
 
-Third-party build tools and libraries remain subject to their own licenses and terms. Review and comply with those terms when building or redistributing binaries.
+Tools dan library pihak ketiga tetap tunduk pada lisensi serta ketentuan masing-masing. Tinjau dan patuhi ketentuan tersebut sebelum melakukan build atau mendistribusikan binary.
 
-## Contributing, tools, and acknowledgements
+## Kontribusi, tools, dan ucapan terima kasih
 
-The project is experimental. Contributions, reproducible bug reports, build fixes, compatibility reports, and testing feedback are welcome through [GitHub Issues](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/issues).
+Proyek ini masih bersifat eksperimental. Kontribusi, laporan bug yang dapat direproduksi, perbaikan build, laporan kompatibilitas, dan masukan pengujian dapat disampaikan melalui [GitHub Issues](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/issues).
 
-The following tools, libraries, and driver projects are relevant to the development and graphics-driver support:
+Tools, library, dan proyek driver berikut berkaitan dengan pengembangan serta dukungan driver grafis:
 
-### Build and development tools
+### Tools build dan pengembangan
 
-- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — PowerPC recompilation tool.
-- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — Switch build environment reference used for the configured build kit.
-- [devkitPro](https://devkitpro.org/) / [devkitA64](https://github.com/devkitPro/pacman-packages) — Nintendo Switch homebrew toolchain.
-- [Vulkan](https://www.vulkan.org/) — graphics API.
-- [Mesa](https://www.mesa3d.org/) — open-source graphics driver project and upstream home of Turnip.
+- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) — alat recompilation PowerPC.
+- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — referensi lingkungan build Nintendo Switch yang digunakan dalam konfigurasi proyek.
+- [devkitPro](https://devkitpro.org/) / [devkitA64](https://github.com/devkitPro/pacman-packages) — toolchain homebrew Nintendo Switch.
+- [Vulkan](https://www.vulkan.org/) — API grafis.
+- [Mesa](https://www.mesa3d.org/) — proyek driver grafis open-source dan upstream dari Turnip.
 
-### Nintendo Switch Vulkan driver source
+### Sumber driver Vulkan Nintendo Switch
 
-The Switch graphics driver used by the BO2 Switch build kit is **Mesa NVK (Nouveau Vulkan)** for the NVIDIA Tegra X1 GM20B GPU under Horizon OS. It is not the Android Adreno Turnip driver.
+Driver grafis Switch yang digunakan oleh BO2 Switch build kit adalah **Mesa NVK (Nouveau Vulkan)** untuk GPU NVIDIA Tegra X1 GM20B pada Horizon OS. Driver ini bukan Android Adreno Turnip.
 
-- [danfromtico/mesa-switch](https://github.com/danfromtico/mesa-switch) — upstream Mesa port for Nintendo Switch; the BO2 build kit pins base commit `1a8c1a66d6f`.
-- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — builds the Mesa/NVK driver using `tools/build_mesa.sh` and applies its [`patches/mesa-bo2zm.patch`](https://github.com/AlvaroEPena/bo2-360-nx/blob/main/patches/mesa-bo2zm.patch).
-- The build produces the static `libvulkan.a` library, which is linked into the Switch NRO through the kit's Switch CMake configuration. It is therefore bundled in the NRO, not installed as a separate Android driver package on the SD card.
+- [danfromtico/mesa-switch](https://github.com/danfromtico/mesa-switch) — port Mesa untuk Nintendo Switch; BO2 build kit menggunakan base commit `1a8c1a66d6f`.
+- [BO2 Switch build kit](https://github.com/AlvaroEPena/bo2-360-nx) — membangun driver Mesa/NVK melalui `tools/build_mesa.sh` dan menerapkan patch [`patches/mesa-bo2zm.patch`](https://github.com/AlvaroEPena/bo2-360-nx/blob/main/patches/mesa-bo2zm.patch).
+- Proses build menghasilkan library statis `libvulkan.a`, yang di-link ke NRO Switch melalui konfigurasi CMake Switch milik build kit. Dengan demikian, driver ini dibundel ke dalam NRO dan bukan dipasang sebagai paket driver Android terpisah pada SD card.
 
-The three Turnip package feeds previously listed here (K11MCH1, StevenMXZ, and MrPurple666), together with libadrenotools, belong to the Android port's optional Adreno-driver feature. They are not the Switch NRO's Vulkan driver source.
- 
-### Other libraries
+Tiga sumber paket Turnip yang sebelumnya tercantum di sini (K11MCH1, StevenMXZ, dan MrPurple666), bersama libadrenotools, merupakan bagian dari fitur opsional driver Adreno untuk port Android. Keduanya bukan sumber driver Vulkan untuk NRO Nintendo Switch.
 
-- [SDL](https://github.com/libsdl-org/SDL) — cross-platform input and windowing library.
-- [Dear ImGui](https://github.com/ocornut/imgui) — immediate-mode user interface library.
-- [FFmpeg](https://ffmpeg.org/) — multimedia framework; the project includes an XMA-focused component.
+### Library lainnya
 
-When reporting a problem, include the build log, the device or emulator environment, and the steps needed to reproduce it. Do not attach copyrighted game files or assets to issue reports.
+- [SDL](https://github.com/libsdl-org/SDL) — library input dan windowing lintas platform.
+- [Dear ImGui](https://github.com/ocornut/imgui) — library antarmuka pengguna immediate-mode.
+- [FFmpeg](https://ffmpeg.org/) — framework multimedia; proyek ini menyertakan komponen yang berfokus pada XMA.
+
+Saat melaporkan masalah, sertakan log build, lingkungan perangkat atau emulator, serta langkah-langkah untuk mereproduksi masalah. Jangan lampirkan file game atau aset berhak cipta ke laporan issue.
