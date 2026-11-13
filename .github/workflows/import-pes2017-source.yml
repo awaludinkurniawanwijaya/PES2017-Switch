@@ -1,0 +1,57 @@
+name: Import complete PES2017 source into repository
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-pes2017-source.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download verified source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pes17-switch-complete-source
+          path: ${{ runner.temp }}/pes17-source-artifact
+          repository: ${{ github.repository }}
+          run-id: 43372321370
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract source into pes2017/
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="$(find "${{ runner.temp }}/pes17-source-artifact" -maxdepth 2 -type f -name 'pes17-switch-complete-source.zip' -print -quit)"
+          test -n "$SOURCE_ZIP"
+          unzip -tq "$SOURCE_ZIP"
+          mkdir -p pes2017
+          unzip -q "$SOURCE_ZIP" -d pes2017
+          echo "Extracted files: $(find pes2017 -type f | wc -l)"
+          du -sh pes2017
+          test "$(find pes2017 -type f | wc -l)" -ge 4000
+
+      - name: Commit expanded source folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f pes2017
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Add complete PES2017 source under pes2017/"
+          git push origin HEAD:main
