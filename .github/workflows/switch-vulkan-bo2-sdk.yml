@@ -189,6 +189,22 @@ jobs:
           # The private PPC snapshot can lag behind runtime signature changes.
           python3 tools/gen_kernel_stubs.py
 
+      - name: Package complete build source (including private generated PPC)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          zip -qr "$RUNNER_TEMP/pes17-switch-complete-source.zip" . \\
+            -x './.git/*' './.private-ppc/.git/*' './build-switch/*'
+
+      - name: Upload complete build source
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes17-switch-complete-source
+          path: ${{ runner.temp }}/pes17-switch-complete-source.zip
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Download and verify pinned BO2 Switch build kit
         shell: bash
         run: |
