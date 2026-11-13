@@ -42,6 +42,8 @@ namespace
 #ifdef __SWITCH__
     VirtmemReservation* g_reservation = nullptr;
     Handle g_physicalBank = INVALID_HANDLE;
+    Handle g_functionTableBank = INVALID_HANDLE;
+    uint64_t g_functionTableEnd = 0;
 
     constexpr bool SwitchCommitPageRange(uint32_t address, uint32_t size,
                                          uint64_t& begin, uint64_t& end)
@@ -88,6 +90,8 @@ bool guest::Commit(uint32_t address, uint32_t size)
         return false;
     }
     const uint64_t bankSize = uint64_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+    if (begin >= guest::kFuncTableBase && end <= g_functionTableEnd)
+        return g_functionTableBank != INVALID_HANDLE;
     for (uint32_t window : { guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase })
     {
         const uint64_t windowBegin = window;
@@ -181,6 +185,46 @@ namespace
         g_base = static_cast<uint8_t*>(g_virtualAlloc2(nullptr, nullptr, kSpace, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
                                                        PAGE_NOACCESS, nullptr, 0));
         return g_base != nullptr;
+    }
+
+    bool MapFunctionTable()
+    {
+        constexpr uint64_t pageSize = 0x1000;
+        const uint64_t requestedSize = uint64_t(PPC_CODE_SIZE) * 2;
+        const uint64_t mappedSize = (requestedSize + pageSize - 1) & ~(pageSize - 1);
+        if ((guest::kFuncTableBase & (pageSize - 1)) != 0 || mappedSize == 0 ||
+            mappedSize > UINT32_MAX)
+        {
+            LOGE("guest: function table range is not valid for Horizon shared-memory mapping");
+            return false;
+        }
+
+        Result rc = svcCreateSharedMemory(&g_functionTableBank, size_t(mappedSize),
+                                          Perm_Rw, Perm_DontCare);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: svcCreateSharedMemory(function table, %llu) failed: 0x%08X",
+                 (unsigned long long)mappedSize, unsigned(rc));
+            g_functionTableBank = INVALID_HANDLE;
+            return false;
+        }
+
+        rc = svcMapSharedMemory(g_functionTableBank, g_base + guest::kFuncTableBase,
+                                size_t(mappedSize), Perm_Rw);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: mapping function table shared memory at %08X failed: 0x%08X",
+                 guest::kFuncTableBase, unsigned(rc));
+            svcCloseHandle(g_functionTableBank);
+            g_functionTableBank = INVALID_HANDLE;
+            return false;
+        }
+
+        g_functionTableEnd = uint64_t(guest::kFuncTableBase) + mappedSize;
+        LOGI("guest: function table backed by shared memory at %08X..%08llX (%llu bytes)",
+             guest::kFuncTableBase, (unsigned long long)g_functionTableEnd,
+             (unsigned long long)mappedSize);
+        return true;
     }
 
     bool MapPhysicalAperture()
@@ -392,6 +436,16 @@ uint8_t* guest::Initialise()
         LOGE("could not alias the physical aperture at %08X", kApertureBase);
         return nullptr;
     }
+#if defined(__SWITCH__)
+    // The NRO's NPDM has SystemResourceSize=0, so svcMapPhysicalMemory is
+    // unavailable. Back the recompiler's host-pointer table with a separate
+    // shared-memory object, just as the 512 MiB guest bank is backed.
+    if (!MapFunctionTable())
+    {
+        LOGE("could not back the guest function lookup table");
+        return nullptr;
+    }
+#endif
 
     const uint32_t funcTableBase = kFuncTableBase;
     const uint32_t funcTableSize = uint32_t(PPC_CODE_SIZE * 2);
