@@ -16,12 +16,12 @@
 // grants the process the GPU/memory budget needed to create its device.
 // libnx's automatic heap size (zero) consumes almost the entire process memory
 // budget before main(), leaving no room for the Xbox 360 512 MiB shared bank.
-// Cap the C/C++ heap at 1.5 GiB so the guest bank and NVK/GPU allocations have
-// room inside Horizon's application resource limit. Keep this a 2 MiB multiple.
+// A 768 MiB C/C++ heap leaves room for the bank plus subsequent NVK allocations
+// inside Horizon's application resource limit. Keep this a 2 MiB multiple.
 extern "C"
 {
     u32 __nx_applet_type = AppletType_Application;
-    size_t __nx_heap_size = 0x60000000;
+    size_t __nx_heap_size = 0x30000000;
 }
 
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
