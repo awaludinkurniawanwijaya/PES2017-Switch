@@ -2,7 +2,7 @@
 
 Proyek eksperimental untuk mem-porting **Pro Evolution Soccer 2017 (PES 2017)** dari Xbox 360 ke Nintendo Switch.
 
-> **Status proyek per 13 November 2026: masih dalam pengembangan dan belum playable.** Perbaikan pengelolaan heap Horizon untuk mengatasi kegagalan alokasi shared memory 512 MiB telah diterapkan pada source code. Build NRO penuh PES 2017 sedang dijalankan melalui GitHub Actions. Artefak NRO dari build terbaru belum selesai diverifikasi, dan belum ada bukti bahwa game berhasil boot atau menjalankan gameplay pada Nintendo Switch.
+> **Status proyek per 13 November 2026: NRO penuh berhasil dibangun, tetapi game belum berhasil melewati inisialisasi guest memory dan belum playable.** Patch heap berhasil menurunkan penggunaan resource Horizon dan shared memory guest 512 MiB berhasil dipetakan. Hambatan runtime terbaru adalah `svcMapPhysicalMemory` mengembalikan `0x0000FA01`; dokumentasi SVC mengaitkan status ini dengan `SystemResourceSize` NPDM yang tidak tersedia/tidak mencukupi. Diagnostik tambahan sudah ditambahkan untuk membaca ukuran dan pemakaian SystemResource pada build berikutnya.
 
 ## Progres saat ini
 
@@ -17,10 +17,10 @@ Proyek eksperimental untuk mem-porting **Pro Evolution Soccer 2017 (PES 2017)** 
 | Integrasi Mesa NVK/Nouveau untuk Switch | Terpasang dalam jalur build BO2; bukan driver Android Turnip |
 | Build dan linking probe Vulkan/Mesa | Berhasil pada pengujian sebelumnya; probe bukan game penuh |
 | Perbaikan pengelolaan heap Horizon | Diterapkan; batas heap yang dituju 768 MiB saat loader menyediakan heap override |
-| Alokasi shared memory guest 512 MiB setelah perbaikan | Belum diverifikasi pada perangkat Switch |
-| Kompilasi dan pengemasan NRO penuh PES 2017 | Sedang berlangsung di GitHub Actions |
-| Artefak NRO penuh terbaru | Belum tersedia / belum diverifikasi |
-| Pengujian boot game pada Switch | Belum berhasil dikonfirmasi |
+| Alokasi shared memory guest 512 MiB setelah perbaikan | Berhasil; log Switch mengonfirmasi tiga window terpetakan |
+| Kompilasi dan pengemasan NRO penuh PES 2017 | Berhasil pada run 43405746920; artefak dan checksum terverifikasi |
+| Artefak NRO penuh | Tersedia; ukuran NRO 119.453.893 byte; SHA-256 diverifikasi |
+| Inisialisasi guest memory | Berhenti pada `svcMapPhysicalMemory` dengan `0x0000FA01` (`InvalidState`) |
 | Pengujian menu, rendering PES, dan gameplay | Belum dimulai |
 
 ### Perubahan teknis terbaru — 13 November 2026
@@ -33,20 +33,25 @@ Penyebab yang ditemukan adalah heap override dari loader homebrew: nilai `__nx_h
 
 - Commit perubahan heap: [`6eb7844`](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/commit/6eb7844b5969e49a32bc50d50f0e8ced534eef7c).
 - Source terkait: [`pes2017/runtime/switch/platform.cpp`](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/blob/main/pes2017/runtime/switch/platform.cpp).
-- **Catatan validasi:** perubahan source sudah diterapkan, tetapi keberhasilan mengecilkan heap dan keberhasilan pemetaan shared memory 512 MiB masih harus dibuktikan melalui log saat NRO dijalankan pada Switch. Angka 768 MiB adalah batas yang diminta oleh patch, bukan hasil pengukuran runtime yang sudah dikonfirmasi.
+- **Validasi perangkat:** log Switch terbaru mencatat resource Horizon turun menjadi **769 MiB dari limit 3.189 MiB**. `svcCreateSharedMemory(536870912)` berhasil dan bank 512 MiB dipetakan pada cached/physical/aperture windows. Ini mengonfirmasi patch heap bekerja untuk tahap tersebut.
+- Tahap berikutnya gagal pada `svcMapPhysicalMemory(0x10000000, 53.530.624)` dengan `0x0000FA01`. Menurut [dokumentasi SVC Switchbrew](https://switchbrew.org/wiki/SVC#MapPhysicalMemory), kode ini adalah `InvalidState` dan berkaitan dengan `SystemResourceSize` yang tidak tersedia/tidak mencukupi pada NPDM proses. `SystemResourceSize` merupakan anggaran terpisah untuk metadata/manajemen memori kernel; mengurangi heap aplikasi saja tidak mengaktifkannya.
+- Commit diagnostik `24e77d1` menambahkan pembacaan `InfoType_SystemResourceSizeTotal` dan `InfoType_SystemResourceSizeUsed` agar log berikutnya memastikan nilai yang diberikan loader/forwarder. Langkah perbaikan akan ditentukan dari hasil nilai tersebut; kandidatnya adalah memperbaiki konfigurasi NPDM/forwarder atau mengubah alokasi function table agar tidak bergantung pada `svcMapPhysicalMemory`.
 
 ### Status build NRO penuh
 
 Workflow build penuh telah dipindahkan ke lokasi yang dikenali GitHub Actions, yaitu `.github/workflows/switch-full-nro.yml`. Workflow mengambil source proyek, mengambil source PPC privat melalui secret/token repositori, memvalidasi target XEX, menyiapkan BO2 Switch build kit, lalu mengompilasi dan mengemas NRO.
 
-Run terbaru yang diperiksa:
+Build penuh terbaru yang sudah selesai:
 
-- [GitHub Actions — full PES 2017 NRO, run 43405746920](https://github.com/awaludinkurniawijaya/PES2017-Switch/actions/runs/43405746920).
-- Checkout source, checkout PPC privat, validasi/staging PPC, serta unduhan dan verifikasi build kit telah selesai.
-- Job masih berada pada tahap **Compile and package full PES 2017 NRO** ketika status terakhir diperiksa.
-- Tahap verifikasi checksum dan upload artefak belum berjalan. Karena itu, NRO terbaru belum dapat dinyatakan selesai atau dibagikan sebagai hasil build terverifikasi.
+- [GitHub Actions — full PES 2017 NRO, run 43405746920](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/43405746920) — seluruh tahapan compile, package, checksum, dan upload berhasil.
+- Artefak: [pes17-switch-full-nro](https://github.com/awaludinkurniawanwijaya/PES2017-Switch/actions/runs/43405746920/artifacts/14035236463) (masa simpan artefak GitHub terbatas).
+- Ukuran NRO: **119.453.893 byte**.
+- SHA-256 NRO: `79bbfa901f4b54869f9d86c9e3ecd8c8b13e5e41a95f5ebe96efcbe169219bfd`.
+- Commit sumber build: `89f1fdab10c98ef6456bb4b36859912420ead013`.
+- Perbaikan workflow sebelumnya menyelesaikan masalah izin direktori hasil Docker sebelum penulisan checksum.
 
-Sebuah kegagalan workflow sebelumnya terjadi setelah kompilasi karena direktori build dibuat oleh Docker sebagai milik root sehingga runner tidak dapat menulis checksum. Workflow kemudian diperbaiki dengan mengembalikan kepemilikan direktori build kepada runner sebelum verifikasi. Perbaikan workflow tersebut sedang diuji pada run terbaru di atas.
+Keberhasilan ini membuktikan full-game NRO berhasil dikompilasi, di-link, dikemas, dan diunggah. Ini belum membuktikan game berhasil boot atau playable. Log pengujian NRO pada perangkat telah melewati pembuatan shared memory dan mencapai pemetaan function table, lalu berhenti karena `svcMapPhysicalMemory` mengembalikan `0x0000FA01`.
+
 
 ## Lingkungan build dan tools
 
@@ -110,8 +115,8 @@ Letakkan executable dan CPK milik sendiri pada direktori `game/`. NRO hasil buil
 
 Setelah NRO penuh berhasil dibuat dan tersedia, validasi dilakukan bertahap:
 
-1. **Validasi artefak** — memeriksa keberadaan NRO, ukuran file, dan checksum.
-2. **Pengujian alokasi memori** — memeriksa log Horizon untuk memastikan heap berhasil dibatasi dan shared memory guest 512 MiB berhasil dibuat serta dipetakan.
+1. **Validasi artefak** — selesai untuk run 43405746920; NRO dan checksum telah diverifikasi.
+2. **Pengujian alokasi memori** — heap 768 MiB dan shared memory guest 512 MiB telah berhasil pada perangkat. Tahap lanjutan masih terhalang `SystemResourceSize` pada `svcMapPhysicalMemory`.
 3. **Pengujian startup runtime** — memeriksa inisialisasi XEX, kernel imports, thread, filesystem, dan subsistem runtime.
 4. **Pengujian Vulkan** — memeriksa inisialisasi instance/device, pemilihan GPU, surface, swapchain, dan rendering awal.
 5. **Pengujian menu dan aset** — memeriksa layar judul, menu, tekstur, model, stadion, serta audio.
