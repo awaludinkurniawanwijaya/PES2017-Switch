@@ -12,16 +12,53 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// NXVK requires a full Application applet (not the Album applet) so Horizon
-// grants the process the GPU/memory budget needed to create its device.
-// libnx's automatic heap size (zero) consumes almost the entire process memory
-// budget before main(), leaving no room for the Xbox 360 512 MiB shared bank.
-// A 768 MiB C/C++ heap leaves room for the bank plus subsequent NVK allocations
-// inside Horizon's application resource limit. Keep this a 2 MiB multiple.
+// NXVK requires a full Application applet (not the Album applet).
+// __nx_heap_size is only honored when hbloader does not provide a heap override.
+// In the normal Homebrew Menu launch path, libnx otherwise adopts the full
+// override heap, leaving only a few MiB for the Xbox 360 512 MiB shared bank.
 extern "C"
 {
     u32 __nx_applet_type = AppletType_Application;
-    size_t __nx_heap_size = 0x30000000;
+    size_t __nx_heap_size = 0x30000000; // fallback when no loader heap override exists
+
+    extern char* fake_heap_start;
+    extern char* fake_heap_end;
+
+    // libnx's default __libnx_initheap() ignores __nx_heap_size when the loader
+    // supplies an override. Shrink that process heap before app initialization
+    // so Horizon has room for the 512 MiB guest-memory bank and GPU allocations.
+    void __libnx_initheap(void)
+    {
+        constexpr size_t kWantedHeapSize = 0x30000000; // 768 MiB; 2 MiB aligned
+        void* heapAddress = nullptr;
+        size_t heapSize = kWantedHeapSize;
+
+        if (envHasHeapOverride())
+        {
+            heapAddress = envGetHeapOverrideAddr();
+            heapSize = envGetHeapOverrideSize();
+
+            if (heapSize > kWantedHeapSize)
+            {
+                void* resizedAddress = nullptr;
+                const Result resizeResult = svcSetHeapSize(&resizedAddress, kWantedHeapSize);
+                if (R_SUCCEEDED(resizeResult) && resizedAddress == heapAddress)
+                {
+                    heapAddress = resizedAddress;
+                    heapSize = kWantedHeapSize;
+                }
+                // On failure or an unexpected base, retain the loader-provided
+                // range rather than pretending that it was successfully shrunk.
+            }
+        }
+        else if (R_FAILED(svcSetHeapSize(&heapAddress, heapSize)))
+        {
+            diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_HeapAllocFailed));
+        }
+
+        fake_heap_start = static_cast<char*>(heapAddress);
+        fake_heap_end = static_cast<char*>(heapAddress) + heapSize;
+    }
 }
 
 // libnx does not expose POSIX thread names, backtraces, or dlopen-compatible
