@@ -1,0 +1,57 @@
+name: Nintendo Switch NRO
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/switch-native-port
+      - work/switch-platform-seam
+      - work/switch-libnx-platform
+    paths:
+      - "switch/**"
+      - "runtime/switch/**"
+      - "runtime/platform.*"
+      - "runtime/kernel/input.cpp"
+      - "runtime/install/install.cpp"
+      - "runtime/guest_memory.cpp"
+      - "runtime/guest_memory.h"
+      - "runtime/crash.cpp"
+      - "runtime/main.cpp"
+      - "runtime/player.cpp"
+      - "runtime/stutters.cpp"
+      - "CMakeLists.txt"
+      - "tests/**"
+      - ".github/workflows/switch-nro.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-switch-nro:
+    name: Build libnx homebrew NRO
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build with devkitPro libnx
+        run: |
+          docker pull devkitpro/devkita64:latest
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/switch \
+            devkitpro/devkita64:latest \
+            make
+
+      - name: Verify NRO output
+        run: |
+          test -s switch/pes2017-switch-bootstrap.nro
+          file switch/pes2017-switch-bootstrap.nro
+          ls -lh switch/pes2017-switch-bootstrap.nro
+
+      - name: Upload NRO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes2017-switch-bootstrap
+          path: switch/pes2017-switch-bootstrap.nro
+          if-no-files-found: error

@@ -1,0 +1,344 @@
+#include <ppc_recomp_shared.h>
+#include "title.h"
+#include "guest_memory.h"
+#include "guest.h"
+#include "log.h"
+#include "stutters.h"
+#include "diagnostics.h"
+#include "env.h"
+#include "kernel/kernel.h"
+#include "gpu/gpu.h"
+#include "apu/audio.h"
+#include "apu/xma.h"
+#include "crash.h"
+#include "online/service.h"
+#include "engine.h"
+#include "pacing_trace.h"
+#include "player.h"
+#include "watchpoint.h"
+#include "install/install.h"
+#include "platform.h"
+#include "run.h"
+#include "report.h"
+#include "settings.h"
+
+#include <unistd.h>
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
+#include <filesystem>
+#include <thread>
+#include <vector>
+#include <new>
+
+// A run that ends on a deadline and a run that ends on a fault are asking the
+// same question, so they print the same reports.
+static void ReportAll()
+{
+    report::Write();
+    if constexpr (!diag::kOn) return;
+    kernel::ReportUnimplemented();
+    kernel::ReportMissingFiles();
+    kernel::ReportMemory();
+    gpu::Report();
+    player::Report();
+    engine::ReportPredicateWaits();
+    pacing::Write();
+    apu::xma::Report();
+    apu::audio::Report();
+}
+
+void crash::OnFault() { ReportAll(); }
+
+namespace
+{
+    void ExitWorker(void* raw)
+    {
+        const char* why = static_cast<const char*>(raw);
+        LOGI("--------------------------------------------------");
+        LOGI("exiting: %s", why ? why : "unspecified");
+        crash::StopHangMonitor();
+        stutters::Ending();
+        gpu::Shutdown();
+        ReportAll();
+        install::StartNextTitle();
+        std::fflush(nullptr);
+        _exit(0);
+    }
+
+    struct DeadlineArgs { unsigned seconds; };
+
+    void DeadlineWorker(void* raw)
+    {
+        const unsigned seconds = static_cast<DeadlineArgs*>(raw)->seconds;
+        delete static_cast<DeadlineArgs*>(raw);
+        std::this_thread::sleep_for(std::chrono::seconds(seconds));
+        // The guest threads are still running over state the reports walk;
+        // unwinding them cleanly is not worth it for a measurement.
+        crash::RequestExit("the run deadline was reached");
+    }
+
+    struct ArrivalDeadlineArgs { unsigned seconds; double stall; };
+
+    void ArrivalDeadlineWorker(void* raw)
+    {
+        const auto args = *static_cast<ArrivalDeadlineArgs*>(raw);
+        delete static_cast<ArrivalDeadlineArgs*>(raw);
+        bool stuck = false;
+        while (!player::Arrived())
+        {
+            if (player::SecondsSinceProgress() > args.stall) { stuck = true; break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(args.seconds));
+        crash::RequestExit(stuck ? "the walk stopped getting anywhere"
+                                 : "the walk arrived and its measurement is done");
+    }
+
+    // The guest never returns, so the reports at the end of main() are unreachable
+    // and killing the process loses everything measured. PES17_RUN_SECONDS=<n>
+    // reports and exits after n seconds.
+    void StartDeadline()
+    {
+        const unsigned seconds = unsigned(diag::Number("PES17_RUN_SECONDS"));
+        if (!seconds) return;
+        LOGI("run deadline: reporting and exiting after %u seconds", seconds);
+        auto* args = new (std::nothrow) DeadlineArgs{ seconds };
+        if (!args || !platform::StartThread(DeadlineWorker, args, 256 * 1024, "run deadline"))
+        {
+            delete args;
+            LOGW("run deadline: could not start watchdog worker");
+        }
+    }
+
+    // PES17_QUIT_AFTER_ARRIVAL=<n> ends the run n seconds after PES17_WALK_TO gets
+    // where it was sent. A walk that takes four minutes and a measurement that
+    // takes ten seconds should not be followed by two minutes of standing there.
+    void StartArrivalDeadline()
+    {
+        if (!diag::Text("PES17_QUIT_AFTER_ARRIVAL")) return;
+        const unsigned seconds = unsigned(diag::Number("PES17_QUIT_AFTER_ARRIVAL"));
+        LOGI("run deadline: reporting and exiting %u seconds after arriving", seconds);
+        // A walk that has stalled against a wall is as finished as one that
+        // arrived -- it will take no more measurements. Ending there rather than
+        // at the watchdog saves the rest of the run, which is most of it when
+        // the route snags early.
+        const double given = diag::Real("PES17_QUIT_IF_STUCK");
+        const double stall = given > 0.0 ? given : 45.0;
+        LOGI("run deadline: or %0.f seconds after the walk stops getting nearer", stall);
+        auto* args = new (std::nothrow) ArrivalDeadlineArgs{ seconds, stall };
+        if (!args || !platform::StartThread(ArrivalDeadlineWorker, args, 256 * 1024,
+                                            "arrival deadline"))
+        {
+            delete args;
+            LOGW("run deadline: could not start arrival watchdog worker");
+        }
+    }
+}
+
+void crash::RequestExit(const char* why)
+{
+    static std::atomic<bool> asked{ false };
+    if (asked.exchange(true)) return;
+    if (!platform::StartThread(ExitWorker, const_cast<char*>(why), 512 * 1024, "shutdown"))
+    {
+        LOGE("shutdown: could not start shutdown worker; exiting immediately");
+        _exit(1);
+    }
+}
+
+namespace
+{
+    bool LoadImage(const std::vector<uint8_t>& image)
+    {
+        if (uint64_t(image.size()) > PPC_IMAGE_SIZE)
+            LOGW("image is %zu bytes, larger than PPC_IMAGE_SIZE %llu; truncating",
+                 image.size(), (unsigned long long)PPC_IMAGE_SIZE);
+        const size_t size = std::min<size_t>(image.size(), size_t(PPC_IMAGE_SIZE));
+        std::memcpy(guest::Base() + PPC_IMAGE_BASE, image.data(), size);
+        LOGI("loaded %zu bytes at guest %08X", size, uint32_t(PPC_IMAGE_BASE));
+        return true;
+    }
+
+    // PES17_ASPECT=<width/height> of a screen wider than 16:9: the title's
+    // cameras are given that aspect, so they see further to the sides, and the
+    // presenter shows the 1280x720 frame stretched to it -- the two cancel, and
+    // the pitch keeps its shape. The interface is drawn in the frame's pixels
+    // and is stretched with it.
+    void Widen()
+    {
+        const double aspect = env::Real("PES17_ASPECT");
+        if (aspect <= 16.0 / 9.0 + 0.01 || aspect > 3.0) return;
+        const float value = float(aspect);
+        uint32_t bits;
+        std::memcpy(&bits, &value, 4);
+        for (uint32_t address : { T_DATA_Aspect16x9, T_DATA_Aspect16x9b })
+        {
+            be32* word = GuestPtr<be32>(address);
+            if (uint32_t(*word) != 0x3FE38E39u)
+            {
+                LOGW("widescreen: %08X holds %08X, not 16:9; left alone", address, uint32_t(*word));
+                continue;
+            }
+            *word = bits;
+        }
+        LOGI("widescreen: cameras at aspect %.4f", aspect);
+    }
+
+    // PPC_CALL_INDIRECT_FUNC (mmio_hook.h) indexes this table by (guest - PPC_CODE_BASE) * 2.
+    size_t BuildFunctionTable()
+    {
+        size_t n = 0;
+        for (const PPCFuncMapping* m = PPCFuncMappings; m->guest != 0 || m->host != nullptr; ++m)
+        {
+            if (!m->host) continue;
+            if (m->guest < PPC_CODE_BASE || m->guest >= PPC_CODE_BASE + PPC_CODE_SIZE)
+            {
+                LOGW("function %08zX outside code range, skipped", m->guest);
+                continue;
+            }
+            *(PPCFunc**)(guest::Base() + guest::FunctionSlotOffset(uint32_t(m->guest), uint32_t(PPC_CODE_BASE))) = m->host;
+            n++;
+        }
+        return n;
+    }
+}
+
+int pes17::Run(int argc, char** argv)
+{
+    platform::Initialise();
+
+    // The Switch face-button options live beside the recompiled title config.
+    // Load them before the first XInput poll; the two pairs remain independent.
+#ifdef __SWITCH__
+    settings::LoadInputConfig(install::Folder(argc, argv) / "config/PES.toml");
+#endif
+
+    // Before any switch is read, the log's among them.
+    const std::string kept = settings::Load(install::Folder(argc, argv) / ".env");
+
+    // PES17_LOG_FILE=<path> sends the log there instead of the terminal. Every
+    // line this runtime writes goes to stderr, so a plain `> file` redirection
+    // catches nothing.
+    // Its folder is made first: a run started with a new folder named lost its
+    // whole log to the terminal.
+#ifndef PES17_ANDROID
+    const char* logPath = env::Text("PES17_LOG_FILE");
+#ifdef __SWITCH__
+    // Homebrew Menu does not provide a terminal for stderr. Keep a persistent
+    // runtime log on SD by default so startup, loader and GPU failures can be
+    // diagnosed without requiring nxlink; .env may still override this path.
+    if (!logPath) logPath = "sdmc:/switch/PES2017/pes2017-switch.log";
+#endif
+    if (logPath)
+    {
+        std::error_code ignored;
+        if (const auto folder = std::filesystem::path(logPath).parent_path(); !folder.empty())
+            std::filesystem::create_directories(folder, ignored);
+        // A title the other one started (from its menus) carries on in the
+        // log of the run it belongs to.
+        if (!std::freopen(logPath, env::Flag("PES17_LOG_APPEND") ? "a" : "w", stderr))
+            std::fprintf(stdout, "could not open %s for the log\n", logPath);
+        // A line at a time, as stderr is to a terminal: the file is read while
+        // the run goes on, and a line held back is a line a watcher never sees.
+        // Windows has no line buffering (and takes the request for an invalid
+        // one), so there every write goes straight through.
+        else
+#ifdef _WIN32
+            std::setvbuf(stderr, nullptr, _IONBF, 0);
+#else
+            std::setvbuf(stderr, nullptr, _IOLBF, 0);
+#endif
+    }
+#endif  // PES17_ANDROID
+
+    LOGI("--- PES 2017 recompilation runtime (%s) ---", PES17_TITLE_NAME);
+    if (!kept.empty()) LOGI("settings: %s", kept.c_str());
+
+    // A player starts the executable with no arguments (runtime/install/); a
+    // development run names the image, a flat PE or the XEX, and the game folder.
+    install::Launch launch;
+    const bool playerStart = install::PlayerStart(argc, argv);
+    LOGI("startup: argc=%d, player-start=%s", argc, playerStart ? "yes" : "no");
+    if (playerStart)
+    {
+        int exitCode = 0;
+        LOGI("startup: entering installed-game preparation");
+        if (!install::Prepare(argc, argv, launch, exitCode))
+        {
+            LOGE("startup: installed-game preparation stopped (exit %d)", exitCode);
+            return exitCode;
+        }
+        LOGI("startup: installed-game preparation complete (%zu image bytes)", launch.image.size());
+    }
+    else
+    {
+        if (!install::LoadImageFile(argv[1], launch.image)) return 1;
+        launch.gameRoot = (argc > 2) ? argv[2] : "pes/game";
+    }
+
+    crash::Install();
+    // Logged in before any other thread runs: Steam reads the app id from the
+    // environment, which the service sets.
+    online::Get();
+
+    if (!guest::Initialise()) return 1;
+    if (!LoadImage(launch.image)) return 1;
+    launch.image = {};
+    Widen();
+    watchpoint::Install();
+
+    size_t mapped = BuildFunctionTable();
+    LOGI("function table: %zu entries", mapped);
+
+    crash::RegisterThread("main thread");
+    platform::SetThreadAffinity(platform::ThreadAffinityRole::PrimeCore);
+    player::Record();
+    kernel::Initialise(launch.gameRoot);
+    gpu::Initialise();
+    apu::xma::Initialise();
+
+    // PPC grows down; leave a zeroed backchain at the top.
+    constexpr uint32_t kStackSize = 1u << 20;
+    uint32_t stackBase = kernel::AllocateGuest(kStackSize, 0x1000);
+    if (!stackBase) { LOGE("could not allocate guest stack"); return 1; }
+    uint32_t stackTop = (stackBase + kStackSize - 0x100) & ~0xFu;
+
+    // r13 is the Xbox 360 thread pointer (KPCR). The recompiled code makes ~1100
+    // r13-relative accesses and reads its own thread id out of
+    // KPCR.CurrentThread -> KTHREAD.ThreadId, so the block must be populated.
+    uint32_t pcr = kernel::CreateThreadBlock(1);
+    if (!pcr) { LOGE("could not allocate the thread block"); return 1; }
+
+    PPCContext ctx{};
+    std::memset(&ctx, 0, sizeof(ctx));
+    ctx.r1.u32 = stackTop;
+    ctx.r13.u32 = pcr;
+    ctx.fpscr.loadFromHost();
+
+    uint32_t entry = T_ENTRY_POINT;   // the XEX header's ENTRY_POINT, from title.h
+    PPCFunc* fn = kernel::GuestFunction(entry);
+    if (!fn) { LOGE("no recompiled function at entry point %08X", entry); return 1; }
+
+    LOGI("thread block (r13) at %08X", pcr);
+    StartDeadline();
+    StartArrivalDeadline();
+    LOGI("entering guest at %08X (stack %08X..%08X)", entry, stackBase, stackTop);
+    LOGI("--------------------------------------------------");
+    fn(ctx, guest::Base());
+    LOGI("--------------------------------------------------");
+    LOGI("guest returned, r3 = %08X", ctx.r3.u32);
+
+    gpu::Shutdown();
+    ReportAll();
+    return 0;
+}
+
+// A desktop build starts here; Android starts the same run from jni.cpp.
+#ifndef PES17_ANDROID
+int main(int argc, char** argv) { return pes17::Run(argc, argv); }
+#endif

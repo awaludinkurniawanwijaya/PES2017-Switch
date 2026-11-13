@@ -1,0 +1,764 @@
+# Legacy NXVK backup workflow. Kept for reproducibility; not part of active Vulkan development.
+name: Legacy NXVK backup smoke (manual only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-nxvk-backup-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  legacy-nxvk-smoke:
+    name: Reproduce archived NXVK smoke NROs (not active backend)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out PES 2017 Switch project
+        uses: actions/checkout@v4
+
+      - name: Check out pinned NXVK source (GPL-2.0-or-later additions)
+        uses: actions/checkout@v4
+        with:
+          repository: PalindromicBreadLoaf/nxvk
+          ref: c3abea1efde44027b7e3e20b48eb55beeecd5ab4
+          path: nxvk
+          persist-credentials: false
+
+      - name: Record source revisions and license notices
+        run: |
+          git -C nxvk rev-parse HEAD
+          git -C nxvk status --short
+          test -s nxvk/LICENSE || true
+          test -s nxvk/licenses/GPL-2.0-or-later
+          sed -n '1,80p' nxvk/switch/README.md
+          find nxvk/licenses -maxdepth 2 -type f -print | sort
+
+      - name: Instrument Horizon NVK device initialization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("nxvk/src/nouveau/vulkan/nvkmd/nvgpu/nvkmd_nvgpu_pdev.c")
+          s = p.read_text()
+          s = s.replace('#include "nvkmd_nvgpu.h"', '#include "nvkmd_nvgpu.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   Result rc = nvInitialize();", """   fprintf(stderr, "[NVK-TRACE] before nvInitialize\\n"); fflush(stderr);
+             Result rc = nvInitialize();
+             fprintf(stderr, "[NVK-TRACE] after nvInitialize rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvGpuInit();", """   fprintf(stderr, "[NVK-TRACE] before nvGpuInit\\n"); fflush(stderr);
+             rc = nvGpuInit();
+             fprintf(stderr, "[NVK-TRACE] after nvGpuInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvMapInit();", """   fprintf(stderr, "[NVK-TRACE] before nvMapInit\\n"); fflush(stderr);
+             rc = nvMapInit();
+             fprintf(stderr, "[NVK-TRACE] after nvMapInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   rc = nvFenceInit();", """   fprintf(stderr, "[NVK-TRACE] before nvFenceInit\\n"); fflush(stderr);
+             rc = nvFenceInit();
+             fprintf(stderr, "[NVK-TRACE] after nvFenceInit rc=0x%x\\n", (unsigned)rc); fflush(stderr);"""),
+              ("   const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();", """   fprintf(stderr, "[NVK-TRACE] before nvGpuGetCharacteristics\\n"); fflush(stderr);
+             const nvioctl_gpu_characteristics *chars = nvGpuGetCharacteristics();
+             fprintf(stderr, "[NVK-TRACE] after nvGpuGetCharacteristics ptr=%p\\n", (const void *)chars); fflush(stderr);"""),
+              ("   struct nvkmd_nvgpu_pdev *pdev = CALLOC_STRUCT(nvkmd_nvgpu_pdev);", """   fprintf(stderr, "[NVK-TRACE] characteristics accepted; before pdev allocation\\n"); fflush(stderr);
+             struct nvkmd_nvgpu_pdev *pdev = CALLOC_STRUCT(nvkmd_nvgpu_pdev);
+             fprintf(stderr, "[NVK-TRACE] after pdev allocation ptr=%p\\n", (void *)pdev); fflush(stderr);"""),
+              ("   nvkmd_nvgpu_get_dev_info(chars, &pdev->base.dev_info);", """   fprintf(stderr, "[NVK-TRACE] before get_dev_info\\n"); fflush(stderr);
+             nvkmd_nvgpu_get_dev_info(chars, &pdev->base.dev_info);
+             fprintf(stderr, "[NVK-TRACE] after get_dev_info chipset=0x%x sm=%u gpc=%u tpc=%u class3d=0x%x\\n",
+                     pdev->base.dev_info.chipset, pdev->base.dev_info.sm,
+                     pdev->base.dev_info.gpc_count, pdev->base.dev_info.tpc_count,
+                     pdev->base.dev_info.cls_eng3d); fflush(stderr);"""),
+              ("   if (!(debug_flags & NVK_DEBUG_NO_ZCULL))\n      nvkmd_nvgpu_get_zcull_info(&pdev->base.dev_info);", """   fprintf(stderr, "[NVK-TRACE] zcull enabled=%u; before get_zcull_info\\n",
+                   !(debug_flags & NVK_DEBUG_NO_ZCULL)); fflush(stderr);
+             if (!(debug_flags & NVK_DEBUG_NO_ZCULL))
+                nvkmd_nvgpu_get_zcull_info(&pdev->base.dev_info);
+             fprintf(stderr, "[NVK-TRACE] after get_zcull_info has_zcull=%u\\n",
+                     pdev->base.dev_info.has_zcull_info); fflush(stderr);"""),
+              ("   pdev->syncobj_timeline_type =\n      vk_sync_timeline_get_type(&nvkmd_nvgpu_syncobj_type);", """   fprintf(stderr, "[NVK-TRACE] before sync type init\\n"); fflush(stderr);
+             pdev->syncobj_timeline_type =
+                vk_sync_timeline_get_type(&nvkmd_nvgpu_syncobj_type);
+             fprintf(stderr, "[NVK-TRACE] after sync type init\\n"); fflush(stderr);"""),
+              ("   *pdev_out = &pdev->base;\n\n   return VK_SUCCESS;", """   *pdev_out = &pdev->base;
+             fprintf(stderr, "[NVK-TRACE] nvgpu pdev creation returning VK_SUCCESS pdev=%p\\n",
+                     (void *)*pdev_out); fflush(stderr);
+
+             return VK_SUCCESS;"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing expected NVK source anchor: " + old)
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Horizon NVK initialization tracepoints installed")
+
+          # Trace the next layer after nvkmd pdev creation. This isolates
+          # physical-device object setup from the Horizon GPU initialization.
+          p = Path("nxvk/src/nouveau/vulkan/nvk_physical_device.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "nvk_physical_device.h"',
+                            '#include "nvk_physical_device.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   struct nvk_physical_device *pdev =\n      vk_zalloc(&instance->vk.alloc, sizeof(*pdev),\n                8, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);",
+               """   fprintf(stderr, "[NVK-TRACE] physical_device_create: before pdev allocation\\n"); fflush(stderr);
+             struct nvk_physical_device *pdev =
+                vk_zalloc(&instance->vk.alloc, sizeof(*pdev),
+                          8, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+             fprintf(stderr, "[NVK-TRACE] physical_device_create: after pdev allocation ptr=%p\\n", (void *)pdev); fflush(stderr);"""),
+              ("   nvk_get_device_extensions(instance, &nvkmd->dev_info,\n                             nvkmd->kmd_info.has_alloc_tiled,\n                             &supported_extensions);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_extensions\\n"); fflush(stderr);
+             nvk_get_device_extensions(instance, &nvkmd->dev_info,
+                                       nvkmd->kmd_info.has_alloc_tiled,
+                                       &supported_extensions);
+             fprintf(stderr, "[NVK-TRACE] after get_device_extensions\\n"); fflush(stderr);"""),
+              ("   nvk_get_device_features(&nvkmd->dev_info, &supported_extensions,\n                           nvkmd->kmd_info.has_sparse, &supported_features);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_features\\n"); fflush(stderr);
+             nvk_get_device_features(&nvkmd->dev_info, &supported_extensions,
+                                    nvkmd->kmd_info.has_sparse, &supported_features);
+             fprintf(stderr, "[NVK-TRACE] after get_device_features\\n"); fflush(stderr);"""),
+              ("   nvk_get_device_properties(instance, &nvkmd->dev_info, &properties);",
+               """   fprintf(stderr, "[NVK-TRACE] before get_device_properties\\n"); fflush(stderr);
+             nvk_get_device_properties(instance, &nvkmd->dev_info, &properties);
+             fprintf(stderr, "[NVK-TRACE] after get_device_properties\\n"); fflush(stderr);"""),
+              ("   result = vk_physical_device_init(&pdev->vk, &instance->vk,",
+               """   fprintf(stderr, "[NVK-TRACE] before vk_physical_device_init\\n"); fflush(stderr);
+             result = vk_physical_device_init(&pdev->vk, &instance->vk,"""),
+              ("   if (result != VK_SUCCESS)\n      goto fail_alloc;\n\n   pdev->nvkmd = nvkmd;",
+               """   fprintf(stderr, "[NVK-TRACE] after vk_physical_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);
+             if (result != VK_SUCCESS)
+                goto fail_alloc;
+
+             pdev->nvkmd = nvkmd;"""),
+              ("   pdev->nak = nak_compiler_create(&pdev->info);",
+               """   fprintf(stderr, "[NVK-TRACE] before nak_compiler_create\\n"); fflush(stderr);
+             pdev->nak = nak_compiler_create(&pdev->info);
+             fprintf(stderr, "[NVK-TRACE] after nak_compiler_create ptr=%p\\n", (void *)pdev->nak); fflush(stderr);"""),
+              ("   nvk_physical_device_init_pipeline_cache(pdev);",
+               """   fprintf(stderr, "[NVK-TRACE] before init_pipeline_cache\\n"); fflush(stderr);
+             nvk_physical_device_init_pipeline_cache(pdev);
+             fprintf(stderr, "[NVK-TRACE] after init_pipeline_cache\\n"); fflush(stderr);"""),
+              ("   uint64_t heap_size =\n      os_get_gpu_heap_size(instance->drirc.misc.heap_memory_percent,\n                           &instance->drirc.misc.heap_memory_percent);",
+               """   fprintf(stderr, "[NVK-TRACE] before os_get_gpu_heap_size\\n"); fflush(stderr);
+             uint64_t heap_size =
+                os_get_gpu_heap_size(instance->drirc.misc.heap_memory_percent,
+                                     &instance->drirc.misc.heap_memory_percent);
+             fprintf(stderr, "[NVK-TRACE] after os_get_gpu_heap_size heap_size=%llu\\n",
+                     (unsigned long long)heap_size); fflush(stderr);"""),
+              ("#ifdef NVK_USE_WSI_PLATFORM\n   result = nvk_init_wsi(pdev);",
+               """#ifdef NVK_USE_WSI_PLATFORM
+             fprintf(stderr, "[NVK-TRACE] before nvk_init_wsi\\n"); fflush(stderr);
+             result = nvk_init_wsi(pdev);
+             fprintf(stderr, "[NVK-TRACE] after nvk_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   *pdev_out = &pdev->vk;\n\n   return VK_SUCCESS;",
+               """   *pdev_out = &pdev->vk;
+             fprintf(stderr, "[NVK-TRACE] physical_device_create returning VK_SUCCESS pdev=%p\\n", (void *)*pdev_out); fflush(stderr);
+
+             return VK_SUCCESS;"""),
+              ("   VkResult result = nvkmd_try_create_pdev(&instance->vk.base,\n                                           instance->debug_flags, &nvkmd);",
+               """   fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: before nvkmd_try_create_pdev\\n"); fflush(stderr);
+             VkResult result = nvkmd_try_create_pdev(&instance->vk.base,
+                                                    instance->debug_flags, &nvkmd);
+             fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: after nvkmd_try_create_pdev result=0x%x pdev=%p\\n",
+                     (unsigned)result, result == VK_SUCCESS ? (void *)nvkmd : NULL); fflush(stderr);"""),
+              ("   result = nvk_physical_device_create(instance, nvkmd, &pdev);\n   if (result != VK_SUCCESS)",
+               """   fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: before nvk_physical_device_create\\n"); fflush(stderr);
+             result = nvk_physical_device_create(instance, nvkmd, &pdev);
+             fprintf(stderr, "[NVK-TRACE] enumerate_physical_device: after nvk_physical_device_create result=0x%x pdev=%p\\n",
+                     (unsigned)result, result == VK_SUCCESS ? (void *)pdev : NULL);
+             if (result != VK_SUCCESS)"""),
+              ("   list_addtail(&pdev->link, &instance->vk.physical_devices.list);",
+               """   fprintf(stderr, "[NVK-TRACE] before physical device list_addtail\\n"); fflush(stderr);
+             list_addtail(&pdev->link, &instance->vk.physical_devices.list);
+             fprintf(stderr, "[NVK-TRACE] after physical device list_addtail\\n"); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing expected physical-device trace anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Physical-device enumeration tracepoints installed")
+          # Trace WSI initialization below nvk_init_wsi.
+          p = Path("nxvk/src/nouveau/vulkan/nvk_wsi.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "nvk_wsi.h"', '#include "nvk_wsi.h"' + chr(10) + '#include <stdio.h>', 1)
+          import re
+          pattern = re.compile(r"(?P<indent>\s*)result = wsi_device_init\(&pdev->wsi_device,\s*"
+                               r"nvk_physical_device_to_handle\(pdev\),\s*"
+                               r"nvk_wsi_proc_addr, &pdev->vk\.instance->alloc,\s*"
+                               r"nvkmd_pdev_get_drm_primary_fd\(pdev->nvkmd\),\s*"
+                               r"&nvk_physical_device_instance\(pdev\)->drirc\.options,\s*"
+                               r"&wsi_options\);")
+          match = pattern.search(s)
+          if not match: raise SystemExit("Missing nvk_wsi wsi_device_init call (regex)")
+          indent = match.group("indent")
+          replacement = """int display_fd = nvkmd_pdev_get_drm_primary_fd(pdev->nvkmd);
+          fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: display_fd=%d before wsi_device_init\\n", display_fd); fflush(stderr);
+          result = wsi_device_init(&pdev->wsi_device,
+                                   nvk_physical_device_to_handle(pdev),
+                                   nvk_wsi_proc_addr, &pdev->vk.instance->alloc,
+                                   display_fd,
+                                   &nvk_physical_device_instance(pdev)->drirc.options,
+                                   &wsi_options);
+          fprintf(stderr, "[NVK-TRACE] nvk_init_wsi: after wsi_device_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""
+          replacement = "\n".join(indent + line if line else line for line in replacement.splitlines())
+          s = s[:match.start()] + replacement + s[match.end():]
+          p.write_text(s)
+
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   WSI_DEBUG = parse_debug_string(os_get_option(\"MESA_VK_WSI_DEBUG\"), debug_control);",
+               """   fprintf(stderr, "[WSI-TRACE] wsi_device_init: entered pdevice=%p display_fd=%d\\n", (void *)pdevice, display_fd); fflush(stderr);
+             WSI_DEBUG = parse_debug_string(os_get_option("MESA_VK_WSI_DEBUG"), debug_control);"""),
+              ("   GetPhysicalDeviceProperties2(pdevice, &pdp2);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceProperties2 cb=%p\\n", (void *)GetPhysicalDeviceProperties2); fflush(stderr);
+             GetPhysicalDeviceProperties2(pdevice, &pdp2);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceProperties2\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceMemoryProperties(pdevice, &wsi->memory_props);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceMemoryProperties cb=%p\\n", (void *)GetPhysicalDeviceMemoryProperties); fflush(stderr);
+             GetPhysicalDeviceMemoryProperties(pdevice, &wsi->memory_props);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceMemoryProperties\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceQueueFamilyProperties(pdevice, &wsi->queue_family_count, NULL);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceQueueFamilyProperties(count) cb=%p\\n", (void *)GetPhysicalDeviceQueueFamilyProperties); fflush(stderr);
+             GetPhysicalDeviceQueueFamilyProperties(pdevice, &wsi->queue_family_count, NULL);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceQueueFamilyProperties(count) count=%u\\n", wsi->queue_family_count); fflush(stderr);"""),
+              ("   GetPhysicalDeviceProperties(pdevice, &properties);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceProperties cb=%p\\n", (void *)GetPhysicalDeviceProperties); fflush(stderr);
+             GetPhysicalDeviceProperties(pdevice, &properties);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceProperties\\n"); fflush(stderr);"""),
+              ("   GetPhysicalDeviceExternalSemaphoreProperties(pdevice, &esi, &esp);",
+               """   fprintf(stderr, "[WSI-TRACE] before GetPhysicalDeviceExternalSemaphoreProperties handle=0x%x cb=%p\\n", (unsigned)handle_type, (void *)GetPhysicalDeviceExternalSemaphoreProperties); fflush(stderr);
+             GetPhysicalDeviceExternalSemaphoreProperties(pdevice, &esi, &esp);
+             fprintf(stderr, "[WSI-TRACE] after GetPhysicalDeviceExternalSemaphoreProperties handle=0x%x\\n", (unsigned)handle_type); fflush(stderr);"""),
+              ("   result = wsi_switch_init_wsi(wsi, alloc, pdevice);",
+               """   fprintf(stderr, "[WSI-TRACE] before wsi_switch_init_wsi\\n"); fflush(stderr);
+             result = wsi_switch_init_wsi(wsi, alloc, pdevice);
+             fprintf(stderr, "[WSI-TRACE] after wsi_switch_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   result = wsi_headless_init_wsi(wsi, alloc, pdevice);",
+               """   fprintf(stderr, "[WSI-TRACE] before wsi_headless_init_wsi\\n"); fflush(stderr);
+             result = wsi_headless_init_wsi(wsi, alloc, pdevice);
+             fprintf(stderr, "[WSI-TRACE] after wsi_headless_init_wsi result=0x%x\\n", (unsigned)result); fflush(stderr);""")
+          ]
+          for old, new in pairs:
+              if old not in s: raise SystemExit("Missing WSI trace anchor: " + old[:90])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI initialization tracepoints installed")
+          # Instrument the actual Horizon swapchain path. The previous diagnostic
+          # only traced the call site; these markers isolate image setup/fallback.
+          p = Path("nxvk/src/vulkan/wsi/wsi_switch.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include <malloc.h>', '#include <malloc.h>' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   result = wsi_configure_cpu_image(&chain->base, pCreateInfo, &cpu_params,\n                                    &chain->base.image_info);",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy: before wsi_configure_cpu_image\\n"); fflush(stderr);
+             result = wsi_configure_cpu_image(&chain->base, pCreateInfo, &cpu_params,
+                                              &chain->base.image_info);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy: after wsi_configure_cpu_image result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   chain->fb_size = chain->pitch_b * chain->height_aligned;",
+               """   chain->fb_size = chain->pitch_b * chain->height_aligned;
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy layout pitch=%u width_aligned=%u height_aligned=%u fb_size=%u images=%u\\n",
+                     chain->pitch_b, chain->width_aligned_px, chain->height_aligned,
+                     chain->fb_size, chain->base.image_count); fflush(stderr);"""),
+              ("   chain->scanout_cpu = memalign(0x20000, total);",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy before memalign total=%u\\n", total); fflush(stderr);
+             chain->scanout_cpu = memalign(0x20000, total);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after memalign ptr=%p\\n", (void *)chain->scanout_cpu); fflush(stderr);"""),
+              ("   if (R_FAILED(nvMapCreate(&chain->scanout_map, chain->scanout_cpu, total,\n                            0x20000, NvKind_Pitch, true)))",
+               """   fprintf(stderr, "[SWITCH-WSI] cpu_copy before nvMapCreate\\n"); fflush(stderr);
+             Result map_rc = nvMapCreate(&chain->scanout_map, chain->scanout_cpu, total,
+                                         0x20000, NvKind_Pitch, true);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after nvMapCreate rc=0x%x id=%u handle=%u\\n",
+                     (unsigned)map_rc, chain->scanout_map.id, chain->scanout_map.handle); fflush(stderr);
+             if (R_FAILED(map_rc))"""),
+              ("      if (R_FAILED(nwindowConfigureBuffer(chain->window, i, &gb)))\n         return VK_ERROR_INITIALIZATION_FAILED;",
+               """      fprintf(stderr, "[SWITCH-WSI] cpu_copy before nwindowConfigureBuffer image=%u\\n", i); fflush(stderr);
+             Result configure_rc = nwindowConfigureBuffer(chain->window, i, &gb);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after nwindowConfigureBuffer image=%u rc=0x%x\\n", i, (unsigned)configure_rc); fflush(stderr);
+             if (R_FAILED(configure_rc))
+                return VK_ERROR_INITIALIZATION_FAILED;"""),
+              ("      result = wsi_switch_create_image(chain, &chain->images[i]);\n      if (result != VK_SUCCESS)\n         return result;",
+               """      fprintf(stderr, "[SWITCH-WSI] cpu_copy before create_image image=%u\\n", i); fflush(stderr);
+             result = wsi_switch_create_image(chain, &chain->images[i]);
+             fprintf(stderr, "[SWITCH-WSI] cpu_copy after create_image image=%u result=0x%x\\n", i, (unsigned)result); fflush(stderr);
+             if (result != VK_SUCCESS)
+                return result;"""),
+
+              ("   result = wsi_switch_init_images(chain, wsi_device, device, pCreateInfo);\n   if (result != VK_SUCCESS)",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_images\\n"); fflush(stderr);
+             result = wsi_switch_init_images(chain, wsi_device, device, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_images result=0x%x zero_copy=%u\\n",
+                     (unsigned)result, chain->zero_copy); fflush(stderr);
+             if (result != VK_SUCCESS)"""),
+              ("   result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_zero_copy\\n"); fflush(stderr);
+             result = wsi_switch_init_zero_copy(chain, wsi_device, device, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_zero_copy result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   return wsi_switch_init_cpu_copy(chain, pCreateInfo);",
+               """   fprintf(stderr, "[SWITCH-WSI] before init_cpu_copy\\n"); fflush(stderr);
+             VkResult cpu_result = wsi_switch_init_cpu_copy(chain, pCreateInfo);
+             fprintf(stderr, "[SWITCH-WSI] after init_cpu_copy result=0x%x\\n", (unsigned)cpu_result); fflush(stderr);
+             return cpu_result;"""),
+              ("   result = wsi_swapchain_init(wsi_device, &chain->base, device,\n                               pCreateInfo, &cpu_params.base, pAllocator);",
+               """   fprintf(stderr, "[SWITCH-WSI] before wsi_swapchain_init images=%u extent=%ux%u format=%u usage=0x%x\\n",
+                   pCreateInfo->minImageCount, pCreateInfo->imageExtent.width,
+                   pCreateInfo->imageExtent.height, (unsigned)pCreateInfo->imageFormat,
+                   pCreateInfo->imageUsage); fflush(stderr);
+             result = wsi_swapchain_init(wsi_device, &chain->base, device,
+                                         pCreateInfo, &cpu_params.base, pAllocator);
+             fprintf(stderr, "[SWITCH-WSI] after wsi_swapchain_init result=0x%x\\n", (unsigned)result); fflush(stderr);"""),
+              ("   nvMapInit();\n   nvFenceInit();",
+               """   fprintf(stderr, "[SWITCH-WSI] before nvMapInit\\n"); fflush(stderr);
+             nvMapInit();
+             fprintf(stderr, "[SWITCH-WSI] after nvMapInit; before nvFenceInit\\n"); fflush(stderr);
+             nvFenceInit();
+             fprintf(stderr, "[SWITCH-WSI] after nvFenceInit\\n"); fflush(stderr);"""),
+              ("   nwindowSetSwapInterval(chain->window, swap_interval);",
+               """   fprintf(stderr, "[SWITCH-WSI] before nwindowSetSwapInterval interval=%u\\n", swap_interval); fflush(stderr);
+             nwindowSetSwapInterval(chain->window, swap_interval);
+             fprintf(stderr, "[SWITCH-WSI] after nwindowSetSwapInterval\\n"); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  print("Skipping unavailable Switch WSI trace anchor: " + old[:110])
+                  continue
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Horizon Switch WSI swapchain tracepoints installed")
+
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pattern = re.compile(r"(?m)^([ \t]*)VkResult result = iface->create_swapchain\(surface, _device, wsi_device,\n[ \t]*&info, alloc,\n[ \t]*&swapchain\);")
+          def trace_swapchain(match):
+              indent = match.group(1)
+              lines = [
+                  indent + 'fprintf(stderr, "[WSI-COMMON] before platform create_swapchain platform=%u extent=%ux%u format=%u usage=0x%x\\\\n",',
+                  indent + '        (unsigned)surface->platform, info.imageExtent.width, info.imageExtent.height,',
+                  indent + '        (unsigned)info.imageFormat, info.imageUsage); fflush(stderr);',
+                  indent + 'VkResult result = iface->create_swapchain(surface, _device, wsi_device,',
+                  indent + '                                          &info, alloc,',
+                  indent + '                                          &swapchain);',
+                  indent + 'fprintf(stderr, "[WSI-COMMON] after platform create_swapchain result=0x%x swapchain=%p\\\\n",',
+                  indent + '        (unsigned)result, result == VK_SUCCESS ? (void *)swapchain : NULL); fflush(stderr);',
+              ]
+              return "\n".join(lines)
+          s, count = pattern.subn(trace_swapchain, s, count=1)
+          if count != 1:
+              raise SystemExit("Missing WSI common create_swapchain source anchor")
+          p.write_text(s)
+          print("WSI common create_swapchain tracepoints installed")
+
+          # Trace the generic WSI image lifecycle used by the Switch CPU-copy
+          # fallback. This isolates Vulkan image creation, memory allocation,
+          # binding, and CPU mapping without rewriting the common swapchain call.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("\n".join([
+                  "   result = wsi->CreateImage(chain->device, &info->create,",
+                  "                             &chain->alloc, &image->image);",
+              ]),
+               """   fprintf(stderr, "[WSI-IMAGE] before CreateImage extent=%ux%u format=%u tiling=%u usage=0x%x\\n",
+                   info->create.extent.width, info->create.extent.height,
+                   (unsigned)info->create.format, (unsigned)info->create.tiling,
+                   info->create.usage); fflush(stderr);
+             result = wsi->CreateImage(chain->device, &info->create,
+                                       &chain->alloc, &image->image);
+             fprintf(stderr, "[WSI-IMAGE] after CreateImage result=0x%x image=%p\\n",
+                     (unsigned)result, (void *)image->image); fflush(stderr);"""),
+              ("   result = info->create_mem(chain, info, image);",
+               """   fprintf(stderr, "[WSI-IMAGE] before create_mem image=%p callback=%p\\n",
+                   (void *)image->image, (void *)info->create_mem); fflush(stderr);
+             result = info->create_mem(chain, info, image);
+             fprintf(stderr, "[WSI-IMAGE] after create_mem result=0x%x memory=%p cpu_map=%p\\n",
+                     (unsigned)result, (void *)image->memory, image->cpu_map); fflush(stderr);"""),
+              ("\n".join([
+                  "   result = wsi->BindImageMemory(chain->device, image->image,",
+                  "                                 image->memory, 0);",
+              ]),
+               """   fprintf(stderr, "[WSI-IMAGE] before BindImageMemory image=%p memory=%p\\n",
+                   (void *)image->image, (void *)image->memory); fflush(stderr);
+             result = wsi->BindImageMemory(chain->device, image->image,
+                                           image->memory, 0);
+             fprintf(stderr, "[WSI-IMAGE] after BindImageMemory result=0x%x\\n",
+                     (unsigned)result); fflush(stderr);"""),
+              ("      result = info->finish_create(chain, info, image);",
+               """      fprintf(stderr, "[WSI-IMAGE] before finish_create callback=%p\\n",
+                   (void *)info->finish_create); fflush(stderr);
+                result = info->finish_create(chain, info, image);
+                fprintf(stderr, "[WSI-IMAGE] after finish_create result=0x%x\\n",
+                        (unsigned)result); fflush(stderr);"""),
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing WSI image lifecycle anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+
+          # The Switch CPU-copy path uses this callback to allocate the blit
+          # image's memory and map it for swizzling into the scanout buffer.
+          old = "\n".join([
+              "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
+              "   if (result != VK_SUCCESS)",
+                 "      return result;",
+          ])
+          new = "\n".join([
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer before blit_context image=%p\\n", (void *)image->image); fflush(stderr);',
+              "   result = wsi_create_buffer_blit_context(chain, info, image, 0);",
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer after blit_context result=0x%x memory=%p\\n", (unsigned)result, (void *)image->blit.memory); fflush(stderr);',
+              "   if (result != VK_SUCCESS)",
+                 "      return result;",
+          ])
+          if old not in s:
+              raise SystemExit("Missing WSI CPU buffer blit anchor")
+          s = s.replace(old, new, 1)
+
+          old = "\n".join([
+              "   result = chain->wsi->MapMemory(chain->device, image->blit.memory,",
+              "                                  0, VK_WHOLE_SIZE, 0, &image->cpu_map);",
+          ])
+          new = "\n".join([
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer before MapMemory memory=%p\\n", (void *)image->blit.memory); fflush(stderr);',
+              "   result = chain->wsi->MapMemory(chain->device, image->blit.memory,",
+              "                                  0, VK_WHOLE_SIZE, 0, &image->cpu_map);",
+              '   fprintf(stderr, "[WSI-IMAGE] cpu_buffer after MapMemory result=0x%x cpu_map=%p\\n", (unsigned)result, image->cpu_map); fflush(stderr);',
+          ])
+          if old not in s:
+              raise SystemExit("Missing WSI CPU buffer MapMemory anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Generic WSI image and CPU-copy memory tracepoints installed")
+
+
+          # Trace each operation in the generic WSI blit-context callback. The Switch
+          # CPU-copy fallback currently stops inside finish_create, so isolate the
+          # command-pool, command-buffer, begin, blit-recording, and end stages.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          if '#include <stdio.h>' not in s:
+              s = s.replace('#include "wsi_common.h"', '#include "wsi_common.h"' + chr(10) + '#include <stdio.h>', 1)
+          pairs = [
+              ("   const struct wsi_device *wsi = chain->wsi;\n   VkResult result;\n\n   int cmd_buffer_count =",
+               """   const struct wsi_device *wsi = chain->wsi;
+             VkResult result;
+             fprintf(stderr, "[WSI-FINISH] entered chain=%p image=%p blit_type=%u queue_families=%u blit_queue=%p cmd_pools=%p\\n",
+                     (const void *)chain, (void *)image->image, (unsigned)chain->blit.type,
+                     wsi->queue_family_count, (void *)chain->blit.queue, (void *)chain->cmd_pools); fflush(stderr);
+
+             int cmd_buffer_count =""") ,
+              ("   image->blit.cmd_buffers =\n      vk_zalloc(&chain->alloc,\n                sizeof(VkCommandBuffer) * cmd_buffer_count, 8,\n                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);",
+               """   fprintf(stderr, "[WSI-FINISH] allocating cmd buffer slots count=%d\\n", cmd_buffer_count); fflush(stderr);
+             image->blit.cmd_buffers =
+                vk_zalloc(&chain->alloc,
+                          sizeof(VkCommandBuffer) * cmd_buffer_count, 8,
+                          VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+             fprintf(stderr, "[WSI-FINISH] cmd buffer slots=%p\\n", (void *)image->blit.cmd_buffers); fflush(stderr);""") ,
+              ("   for (uint32_t i = 0; i < cmd_buffer_count; i++) {\n      if (!chain->cmd_pools[i])",
+               """   for (uint32_t i = 0; i < cmd_buffer_count; i++) {
+             fprintf(stderr, "[WSI-FINISH] slot=%u pool=%p\\n", i, (void *)chain->cmd_pools[i]); fflush(stderr);
+             if (!chain->cmd_pools[i])""") ,
+              ("      result = wsi->AllocateCommandBuffers(chain->device, &cmd_buffer_info,\n                                           &cmd_buffer);",
+               """      fprintf(stderr, "[WSI-FINISH] before AllocateCommandBuffers slot=%u pool=%p\\n", i, (void *)cmd_buffer_info.commandPool); fflush(stderr);
+             result = wsi->AllocateCommandBuffers(chain->device, &cmd_buffer_info,
+                                                  &cmd_buffer);
+             fprintf(stderr, "[WSI-FINISH] after AllocateCommandBuffers result=0x%x cmd=%p\\n", (unsigned)result, (void *)cmd_buffer); fflush(stderr);""") ,
+              ("      wsi_label_cmd_buffer(wsi, chain->device, cmd_buffer, \"wsi blit\");",
+               """      fprintf(stderr, "[WSI-FINISH] before label cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             wsi_label_cmd_buffer(wsi, chain->device, cmd_buffer, "wsi blit");
+             fprintf(stderr, "[WSI-FINISH] after label\\n"); fflush(stderr);""") ,
+              ("      wsi->BeginCommandBuffer(cmd_buffer, &begin_info);",
+               """      fprintf(stderr, "[WSI-FINISH] before BeginCommandBuffer cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             wsi->BeginCommandBuffer(cmd_buffer, &begin_info);
+             fprintf(stderr, "[WSI-FINISH] after BeginCommandBuffer\\n"); fflush(stderr);""") ,
+              ("      case WSI_SWAPCHAIN_BUFFER_BLIT: {\n         wsi_cmd_blit_image_to_buffer(",
+               """       case WSI_SWAPCHAIN_BUFFER_BLIT: {
+          fprintf(stderr, "[WSI-FINISH] before blit_image_to_buffer slot=%u family=%d\\n", i, chain->blit.queue ? chain->blit.queue->queue_family_index : (int)i); fflush(stderr);
+          wsi_cmd_blit_image_to_buffer(""") ,
+              ("            chain->blit.queue ? chain->blit.queue->queue_family_index : i);\n         break;",
+               """             chain->blit.queue ? chain->blit.queue->queue_family_index : i);
+          fprintf(stderr, "[WSI-FINISH] after blit_image_to_buffer slot=%u\\n", i); fflush(stderr);
+          break;""") ,
+              ("      result = wsi->EndCommandBuffer(cmd_buffer);",
+               """      fprintf(stderr, "[WSI-FINISH] before EndCommandBuffer cmd=%p\\n", (void *)cmd_buffer); fflush(stderr);
+             result = wsi->EndCommandBuffer(cmd_buffer);
+             fprintf(stderr, "[WSI-FINISH] after EndCommandBuffer result=0x%x\\n", (unsigned)result); fflush(stderr);""")
+          ]
+          for old, new in pairs:
+              if old not in s:
+                  raise SystemExit("Missing WSI finish_create trace anchor: " + old[:100])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI finish_create blit-context tracepoints installed")
+
+          # Add precise markers around the CPU-copy blit's Vulkan dispatches.
+          p = Path("nxvk/src/vulkan/wsi/wsi_common.c")
+          s = p.read_text()
+          replacements = [
+              ("   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,",
+               '   fprintf(stderr, "[WSI-BLIT] before initial_barrier\\n"); fflush(stderr);\n'
+               "   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,"),
+              ("                           1, &img_mem_barrier);\n\n   struct VkBufferImageCopy",
+               '                           1, &img_mem_barrier);\n'
+               '   fprintf(stderr, "[WSI-BLIT] after initial_barrier\\n"); fflush(stderr);\n\n'
+               "   struct VkBufferImageCopy"),
+              ("   wsi->CmdCopyImageToBuffer(cmd_buffer,\n                             image->image,",
+               '   fprintf(stderr, "[WSI-BLIT] before copy_image_to_buffer\\n"); fflush(stderr);\n'
+               "   wsi->CmdCopyImageToBuffer(cmd_buffer,\n                             image->image,"),
+              ("                             1, &buffer_image_copy);\n\n   img_mem_barrier.srcAccessMask",
+               '                             1, &buffer_image_copy);\n'
+               '   fprintf(stderr, "[WSI-BLIT] after copy_image_to_buffer\\n"); fflush(stderr);\n\n'
+               "   img_mem_barrier.srcAccessMask"),
+              ("   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,",
+               '   fprintf(stderr, "[WSI-BLIT] before final_barrier\\n"); fflush(stderr);\n'
+               "   wsi->CmdPipelineBarrier(cmd_buffer,\n                           VK_PIPELINE_STAGE_TRANSFER_BIT,"),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit("Missing exact WSI CPU-copy trace anchor: " + old[:90])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("WSI CPU-copy blit dispatch tracepoints installed")
+
+          # Instrument the generated common Properties2 callback at its template
+          # source, so the trace is present in the generated C compiled by Meson.
+          p = Path("nxvk/src/vulkan/util/vk_physical_device_properties_gen.py")
+          s = p.read_text()
+          old = "\n".join([
+              '#include "vk_common_entrypoints.h"',
+              '#include "vk_log.h"',
+          ])
+          new = "\n".join([
+              '#include "vk_common_entrypoints.h"',
+              '#include <stdio.h>',
+              '#include "vk_log.h"',
+          ])
+          if old not in s:
+              raise SystemExit("Missing Properties2 template include anchor")
+          s = s.replace(old, new, 1)
+
+          old = "\n".join([
+              '{',
+              '   VK_FROM_HANDLE(vk_physical_device, pdevice, physicalDevice);',
+              '',
+              '% for prop in pdev_properties:',
+          ])
+          new = "\n".join([
+              '{',
+              '   fprintf(stderr, "[PROP2-TRACE] entered physicalDevice=%p pProperties=%p pNext=%p",',
+              '           (void *)physicalDevice, (void *)pProperties,',
+              '           pProperties ? (void *)pProperties->pNext : NULL);',
+              '   fflush(stderr);',
+              '   VK_FROM_HANDLE(vk_physical_device, pdevice, physicalDevice);',
+              '   fprintf(stderr, "[PROP2-TRACE] handle resolved pdevice=%p", (void *)pdevice);',
+              '   fflush(stderr);',
+              '',
+              '% for prop in pdev_properties:',
+          ])
+          if old not in s:
+              raise SystemExit("Missing Properties2 callback entry anchor")
+          s = s.replace(old, new, 1)
+
+          old = "\n".join([
+              '   vk_foreach_struct(ext, pProperties->pNext) {',
+              '      switch ((int32_t)ext->sType) {',
+          ])
+          new = "\n".join([
+              '   fprintf(stderr, "[PROP2-TRACE] base properties copied; entering pNext chain");',
+              '   fflush(stderr);',
+              '   vk_foreach_struct(ext, pProperties->pNext) {',
+              '      fprintf(stderr, "[PROP2-TRACE] pNext sType=%d node=%p",',
+              '              (int)ext->sType, (void *)ext);',
+              '      fflush(stderr);',
+              '       switch ((int32_t)ext->sType) {',
+          ])
+          if old not in s:
+              raise SystemExit("Missing Properties2 pNext iteration anchor")
+          s = s.replace(old, new, 1)
+
+          old = "\n".join([
+              '      }',
+              '   }',
+              '}',
+              '',
+              'void',
+              'vk_set_physical_device_properties_struct(struct vk_properties *all_properties,',
+          ])
+          new = "\n".join([
+              '      }',
+              '      fprintf(stderr, "[PROP2-TRACE] finished pNext sType=%d", (int)ext->sType);',
+              '      fflush(stderr);',
+              '   }',
+              '   fprintf(stderr, "[PROP2-TRACE] callback returning");',
+              '   fflush(stderr);',
+              '}',
+              '',
+              'void',
+              'vk_set_physical_device_properties_struct(struct vk_properties *all_properties,',
+          ])
+          if old not in s:
+              raise SystemExit("Missing Properties2 callback exit anchor")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Generated vk_common_GetPhysicalDeviceProperties2 callback tracepoints installed")
+
+          PY
+
+      - name: Install NVK copy dispatch tracepoints
+        run: python3 switch/smoke/patch-nxvk-copy-trace.py
+
+      - name: Install Horizon WSI acquire tracepoints
+        run: python3 switch/smoke/patch-nxvk-acquire-trace.py
+
+      - name: Build pinned NXVK toolchain image
+        run: |
+          docker build --pull --progress=plain -t pes17-nxvk nxvk/switch/docker
+
+      - name: Build NVK archives and smoke NROs
+        id: nxvk-build
+        run: |
+          mkdir -p artifacts/nxvk
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/nxvk:/work" \
+            -v "$GITHUB_WORKSPACE:/project" \
+            -w /work \
+            pes17-nxvk \
+            bash -lc '
+              set -Eeuo pipefail
+              mkdir -p /project/artifacts/nxvk
+              trap "rc=\$?; echo [PES17-CI]-container-failed; echo exit_code=\$rc > /project/artifacts/nxvk/container-exit.txt" ERR
+
+              run_stage() {
+                stage="$1"
+                shift
+                echo "==> $stage"
+                "$@"
+              }
+
+              run_stage "Build NXVK driver archives" make CONTAINER= driver
+              run_stage "Package NXVK static portlib" make CONTAINER= package
+              run_stage "Install NXVK portlib into devkitPro" make CONTAINER= install
+
+              # Keep game-specific generated PPC declarations private. The
+              # public checkout intentionally has no ppc_recomp_shared.h, so
+              # the complete pes17 target cannot be compiled in this job.
+              mkdir -p /project/ppc
+              : > /project/ppc/ppc_func_mapping.cpp
+              : > /project/ppc/stubs_generated.cpp
+              run_stage "Configure PES Switch CMake target against NXVK" \
+                env PKG_CONFIG_PATH=/opt/devkitpro/portlibs/switch/lib/pkgconfig \
+                cmake -S /project -B /project/switch/build/cmake-configure \
+                  -DCMAKE_TOOLCHAIN_FILE=/project/cmake/switch-toolchain.cmake \
+                  -DPES17_SWITCH=ON \
+                  -DPES17_XEX_SHA256_SP=0000000000000000000000000000000000000000000000000000000000000000
+
+              run_stage "Confirm private PPC declarations are intentionally unavailable in public CI" \
+                bash -lc "test ! -e /project/ppc/ppc_recomp_shared.h && echo PPC-runtime-link-deferred-private-generated-PPC-headers-are-not-uploaded-to-CI"
+
+              NVK_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk.a
+              NVK_SUPPORT_LIB=/opt/devkitpro/portlibs/switch/lib/libnvk_support.a
+              NVK_PC=/opt/devkitpro/portlibs/switch/lib/pkgconfig/nxvk.pc
+              run_stage "Verify installed NXVK archives and pkg-config metadata" \
+                bash -lc "test -s '$NVK_LIB' && test -s '$NVK_SUPPORT_LIB' && test -s '$NVK_PC'"
+
+              nm -g --defined-only "$NVK_LIB" > /tmp/nvk-symbols.txt
+              grep -Ei "vk_icd|GetInstanceProcAddr|vkCreateInstance" /tmp/nvk-symbols.txt || true
+              grep -q "nvk_GetInstanceProcAddr" /tmp/nvk-symbols.txt
+
+              cp "$NVK_LIB" "$NVK_SUPPORT_LIB" "$NVK_PC" /project/artifacts/nxvk/
+              cd /work
+
+              run_stage "Compile PES Vulkan loader adapter for Switch" \
+                /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                  -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                  -I/project/runtime -I/work/include \
+                  -I/opt/devkitpro/libnx/include -include cstdint \
+                  -include /project/runtime/gpu/vulkan/loader.h \
+                  -c /project/runtime/gpu/vulkan/loader.cpp \
+                  -o switch/build/loader-switch.o
+              nm -u switch/build/loader-switch.o > /tmp/loader-undefined-symbols.txt
+              grep -q "nvk_GetInstanceProcAddr" /tmp/loader-undefined-symbols.txt
+
+              run_stage "Compile PES Vulkan presenter adapter for Switch" \
+                /opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++ \
+                  -std=gnu++20 -D__SWITCH__ -DPES17_VULKAN_DYNAMIC -DPES17_HAVE_VULKAN \
+                  -I/project/runtime -I/work/include \
+                  -I/opt/devkitpro/libnx/include -include cstdint \
+                  -include /project/runtime/gpu/vulkan/loader.h \
+                  -c /project/runtime/gpu/vulkan/presenter.cpp \
+                  -o switch/build/presenter-switch.o
+
+              run_stage "Generate upstream NXVK smoke-test shader headers" bash switch/smoke/shaders/gen-shaders.sh
+              run_stage "Build upstream nvk_tri smoke NRO" make CONTAINER= nro APP=nvk_tri
+              run_stage "Build upstream nvk_vi_swapchain smoke NRO" make CONTAINER= nro APP=nvk_vi_swapchain
+              run_stage "Build PES-owned Vulkan loader + VI swapchain smoke NRO" bash /project/switch/smoke/build-pes-loader-smoke.sh
+
+              run_stage "Verify both smoke NRO output files" \
+                bash -lc "test -s /work/switch/smoke/out/nvk_tri.nro && test -s /work/switch/smoke/out/nvk_vi_swapchain.nro && test -s /project/artifacts/nxvk/pes_loader_smoke.nro"
+              ls -lh switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/pes_loader_smoke.nro
+              cp switch/smoke/out/nvk_tri.nro switch/smoke/out/nvk_vi_swapchain.nro /project/artifacts/nxvk/
+              echo "completed=true" > /project/artifacts/nxvk/container-exit.txt
+            '
+
+      - name: Summarize live build and test scope
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.nxvk-build.outcome }}
+        run: |
+          {
+            echo "## NXVK Switch CI progress and test scope"
+            echo ""
+            echo "- NXVK build/container step: **${BUILD_OUTCOME:-NOT RUN}**"
+            echo "- PES 2017 runtime link: **NOT RUN** — generated ppc_recomp_shared.h, PPC code and import stubs are private game-specific outputs and are not inputs to this feasibility job."
+            echo "- PES-owned loader/VI WSI smoke NRO: **built by this job** if the custom link step passes; not the full presenter or playable game."
+            echo "- Playable PES 2017 NRO: **NOT RUN** — game-specific PPC output and runtime assets are not linked."
+            echo "- Physical Nintendo Switch test: **BLOCKED** — requires running the NROs on the user's console."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Hasil proses pengujian: ${BUILD_OUTCOME:-NOT RUN}"
+
+      - name: Upload NXVK build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxvk-switch-build-diagnostics
+          path: artifacts/nxvk/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload successful NXVK smoke NROs and build metadata
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxvk-switch-smoke-nros-c3abea1
+          path: |
+            artifacts/nxvk/nvk_tri.nro
+            artifacts/nxvk/nvk_vi_swapchain.nro
+            artifacts/nxvk/pes_loader_smoke.nro
+            artifacts/nxvk/pes_startup_probe.nro
+            artifacts/nxvk/libnvk.a
+            artifacts/nxvk/libnvk_support.a
+            artifacts/nxvk/nxvk.pc
+            nxvk/include/vulkan/
+            nxvk/include/vk_video/
+            nxvk/licenses/
+          if-no-files-found: error
+          retention-days: 14
+
+      # Keep the user-facing hardware checkpoint separate from upstream smoke
+      # NROs, static libraries, headers, and build diagnostics.
+      - name: Upload single PES-owned Switch diagnostic NRO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes-nxvk-properties2-diagnostic-nro
+          path: artifacts/nxvk/pes_loader_smoke.nro
+          if-no-files-found: error
+          retention-days: 14
