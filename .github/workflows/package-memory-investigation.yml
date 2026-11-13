@@ -1,0 +1,31 @@
+name: Package memory investigation source ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pes2017/debug/memory-investigation/**'
+      - '.github/workflows/package-memory-investigation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Create ZIP
+        run: |
+          set -euo pipefail
+          zip -qr "${{ runner.temp }}/pes2017-memory-investigation.zip" pes2017/debug/memory-investigation
+          unzip -tq "${{ runner.temp }}/pes2017-memory-investigation.zip"
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes2017-memory-investigation
+          path: ${{ runner.temp }}/pes2017-memory-investigation.zip
+          if-no-files-found: error
+          retention-days: 7
