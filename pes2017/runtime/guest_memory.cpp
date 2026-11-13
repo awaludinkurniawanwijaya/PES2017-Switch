@@ -187,46 +187,6 @@ namespace
         return g_base != nullptr;
     }
 
-    bool MapFunctionTable()
-    {
-        constexpr uint64_t pageSize = 0x1000;
-        const uint64_t requestedSize = uint64_t(PPC_CODE_SIZE) * 2;
-        const uint64_t mappedSize = (requestedSize + pageSize - 1) & ~(pageSize - 1);
-        if ((guest::kFuncTableBase & (pageSize - 1)) != 0 || mappedSize == 0 ||
-            mappedSize > UINT32_MAX)
-        {
-            LOGE("guest: function table range is not valid for Horizon shared-memory mapping");
-            return false;
-        }
-
-        Result rc = svcCreateSharedMemory(&g_functionTableBank, size_t(mappedSize),
-                                          Perm_Rw, Perm_DontCare);
-        if (R_FAILED(rc))
-        {
-            LOGE("guest: svcCreateSharedMemory(function table, %llu) failed: 0x%08X",
-                 (unsigned long long)mappedSize, unsigned(rc));
-            g_functionTableBank = INVALID_HANDLE;
-            return false;
-        }
-
-        rc = svcMapSharedMemory(g_functionTableBank, g_base + guest::kFuncTableBase,
-                                size_t(mappedSize), Perm_Rw);
-        if (R_FAILED(rc))
-        {
-            LOGE("guest: mapping function table shared memory at %08X failed: 0x%08X",
-                 guest::kFuncTableBase, unsigned(rc));
-            svcCloseHandle(g_functionTableBank);
-            g_functionTableBank = INVALID_HANDLE;
-            return false;
-        }
-
-        g_functionTableEnd = uint64_t(guest::kFuncTableBase) + mappedSize;
-        LOGI("guest: function table backed by shared memory at %08X..%08llX (%llu bytes)",
-             guest::kFuncTableBase, (unsigned long long)g_functionTableEnd,
-             (unsigned long long)mappedSize);
-        return true;
-    }
-
     bool MapPhysicalAperture()
     {
         const size_t size = size_t(guest::kPhysicalEnd - guest::kPhysicalBase);
@@ -267,6 +227,46 @@ namespace
             return false;
         }
         g_base = static_cast<uint8_t*>(address);
+        return true;
+    }
+
+    bool MapFunctionTable()
+    {
+        constexpr uint64_t pageSize = 0x1000;
+        const uint64_t requestedSize = uint64_t(PPC_CODE_SIZE) * 2;
+        const uint64_t mappedSize = (requestedSize + pageSize - 1) & ~(pageSize - 1);
+        if ((guest::kFuncTableBase & (pageSize - 1)) != 0 || mappedSize == 0 ||
+            mappedSize > UINT32_MAX)
+        {
+            LOGE("guest: function table range is not valid for Horizon shared-memory mapping");
+            return false;
+        }
+
+        Result rc = svcCreateSharedMemory(&g_functionTableBank, size_t(mappedSize),
+                                          Perm_Rw, Perm_DontCare);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: svcCreateSharedMemory(function table, %llu) failed: 0x%08X",
+                 (unsigned long long)mappedSize, unsigned(rc));
+            g_functionTableBank = INVALID_HANDLE;
+            return false;
+        }
+
+        rc = svcMapSharedMemory(g_functionTableBank, g_base + guest::kFuncTableBase,
+                                size_t(mappedSize), Perm_Rw);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: mapping function table shared memory at %08X failed: 0x%08X",
+                 guest::kFuncTableBase, unsigned(rc));
+            svcCloseHandle(g_functionTableBank);
+            g_functionTableBank = INVALID_HANDLE;
+            return false;
+        }
+
+        g_functionTableEnd = uint64_t(guest::kFuncTableBase) + mappedSize;
+        LOGI("guest: function table backed by shared memory at %08X..%08llX (%llu bytes)",
+             guest::kFuncTableBase, (unsigned long long)g_functionTableEnd,
+             (unsigned long long)mappedSize);
         return true;
     }
 
