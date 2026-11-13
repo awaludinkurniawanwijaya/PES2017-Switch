@@ -120,6 +120,9 @@ jobs:
         run: |
           set -euo pipefail
           test -s build-switch/pes17.nro
+          # Docker runs as root and creates build-switch as root-owned.
+          # Restore runner ownership so checksum creation and artifact upload can read/write it.
+          sudo chown -R "$USER:$(id -gn)" build-switch
           file build-switch/pes17.nro
           sha256sum build-switch/pes17.nro | tee build-switch/pes17.nro.sha256
           ls -lh build-switch/pes17.nro
