@@ -230,6 +230,25 @@ namespace
     {
         const size_t size = size_t(guest::kPhysicalEnd - guest::kPhysicalBase);
 
+        // svcMapPhysicalMemory has an additional NPDM requirement: the
+        // process must have a non-zero SystemResourceSize. This is separate
+        // from the ordinary Horizon memory resource limit and cannot be fixed
+        // merely by shrinking the libnx heap.
+        u64 systemResourceSize = 0;
+        u64 systemResourceUsed = 0;
+        const Result systemResourceSizeResult = svcGetInfo(
+            &systemResourceSize, InfoType_SystemResourceSizeTotal, 0, 0);
+        const Result systemResourceUsedResult = svcGetInfo(
+            &systemResourceUsed, InfoType_SystemResourceSizeUsed, 0, 0);
+        LOGI("guest: Horizon system resource size=%llu used=%llu bytes, query rc=%08X/%08X",
+             (unsigned long long)systemResourceSize,
+             (unsigned long long)systemResourceUsed,
+             unsigned(systemResourceSizeResult), unsigned(systemResourceUsedResult));
+        if (R_SUCCEEDED(systemResourceSizeResult) && systemResourceSize == 0)
+        {
+            LOGE("guest: this process has SystemResourceSize=0; svcMapPhysicalMemory requires a non-zero NPDM SystemResourceSize");
+        }
+
         // Capture Horizon's actual process memory budget before requesting the
         // 512 MiB Xbox 360 physical bank. This distinguishes a process resource
         // limit from an address-space reservation or alias-mapping failure.
