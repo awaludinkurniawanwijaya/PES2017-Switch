@@ -73,7 +73,11 @@ namespace
 
     fs::path ExecutableFolder()
     {
-#ifdef _WIN32
+#ifdef __SWITCH__
+        // The NRO is launched from the Switch Home Menu, not from a POSIX
+        // executable path. platform::Initialise mounts SDMC before this runs.
+        return fs::path("sdmc:/switch/PES2017");
+#elif defined(_WIN32)
         wchar_t path[MAX_PATH * 4];
         const DWORD length = GetModuleFileNameW(nullptr, path, DWORD(std::size(path)));
         return fs::path(std::wstring(path, length)).parent_path();
@@ -469,7 +473,7 @@ namespace install
 
 bool install::PlayerStart(int argc, char**)
 {
-    return argc == 1;
+    return IsPlayerStartArgumentCount(argc);
 }
 
 fs::path install::Folder(int argc, char** argv)
@@ -479,33 +483,55 @@ fs::path install::Folder(int argc, char** argv)
 
 bool install::Prepare(int, char**, Launch& launch, int& exitCode)
 {
+    LOGI("install: Prepare entered");
     exitCode = 1;
     g_playerStart = true;
     // Everything a player's copy keeps -- game/, saves/ -- is beside the executable.
     std::error_code ec;
-    if (const fs::path folder = ExecutableFolder(); !folder.empty()) fs::current_path(folder, ec);
+    const fs::path executableFolder = ExecutableFolder();
+    LOGI("install: executable folder is %s", Utf8(executableFolder).c_str());
+    if (!executableFolder.empty())
+    {
+        fs::current_path(executableFolder, ec);
+        if (ec) LOGE("install: cannot change current directory: %s", ec.message().c_str());
+        else LOGI("install: current directory changed");
+    }
     // ...unless the launcher put the game files on another drive (INSTALL
     // LOCATION): same file it wrote, beside this program too.
-    if (const fs::path at = InstallLocation(ExecutableFolder()); !at.empty())
+    LOGI("install: reading optional install location");
+    if (const fs::path at = InstallLocation(executableFolder); !at.empty())
         SetGameFolder(at / kGameFolder);
+    else
+        LOGI("install: using game/ beside the NRO");
 
     std::string error;
-    switch (LoadInstalled(launch.image, error))
+    LOGI("install: checking %s/%s", Utf8(g_gameFolder).c_str(), kXex);
+    const auto installed = LoadInstalled(launch.image, error);
+    LOGI("install: executable check returned %s (%zu image bytes)",
+         installed == decltype(installed)::Yes ? "yes" : installed == decltype(installed)::No ? "no" : "unreadable",
+         launch.image.size());
+    switch (installed)
     {
-    case Installed::Yes:
+    case decltype(installed)::Yes:
         launch.gameRoot = g_gameFolder;
         return true;
-    case Installed::Unreadable:
+    case decltype(installed)::Unreadable:
         ShowError(error);
         return false;
-    case Installed::No:
+    case decltype(installed)::No:
         break;
     }
     // Not installed, or installed for another version of this build: both are
     // the launcher's to put right.
     if (StartLauncher()) { exitCode = 0; return false; }
+#ifdef __SWITCH__
+    ShowError("PES 2017 is not installed. Place the verified game files in "
+              "sdmc:/switch/PES2017/game/ and launch again. The Switch build "
+              "does not include the desktop installer.");
+#else
     ShowError(std::string("The game is not installed here, and ") + kLauncher +
               " is not beside this program to install it.");
+#endif
     return false;
 }
 

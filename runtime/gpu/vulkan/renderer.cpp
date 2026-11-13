@@ -26,6 +26,7 @@ bool vk::renderer::DumpingDraws() { return false; }
 #else
 
 #include "renderer_state.h"
+#include "provider.h"
 #include "../../frame_rate.h"
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
@@ -102,6 +103,17 @@ static void RollbackInitialise()
         vkDestroyQueryPool(g.device, g.guestQueries, nullptr);
         g.guestQueries = VK_NULL_HANDLE;
     }
+    // Timestamp pools may have been created before a later initialisation
+    // step failed (for example, fence or arena allocation). Roll them back
+    // here as well, so a retry does not leak one pool per failed attempt.
+    for (auto& timing : g.passTiming)
+    {
+        if (timing.pool) vkDestroyQueryPool(g.device, timing.pool, nullptr);
+        timing.pool = VK_NULL_HANDLE;
+        timing.count = 0;
+    }
+    g.timingOn = false;
+    g.timedPass = ~0u;
     if (g.setupCommands)
     {
         vkDestroyCommandPool(g.device, g.setupCommands, nullptr);
@@ -140,9 +152,11 @@ bool vk::renderer::Initialise()
     if (!g.device || !g.queue) { RollbackInitialise(); return false; }
     if (!vk::textures::Initialise()) { RollbackInitialise(); return false; }
 
-    vkGetPhysicalDeviceMemoryProperties(g.physical, &g.memory);
+    if (!vk::pipeline::GetMemoryProperties(&g.memory, sizeof(g.memory)))
+    { LOGW("renderer: device memory properties are unavailable"); RollbackInitialise(); return false; }
     VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(g.physical, &properties);
+    if (!vk::pipeline::GetDeviceProperties(&properties, sizeof(properties)))
+    { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
     g.uniformAlignment = uint32_t(std::max<VkDeviceSize>(
         std::max(properties.limits.minUniformBufferOffsetAlignment,
                  properties.limits.minStorageBufferOffsetAlignment), 256));
@@ -178,16 +192,7 @@ bool vk::renderer::Initialise()
         g.sampleCounts = properties.limits.framebufferColorSampleCounts &
                          properties.limits.framebufferDepthSampleCounts &
                          properties.limits.framebufferStencilSampleCounts;
-        VkPhysicalDeviceDepthStencilResolveProperties resolve{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES };
-        VkPhysicalDeviceProperties2 properties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-        properties2.pNext = &resolve;
-        const bool modern = properties.apiVersion >= VK_API_VERSION_1_2;
-        if (modern || vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
-            vkGetPhysicalDeviceProperties2(g.physical, &properties2);
-        const bool depthResolve =
-            (modern || vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME)) &&
-            (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
+        const bool depthResolve = vk::pipeline::DepthStencilResolveSampleZero();
         g.msaa = !off && depthResolve && (g.sampleCounts & ~VkSampleCountFlags(VK_SAMPLE_COUNT_1_BIT));
         if (g.msaa)
             LOGI("renderer: multisampling on: the device draws at%s%s%s%s, the title's 2x and 4x"
@@ -200,8 +205,7 @@ bool vk::renderer::Initialise()
                  env::Text("PES17_MSAA") ? " (PES17_MSAA)" : "");
         else
             LOGI("renderer: multisampling off (%s): the title's 2x and 4x surfaces are drawn at 1x",
-                 off ? "PES17_NO_MSAA" : !modern && !vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME) ? "the device is Vulkan 1.1 without the depth resolve extension"
-                     : !depthResolve ? "no first-sample depth resolve"
+                 off ? "PES17_NO_MSAA" : !depthResolve ? "no first-sample depth resolve"
                      : "the device draws at 1x only");
     }
 
@@ -210,7 +214,8 @@ bool vk::renderer::Initialise()
     // is lowered until that fits an image of the device's.
     {
         VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(g.physical, &properties);
+        if (!vk::pipeline::GetDeviceProperties(&properties, sizeof(properties)))
+        { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
         const uint32_t asked = uint32_t(std::clamp<uint64_t>(env::Number("PES17_SCALE", 1), 1, 3));
         g.scale = asked;
         while (g.scale > 1 && 4096 * g.scale > properties.limits.maxImageDimension2D) g.scale--;
@@ -337,7 +342,8 @@ bool vk::renderer::Initialise()
     // GPU timing of the render passes (files/gpu_timing).
     {
         VkPhysicalDeviceProperties props{};
-        vkGetPhysicalDeviceProperties(g.physical, &props);
+        if (!vk::pipeline::GetDeviceProperties(&props, sizeof(props)))
+        { LOGW("renderer: device properties are unavailable"); RollbackInitialise(); return false; }
         g.timestampPeriod = props.limits.timestampPeriod;
         bool wanted = env::Flag("PES17_GPU_TIMING");
 #ifdef PES17_ANDROID

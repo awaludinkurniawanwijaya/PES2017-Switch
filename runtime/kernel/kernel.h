@@ -144,7 +144,7 @@ namespace kernel
     void NoteSessionId(const void* id8);
 
     // Called by generated stubs; logs the first hit and counts the rest.
-    void Unimplemented(const char* name);
+    void Unimplemented(const char* name, uint32_t caller);
 
     // End-of-run reports.
     void ReportUnimplemented();

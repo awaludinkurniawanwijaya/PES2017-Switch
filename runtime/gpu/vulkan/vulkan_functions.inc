@@ -12,6 +12,9 @@ PES17_VK_GLOBAL(vkEnumerateInstanceVersion)
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
 PES17_VK_INSTANCE(vkCreateAndroidSurfaceKHR)
 #endif
+#ifdef VK_USE_PLATFORM_VI_NN
+PES17_VK_INSTANCE(vkCreateViSurfaceNN)
+#endif
 PES17_VK_INSTANCE(vkCreateDevice)
 PES17_VK_INSTANCE(vkDestroyDevice)
 PES17_VK_INSTANCE(vkDestroyInstance)

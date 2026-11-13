@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <thread>
 #include <vector>
+#include <new>
 
 // A run that ends on a deadline and a run that ends on a fault are asking the
 // same question, so they print the same reports.
@@ -53,15 +54,13 @@ static void ReportAll()
 
 void crash::OnFault() { ReportAll(); }
 
-// One shutdown however it is asked for, and on a thread of its own: the caller
-// may be the window thread, which stopping the presenter has to join.
-void crash::RequestExit(const char* why)
+namespace
 {
-    static std::atomic<bool> asked{ false };
-    if (asked.exchange(true)) return;
-    std::thread([why] {
+    void ExitWorker(void* raw)
+    {
+        const char* why = static_cast<const char*>(raw);
         LOGI("--------------------------------------------------");
-        LOGI("exiting: %s", why);
+        LOGI("exiting: %s", why ? why : "unspecified");
         crash::StopHangMonitor();
         stutters::Ending();
         gpu::Shutdown();
@@ -69,11 +68,37 @@ void crash::RequestExit(const char* why)
         install::StartNextTitle();
         std::fflush(nullptr);
         _exit(0);
-    }).detach();
-}
+    }
 
-namespace
-{
+    struct DeadlineArgs { unsigned seconds; };
+
+    void DeadlineWorker(void* raw)
+    {
+        const unsigned seconds = static_cast<DeadlineArgs*>(raw)->seconds;
+        delete static_cast<DeadlineArgs*>(raw);
+        std::this_thread::sleep_for(std::chrono::seconds(seconds));
+        // The guest threads are still running over state the reports walk;
+        // unwinding them cleanly is not worth it for a measurement.
+        crash::RequestExit("the run deadline was reached");
+    }
+
+    struct ArrivalDeadlineArgs { unsigned seconds; double stall; };
+
+    void ArrivalDeadlineWorker(void* raw)
+    {
+        const auto args = *static_cast<ArrivalDeadlineArgs*>(raw);
+        delete static_cast<ArrivalDeadlineArgs*>(raw);
+        bool stuck = false;
+        while (!player::Arrived())
+        {
+            if (player::SecondsSinceProgress() > args.stall) { stuck = true; break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(args.seconds));
+        crash::RequestExit(stuck ? "the walk stopped getting anywhere"
+                                 : "the walk arrived and its measurement is done");
+    }
+
     // The guest never returns, so the reports at the end of main() are unreachable
     // and killing the process loses everything measured. PES17_RUN_SECONDS=<n>
     // reports and exits after n seconds.
@@ -82,12 +107,12 @@ namespace
         const unsigned seconds = unsigned(diag::Number("PES17_RUN_SECONDS"));
         if (!seconds) return;
         LOGI("run deadline: reporting and exiting after %u seconds", seconds);
-        std::thread([seconds] {
-            std::this_thread::sleep_for(std::chrono::seconds(seconds));
-            // The guest threads are still running over state the reports walk;
-            // unwinding them cleanly is not worth it for a measurement.
-            crash::RequestExit("the run deadline was reached");
-        }).detach();
+        auto* args = new (std::nothrow) DeadlineArgs{ seconds };
+        if (!args || !platform::StartThread(DeadlineWorker, args, 256 * 1024, "run deadline"))
+        {
+            delete args;
+            LOGW("run deadline: could not start watchdog worker");
+        }
     }
 
     // PES17_QUIT_AFTER_ARRIVAL=<n> ends the run n seconds after PES17_WALK_TO gets
@@ -105,19 +130,29 @@ namespace
         const double given = diag::Real("PES17_QUIT_IF_STUCK");
         const double stall = given > 0.0 ? given : 45.0;
         LOGI("run deadline: or %0.f seconds after the walk stops getting nearer", stall);
-        std::thread([seconds, stall] {
-            bool stuck = false;
-            while (!player::Arrived())
-            {
-                if (player::SecondsSinceProgress() > stall) { stuck = true; break; }
-                std::this_thread::sleep_for(std::chrono::milliseconds(250));
-            }
-            std::this_thread::sleep_for(std::chrono::seconds(seconds));
-            crash::RequestExit(stuck ? "the walk stopped getting anywhere"
-                                     : "the walk arrived and its measurement is done");
-        }).detach();
+        auto* args = new (std::nothrow) ArrivalDeadlineArgs{ seconds, stall };
+        if (!args || !platform::StartThread(ArrivalDeadlineWorker, args, 256 * 1024,
+                                            "arrival deadline"))
+        {
+            delete args;
+            LOGW("run deadline: could not start arrival watchdog worker");
+        }
     }
+}
 
+void crash::RequestExit(const char* why)
+{
+    static std::atomic<bool> asked{ false };
+    if (asked.exchange(true)) return;
+    if (!platform::StartThread(ExitWorker, const_cast<char*>(why), 512 * 1024, "shutdown"))
+    {
+        LOGE("shutdown: could not start shutdown worker; exiting immediately");
+        _exit(1);
+    }
+}
+
+namespace
+{
     bool LoadImage(const std::vector<uint8_t>& image)
     {
         if (uint64_t(image.size()) > PPC_IMAGE_SIZE)
@@ -177,6 +212,12 @@ int pes17::Run(int argc, char** argv)
 {
     platform::Initialise();
 
+    // The Switch face-button options live beside the recompiled title config.
+    // Load them before the first XInput poll; the two pairs remain independent.
+#ifdef __SWITCH__
+    settings::LoadInputConfig(install::Folder(argc, argv) / "config/PES.toml");
+#endif
+
     // Before any switch is read, the log's among them.
     const std::string kept = settings::Load(install::Folder(argc, argv) / ".env");
 
@@ -186,7 +227,14 @@ int pes17::Run(int argc, char** argv)
     // Its folder is made first: a run started with a new folder named lost its
     // whole log to the terminal.
 #ifndef PES17_ANDROID
-    if (const char* logPath = env::Text("PES17_LOG_FILE"))
+    const char* logPath = env::Text("PES17_LOG_FILE");
+#ifdef __SWITCH__
+    // Homebrew Menu does not provide a terminal for stderr. Keep a persistent
+    // runtime log on SD by default so startup, loader and GPU failures can be
+    // diagnosed without requiring nxlink; .env may still override this path.
+    if (!logPath) logPath = "sdmc:/switch/PES2017/pes2017-switch.log";
+#endif
+    if (logPath)
     {
         std::error_code ignored;
         if (const auto folder = std::filesystem::path(logPath).parent_path(); !folder.empty())
@@ -214,10 +262,18 @@ int pes17::Run(int argc, char** argv)
     // A player starts the executable with no arguments (runtime/install/); a
     // development run names the image, a flat PE or the XEX, and the game folder.
     install::Launch launch;
-    if (install::PlayerStart(argc, argv))
+    const bool playerStart = install::PlayerStart(argc, argv);
+    LOGI("startup: argc=%d, player-start=%s", argc, playerStart ? "yes" : "no");
+    if (playerStart)
     {
         int exitCode = 0;
-        if (!install::Prepare(argc, argv, launch, exitCode)) return exitCode;
+        LOGI("startup: entering installed-game preparation");
+        if (!install::Prepare(argc, argv, launch, exitCode))
+        {
+            LOGE("startup: installed-game preparation stopped (exit %d)", exitCode);
+            return exitCode;
+        }
+        LOGI("startup: installed-game preparation complete (%zu image bytes)", launch.image.size());
     }
     else
     {

@@ -352,6 +352,15 @@
   #endif
 #endif
 
+/* Horizon does not provide iconv or POSIX sysconf. Keep FFmpeg's optional
+ * subtitle charset conversion and CPU-count probing out of the Switch build. */
+#if defined(__SWITCH__)
+#undef CONFIG_ICONV
+#define CONFIG_ICONV 0
+#undef HAVE_SYSCONF
+#define HAVE_SYSCONF 0
+#endif
+
 /* ------------------------------------------------------------------ */
 /*  Common to all platforms                                           */
 /* ------------------------------------------------------------------ */

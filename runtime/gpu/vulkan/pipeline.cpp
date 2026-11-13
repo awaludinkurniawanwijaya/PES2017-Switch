@@ -1,4 +1,5 @@
 #include "pipeline.h"
+#include "provider.h"
 #include "bindings.h"
 #include "bc_decoder.h"
 #include "../../env.h"
@@ -8,12 +9,16 @@
 #ifndef PES17_HAVE_VULKAN
 // No loader, so nothing here can be built. The callers all tolerate a device
 // that never comes up, because that is what a machine with no GPU gives them.
-bool vk::pipeline::Initialise(void*, void*, void*, uint32_t, void*) { return false; }
+bool vk::pipeline::Initialise(const vk::device::BorrowedContext*) { return false; }
 void vk::pipeline::Shutdown() {}
 void vk::pipeline::SaveCache() {}
 void vk::pipeline::SaveCacheThrottled() {}
 void vk::pipeline::FlushCache() {}
 bool vk::pipeline::Ready() { return false; }
+bool vk::pipeline::GetMemoryProperties(void*, size_t) { return false; }
+bool vk::pipeline::GetDeviceProperties(void*, size_t) { return false; }
+bool vk::pipeline::DepthStencilResolveSampleZero() { return false; }
+bool vk::pipeline::GetPhysicalDeviceFeatures(void*, size_t) { return false; }
 const char* vk::pipeline::DeviceName() { return "none"; }
 void*    vk::pipeline::Instance() { return nullptr; }
 void*    vk::pipeline::Device() { return nullptr; }
@@ -38,11 +43,6 @@ void*    vk::pipeline::Cache() { return nullptr; }
 bool vk::pipeline::CreateModule(const uint32_t*, size_t, const char** error)
 {
     if (error) *error = "built without Vulkan";
-    return false;
-}
-bool vk::pipeline::DeviceHasExtension(void*, const char*) { return false; }
-bool vk::pipeline::CreateDevice(void*, uint32_t, const char* const*, uint32_t, void**, void**, void*)
-{
     return false;
 }
 bool vk::pipeline::Failed(int vkResult, const char*) { return vkResult != 0; }
@@ -77,31 +77,15 @@ namespace
 
     struct State
     {
-        // Owned only when this file brought the device up itself; when the presenter
-        // supplies one, teardown leaves it alone.
-        bool ownsDevice = false;
+        // Owns a headless Provider context only; Presenter contexts are borrowed.
+        bool ownsContext = false;
+        std::unique_ptr<vk::provider::Context> ownedProvider;
+        const vk::device::Device* deviceContext = nullptr;
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice physical = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
         VkQueue queue = VK_NULL_HANDLE;
         uint32_t family = 0;
-        bool preciseQueries = false;
-        float maxAnisotropy = 1.0f;
-        bool nonSeamlessCubes = false;
-        bool pipelineLibraries = false, fastLinking = false;
-        bool hasDynamicRendering = false;
-        bool hasExtendedDynamicState = false;
-        bool legacyMode = false;
-        // Culling and the depth and stencil tests built into each pipeline instead of set per draw.
-        bool staticStates = false;
-        bool textureCompressionBC = false;
-        // BC1, BC2, BC3, BC4, BC5: whether the driver samples each (with linear filtering and as a
-        // copy destination), which is what Xenia asks of each format before using it.
-        bool bcSampled[5]{};
-        // ASTC 4x4 LDR, UNORM and sRGB: what a BC1 texture is transcoded to where BC is absent.
-        bool astcSampled = false;
-        std::string name = "none";
-
         VkDescriptorSetLayout sets[3]{};
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkPipelineCache cache = VK_NULL_HANDLE;
@@ -109,6 +93,15 @@ namespace
         std::string lastError;
     };
     State g;
+
+    // Invalidate Pipeline's non-owning aliases and its cache-identity copy.
+    // The Provider Context / Device remains the sole authority for GPU state.
+    void ResetDeviceSnapshot()
+    {
+        g.physical = VK_NULL_HANDLE;
+        g.deviceContext = nullptr;
+        g.deviceProperties = {};
+    }
 
     const char* Explain(VkResult r)
     {
@@ -131,42 +124,7 @@ namespace
 namespace
 {
     std::atomic<void (*)(const char*)> g_deviceLost{ nullptr };
-    // VK_EXT_device_fault, where the driver has it: what the GPU was doing when the device
-    // was lost (a faulting address and what kind of access, the vendor's own fault codes).
-    std::atomic<PFN_vkGetDeviceFaultInfoEXT> g_faultInfo{ nullptr };
-    std::atomic<VkDevice> g_faultDevice{ VK_NULL_HANDLE };
 
-    void ReportDeviceFault()
-    {
-        const PFN_vkGetDeviceFaultInfoEXT info = g_faultInfo.load();
-        const VkDevice device = g_faultDevice.load();
-        if (!info || !device) return;
-        VkDeviceFaultCountsEXT counts{ VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT };
-        if (info(device, &counts, nullptr) != VK_SUCCESS && counts.addressInfoCount == 0 &&
-            counts.vendorInfoCount == 0)
-        {
-            LOGE("vulkan: the driver gave no fault report");
-            return;
-        }
-        std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
-        std::vector<VkDeviceFaultVendorInfoEXT> vendor(counts.vendorInfoCount);
-        VkDeviceFaultInfoEXT fault{ VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT };
-        fault.pAddressInfos = addresses.empty() ? nullptr : addresses.data();
-        fault.pVendorInfos = vendor.empty() ? nullptr : vendor.data();
-        counts.vendorBinarySize = 0;   // the binary dump is not read
-        const VkResult r = info(device, &counts, &fault);
-        LOGE("vulkan: fault report (%d): %s; %u address(es), %u vendor record(s)", int(r), fault.description,
-             counts.addressInfoCount, counts.vendorInfoCount);
-        static const char* const kinds[] = { "none", "read invalid", "write invalid", "execute invalid",
-                                             "instruction pointer unknown", "instruction pointer invalid",
-                                             "instruction pointer fault" };
-        for (const VkDeviceFaultAddressInfoEXT& a : addresses)
-            LOGE("vulkan:   %s at %016llX (precision %llu)", a.addressType < 7 ? kinds[a.addressType] : "?",
-                 (unsigned long long)a.reportedAddress, (unsigned long long)a.addressPrecision);
-        for (const VkDeviceFaultVendorInfoEXT& v : vendor)
-            LOGE("vulkan:   vendor: %s (code %llX, data %llX)", v.description,
-                 (unsigned long long)v.vendorFaultCode, (unsigned long long)v.vendorFaultData);
-    }
 }
 
 void vk::pipeline::OnDeviceLost(void (*handler)(const char*)) { g_deviceLost = handler; }
@@ -183,400 +141,13 @@ bool vk::pipeline::Failed(int vkResult, const char* where)
                  " run (after a GPU page fault or a hang; `journalctl -k | grep amdgpu` has"
                  " the fault), and nothing submitted from here on will finish. Ending the run.",
                  where);
-            ReportDeviceFault();
+            if (g.deviceContext) g.deviceContext->ReportFault();
             if (auto handler = g_deviceLost.load()) handler("the Vulkan device was lost");
         }
     }
     return true;
 }
 
-bool vk::pipeline::DeviceHasExtension(void* physical, const char* name)
-{
-    uint32_t count = 0;
-    VkPhysicalDevice device = static_cast<VkPhysicalDevice>(physical);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
-    std::vector<VkExtensionProperties> offered(count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, offered.data());
-    for (const auto& e : offered)
-        if (std::strcmp(e.extensionName, name) == 0) return true;
-    return false;
-}
-
-bool vk::pipeline::CreateDevice(void* physicalDevice, uint32_t family,
-                                const char* const* extraExtensions, uint32_t extraCount,
-                                void** deviceOut, void** queueOut, void* features)
-{
-    VkPhysicalDevice physical = static_cast<VkPhysicalDevice>(physicalDevice);
-    VkPhysicalDeviceProperties physicalProperties{};
-    vkGetPhysicalDeviceProperties(physical, &physicalProperties);
-    g.deviceProperties = physicalProperties;
-    g.physical = physical;
-
-    const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queue{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
-    queue.queueFamilyIndex = family;
-    queue.queueCount = 1;
-    queue.pQueuePriorities = &priority;
-
-    // PES17_QUEUE_PRIORITY=low|medium|high|realtime: the queue's priority against other
-    // processes' GPU work (the compositor's, a screen recorder's), where the driver offers
-    // VK_KHR/EXT_global_priority and lists that level for the family. Unset asks for nothing.
-    VkDeviceQueueGlobalPriorityCreateInfoKHR globalPriority{
-        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_KHR };
-    const char* priorityExtension = nullptr;
-    {
-        const char* wanted = env::Text("PES17_QUEUE_PRIORITY");
-        VkQueueGlobalPriorityKHR level = VkQueueGlobalPriorityKHR(0);
-        if (wanted)
-        {
-            if (std::strcmp(wanted, "low") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_LOW_KHR;
-            else if (std::strcmp(wanted, "medium") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR;
-            else if (std::strcmp(wanted, "high") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_HIGH_KHR;
-            else if (std::strcmp(wanted, "realtime") == 0) level = VK_QUEUE_GLOBAL_PRIORITY_REALTIME_KHR;
-        }
-        if (level && DeviceHasExtension(physical, VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))
-            priorityExtension = VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME;
-        else if (level && DeviceHasExtension(physical, VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))
-            priorityExtension = VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME;
-        if (priorityExtension)
-        {
-            // The levels the family lists (VK_KHR_global_priority's query); a driver without
-            // the query is asked anyway and may refuse with VK_ERROR_NOT_PERMITTED.
-            uint32_t families = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties2(physical, &families, nullptr);
-            std::vector<VkQueueFamilyGlobalPriorityPropertiesKHR> levels(
-                families, { VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES_KHR });
-            std::vector<VkQueueFamilyProperties2> properties(families, { VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2 });
-            for (uint32_t i = 0; i < families; i++) properties[i].pNext = &levels[i];
-            vkGetPhysicalDeviceQueueFamilyProperties2(physical, &families, properties.data());
-            std::string listed;
-            bool offered = family >= families || levels[family].priorityCount == 0;
-            if (family < families)
-                for (uint32_t i = 0; i < levels[family].priorityCount; i++)
-                {
-                    listed += " " + std::to_string(int(levels[family].priorities[i]));
-                    if (levels[family].priorities[i] == level) offered = true;
-                }
-            LOGI("vulkan: queue priorities listed:%s; asking for %d (%s)", listed.empty() ? " none" : listed.c_str(),
-                 int(level), offered ? "listed" : "not listed, not asked");
-            if (offered)
-            {
-                globalPriority.globalPriority = level;
-                queue.pNext = &globalPriority;
-            }
-            else priorityExtension = nullptr;
-        }
-    }
-
-    VkPhysicalDeviceFeatures supported{};
-    vkGetPhysicalDeviceFeatures(physical, &supported);
-    VkPhysicalDeviceFeatures enabled{};
-    // Robust buffer access, because the vertex fetch path reads the frame arena
-    // at indices the guest's own data computes. One index past the end is,
-    // without it, a GPU page fault: the driver retries it until the queue
-    // stalls, and enough of them hung the whole machine. With it the read
-    // returns zero or something in bounds, and the draw is merely wrong. Xenia
-    // asks for the same thing for the same reason.
-    enabled.robustBufferAccess = supported.robustBufferAccess;
-    if (!supported.robustBufferAccess)
-        LOGW("vulkan: the device offers no robust buffer access; an out-of-range vertex"
-             " fetch will fault");
-    // Compressed BC textures (BC1..BC5) used throughout the title. Strict drivers
-    // (Mali, etc.) require this feature to be explicitly enabled before creating BC images.
-    enabled.textureCompressionBC = supported.textureCompressionBC;
-    enabled.textureCompressionASTC_LDR = supported.textureCompressionASTC_LDR;
-    g.textureCompressionBC = supported.textureCompressionBC;
-    // Adreno's compressed-sampling path has a known BC1-with-1-bit-alpha flicker:
-    // surfaces sampling as black one frame and lit the next, missing geometry,
-    // and vertex garbage in vegetation. The screenshot ban against it is the
-    // same picture the Poco X6 Pro testers sent on Snapdragon devices that Mali
-    // phones never show. Mali keeps hardware BC; colour ranges, lighting and
-    // fog render identically with the hardware path there. Push Snapdragon
-    // devices to the software BC decoder, whose results are correct on both.
-    // PES17_FORCE_BC_HW=1 puts it back when a driver proves clean.
-    // The env flag is also available to users who hit this on another GPU vendor.
-    const vk::bc::AdrenoBC adrenoBc = vk::bc::AdrenoMode();
-    if (physicalProperties.vendorID == 0x5143 && supported.textureCompressionBC &&
-        !env::Flag("PES17_FORCE_BC_HW") && adrenoBc == vk::bc::AdrenoBC::kAll)
-    {
-        enabled.textureCompressionBC = VK_FALSE;
-        g.textureCompressionBC = false;
-        LOGW("vulkan: Adreno BC sampling disabled (known black/missing-geometry flicker);"
-             " textures decode in software -- PES17_FORCE_BC_HW=1 re-enables hardware BC,"
-             " PES17_ADRENO_BC=dxt1 keeps it for everything but the BC1 family");
-    }
-    else if (physicalProperties.vendorID == 0x5143 && supported.textureCompressionBC &&
-             adrenoBc != vk::bc::AdrenoBC::kAll)
-    {
-        LOGW("vulkan: PES17_ADRENO_BC=%s: the driver's BC sampling is on"
-             " (was off as the Adreno workaround); the BC1 family still decodes in software",
-             adrenoBc == vk::bc::AdrenoBC::kHardware ? "hw" : "dxt1");
-    }
-    if (!supported.textureCompressionBC)
-        LOGW("vulkan: the device does not report textureCompressionBC support");
-    {
-        constexpr VkFormatFeatureFlags kNeeded = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
-            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
-        VkFormatProperties unorm{}, srgb{};
-        vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_ASTC_4x4_UNORM_BLOCK, &unorm);
-        vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_ASTC_4x4_SRGB_BLOCK, &srgb);
-        g.astcSampled = supported.textureCompressionASTC_LDR &&
-                        (unorm.optimalTilingFeatures & kNeeded) == kNeeded &&
-                        (srgb.optimalTilingFeatures & kNeeded) == kNeeded;
-        LOGI("vulkan: ASTC 4x4 sampling %s", g.astcSampled ? "supported" : "NOT supported");
-    }
-    {
-        static const struct { VkFormat format; VkFormat srgb; const char* name; } kBc[5] = {
-            { VK_FORMAT_BC1_RGBA_UNORM_BLOCK, VK_FORMAT_BC1_RGBA_SRGB_BLOCK, "BC1" },
-            { VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC2_SRGB_BLOCK, "BC2" },
-            { VK_FORMAT_BC3_UNORM_BLOCK, VK_FORMAT_BC3_SRGB_BLOCK, "BC3" },
-            { VK_FORMAT_BC4_UNORM_BLOCK, VK_FORMAT_UNDEFINED, "BC4" },
-            { VK_FORMAT_BC5_UNORM_BLOCK, VK_FORMAT_UNDEFINED, "BC5" } };
-        constexpr VkFormatFeatureFlags kNeeded = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
-            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
-        for (int i = 0; i < 5; ++i)
-        {
-            VkFormatProperties props{};
-            vkGetPhysicalDeviceFormatProperties(physical, kBc[i].format, &props);
-            bool ok = supported.textureCompressionBC && (props.optimalTilingFeatures & kNeeded) == kNeeded;
-            if (ok && kBc[i].srgb != VK_FORMAT_UNDEFINED)
-            {
-                vkGetPhysicalDeviceFormatProperties(physical, kBc[i].srgb, &props);
-                ok = (props.optimalTilingFeatures & kNeeded) == kNeeded;
-            }
-            g.bcSampled[i] = ok;
-            LOGI("vulkan: %s sampling %s", kBc[i].name, ok ? "supported" : "NOT supported");
-        }
-    }
-    // The title's occlusion queries are a sample count it compares against a
-    // threshold, and without this a query is only allowed to answer "some".
-    enabled.occlusionQueryPrecise = supported.occlusionQueryPrecise;
-    g.preciseQueries = supported.occlusionQueryPrecise;
-    // The title asks for anisotropic filtering on nearly every world texture
-    // (2:1, once 4:1), and a sampler cannot give it unless the device enables it.
-    enabled.samplerAnisotropy = supported.samplerAnisotropy;
-    if (supported.samplerAnisotropy)
-    {
-        g.maxAnisotropy = physicalProperties.limits.maxSamplerAnisotropy;
-    }
-
-    // The image format list lets a resolve destination carry an sRGB view beside
-    // its own without the driver giving up compression; naming it in an image's
-    // pNext without enabling it is invalid.
-    std::vector<const char*> extensions(extraExtensions, extraExtensions + extraCount);
-    if (DeviceHasExtension(physical, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
-        extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
-    // MSAA depth surfaces are read back through a render pass resolve. That is
-    // core in Vulkan 1.2 but an extension before it, so a 1.1-or-1.0 device
-    // has to be asked for it by name -- its presence is what renderer.cpp
-    // gates multisampling on.
-    {
-        if (physicalProperties.apiVersion < VK_API_VERSION_1_2 &&
-            DeviceHasExtension(physical, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME))
-            extensions.push_back(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
-        // The depth resolve's own query goes through GetPhysicalDevice*
-        // Properties2, and the 1.1 promoted Maintenance1 is where negative
-        // viewport heights (the renderer's flipped clip space) live.
-        if (physicalProperties.apiVersion < VK_API_VERSION_1_1)
-        {
-            if (DeviceHasExtension(physical, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-                extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-            if (DeviceHasExtension(physical, VK_KHR_MAINTENANCE1_EXTENSION_NAME))
-                extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
-        }
-    }
-
-    // Direct3D 9 filters each cube face on its own, clamped at its edges; a
-    // Vulkan cube blends across them unless told not to. Xenia asks for the
-    // same thing.
-    VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT nonSeamless{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT };
-    if (DeviceHasExtension(physical, VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME))
-    {
-        VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-        query.pNext = &nonSeamless;
-        vkGetPhysicalDeviceFeatures2(physical, &query);
-        query.pNext = nullptr;
-        if (nonSeamless.nonSeamlessCubeMap)
-            extensions.push_back(VK_EXT_NON_SEAMLESS_CUBE_MAP_EXTENSION_NAME);
-    }
-    g.nonSeamlessCubes = nonSeamless.nonSeamlessCubeMap;
-
-    // Render passes give way to dynamic rendering, and cull mode, winding and
-    // the depth and stencil tests become state set per draw: then a shader
-    // compiled on its own, as a pipeline library, fits every target and every
-    // draw it is used in, and can be compiled when the title loads it rather
-    // than at the first draw -- which is what the console does, where a
-    // shader is ready the moment it is loaded.
-    const bool core13 = physicalProperties.apiVersion >= VK_API_VERSION_1_3;
-
-    const bool dynamicRenderingExtension =
-        DeviceHasExtension(physical, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-    const bool dynamicStateExtension =
-        DeviceHasExtension(physical, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
-    const bool pipelineLibrariesExtension =
-        DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
-
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRendering{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR };
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT dynamicState{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT };
-    VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT libraries{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT };
-
-    {
-        VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-        void** tail = &query.pNext;
-        if (core13 || dynamicRenderingExtension)
-        {
-            *tail = &dynamicRendering;
-            tail = &dynamicRendering.pNext;
-        }
-        if (core13 || dynamicStateExtension)
-        {
-            *tail = &dynamicState;
-            tail = &dynamicState.pNext;
-        }
-        if (pipelineLibrariesExtension)
-        {
-            *tail = &libraries;
-            tail = &libraries.pNext;
-        }
-        if (query.pNext)
-        {
-            vkGetPhysicalDeviceFeatures2(physical, &query);
-        }
-    }
-
-    const bool hasDynamicRendering =
-        dynamicRendering.dynamicRendering && (dynamicRenderingExtension || core13);
-    const bool hasDynamicState =
-        dynamicState.extendedDynamicState && (dynamicStateExtension || core13);
-
-    const bool forceLegacy = env::Flag("PES17_FORCE_LEGACY_RENDERING");
-    g.hasDynamicRendering = hasDynamicRendering && !forceLegacy;
-    g.hasExtendedDynamicState = hasDynamicState && !forceLegacy;
-    g.legacyMode = !hasDynamicRendering || !hasDynamicState || forceLegacy;
-    // The tests and culling baked into the pipelines, as the legacy path does, with dynamic
-    // rendering kept: PES17_STATIC_DEPTH_STATE=1.
-    // On by default for Qualcomm GPUs: an Adreno 740 (Retroid Pocket 6) drew the menus with
-    // tile-shaped blocks missing and wrong while culling and the depth/stencil tests were set
-    // per draw, and drew them right with the same dynamic rendering and the tests in the
-    // pipelines. PES17_DYNAMIC_DEPTH_STATE=1 puts per-draw state back there.
-    const bool qualcomm = physicalProperties.vendorID == 0x5143;
-    g.staticStates = g.legacyMode || env::Flag("PES17_STATIC_DEPTH_STATE") ||
-                     (qualcomm && !env::Flag("PES17_DYNAMIC_DEPTH_STATE"));
-
-    LOGI("vulkan: device reports Vulkan %u.%u.%u; dynamic rendering %s (extension %s),"
-         " extended dynamic state %s (extension %s)",
-         VK_VERSION_MAJOR(physicalProperties.apiVersion),
-         VK_VERSION_MINOR(physicalProperties.apiVersion),
-         VK_VERSION_PATCH(physicalProperties.apiVersion),
-         dynamicRendering.dynamicRendering ? "yes" : "no",
-         dynamicRenderingExtension ? "yes" : "no",
-         dynamicState.extendedDynamicState ? "yes" : "no",
-         dynamicStateExtension ? "yes" : "no");
-
-    if (g.legacyMode)
-    {
-        LOGI("vulkan: legacy Vulkan 1.1 fallback active: classic VkRenderPass and static pipeline states%s",
-             forceLegacy ? " (forced by PES17_FORCE_LEGACY_RENDERING)" : "");
-    }
-
-    if (dynamicRenderingExtension) extensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-    if (dynamicStateExtension) extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
-    g.pipelineLibraries =
-        !g.staticStates &&
-        DeviceHasExtension(physical, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
-        DeviceHasExtension(physical, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME) &&
-        libraries.graphicsPipelineLibrary;
-    if (g.pipelineLibraries)
-    {
-        extensions.push_back(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
-        extensions.push_back(VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
-        VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT linking{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_PROPERTIES_EXT };
-        VkPhysicalDeviceProperties2 properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-        properties.pNext = &linking;
-        vkGetPhysicalDeviceProperties2(physical, &properties);
-        g.fastLinking = linking.graphicsPipelineLibraryFastLinking;
-    }
-    else libraries.graphicsPipelineLibrary = VK_FALSE;
-
-    void* chain = features;
-    if (g.pipelineLibraries)
-    {
-        libraries.pNext = chain;
-        chain = &libraries;
-    }
-    if (hasDynamicState || dynamicStateExtension || core13)
-    {
-        dynamicState.pNext = chain;
-        chain = &dynamicState;
-    }
-    if (hasDynamicRendering || dynamicRenderingExtension || core13)
-    {
-        dynamicRendering.pNext = chain;
-        chain = &dynamicRendering;
-    }
-
-    VkPhysicalDeviceFaultFeaturesEXT fault{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
-    if (DeviceHasExtension(physical, VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
-    {
-        VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-        query.pNext = &fault;
-        vkGetPhysicalDeviceFeatures2(physical, &query);
-        fault.pNext = nullptr;
-        fault.deviceFaultVendorBinary = VK_FALSE;
-        if (fault.deviceFault)
-        {
-            extensions.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
-            fault.pNext = chain;
-            chain = &fault;
-        }
-    }
-    if (priorityExtension) extensions.push_back(priorityExtension);
-
-    VkDeviceCreateInfo info{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-    info.pNext = chain;
-    if (g.nonSeamlessCubes) { nonSeamless.pNext = chain; info.pNext = &nonSeamless; }
-    info.queueCreateInfoCount = 1;
-    info.pQueueCreateInfos = &queue;
-    info.enabledExtensionCount = uint32_t(extensions.size());
-    info.ppEnabledExtensionNames = extensions.data();
-    info.pEnabledFeatures = &enabled;
-    VkDevice device = VK_NULL_HANDLE;
-    VkResult r = vkCreateDevice(physical, &info, nullptr, &device);
-    if ((r == VK_ERROR_NOT_PERMITTED_KHR || r == VK_ERROR_INITIALIZATION_FAILED) && queue.pNext)
-    {
-        // The priority was refused (Android lets an app have some levels and not others).
-        LOGW("vulkan: queue priority %d refused (%s); the default instead",
-             int(globalPriority.globalPriority), Explain(r));
-        queue.pNext = nullptr;
-        extensions.erase(std::remove(extensions.begin(), extensions.end(), priorityExtension), extensions.end());
-        info.enabledExtensionCount = uint32_t(extensions.size());
-        info.ppEnabledExtensionNames = extensions.data();
-        r = vkCreateDevice(physical, &info, nullptr, &device);
-    }
-    if (r != VK_SUCCESS) { LOGW("vulkan: no device (%s)", Explain(r)); return false; }
-    if (queue.pNext) LOGI("vulkan: the queue runs at global priority %d", int(globalPriority.globalPriority));
-#if defined(PES17_VULKAN_DYNAMIC)
-    // From here on the device's entry points come from the driver itself
-    // rather than through the loader's dispatch (loader.h).
-    vk::loader::LoadDevice(device);
-#endif
-    if (fault.deviceFault)
-    {
-        g_faultInfo = reinterpret_cast<PFN_vkGetDeviceFaultInfoEXT>(vkGetDeviceProcAddr(device, "vkGetDeviceFaultInfoEXT"));
-        g_faultDevice = device;
-        LOGI("vulkan: device fault reports %s", g_faultInfo.load() ? "on" : "unavailable");
-    }
-    VkQueue made = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, family, 0, &made);
-    *deviceOut = device;
-    *queueOut = made;
-    return true;
-}
 
 namespace
 {
@@ -586,101 +157,28 @@ namespace
     {
         if (!OpenVulkan()) { LOGW("pipeline: no Vulkan library"); return false; }
 
-        VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
-        app.pApplicationName = "pes17recomp";
-        // 1.0 is the floor: negative viewport heights (VK_KHR_maintenance1
-        // before that) and still-valid depth resolves (VK_KHR_get_*2 and
-        // VK_KHR_depth_stencil_resolve) are all extensions, and the top of the
-        // device's version is checked in CreateDevice regardless. The highest
-        // the loader will admit to, capped at 1.3: dynamic rendering and
-        // extended dynamic state are core there, and a driver that has them
-        // in core rather than as extensions can only be asked for them by an
-        // application that says it targets 1.3.
-        app.apiVersion = VK_API_VERSION_1_0;
-#if defined(PES17_VULKAN_DYNAMIC)
-        if (vkEnumerateInstanceVersion)
-#endif
-        {
-            uint32_t available = 0;
-            if (vkEnumerateInstanceVersion(&available) == VK_SUCCESS)
-            {
-                if (available >= VK_API_VERSION_1_3)
-                    app.apiVersion = VK_API_VERSION_1_3;
-                else if (available >= VK_API_VERSION_1_1)
-                    app.apiVersion = VK_API_VERSION_1_1;
-            }
-        }
-
-        // A 1.0 instance has to name what 1.1 and 1.2 make core, because the
-        // runtime asks for negative viewport heights (maintenance1) and for
-        // the pNext-chain properties2 the depth resolve read goes through.
-        std::vector<const char*> instanceExtensions;
-        if (app.apiVersion < VK_API_VERSION_1_1)
-        {
-            uint32_t offered = 0;
-            if (vkEnumerateInstanceExtensionProperties(nullptr, &offered, nullptr) == VK_SUCCESS && offered)
-            {
-                std::vector<VkExtensionProperties> list(offered);
-                if (vkEnumerateInstanceExtensionProperties(nullptr, &offered, list.data()) == VK_SUCCESS)
-                {
-                    const auto have = [&list](const char* name) {
-                        for (const auto& e : list)
-                            if (std::strcmp(e.extensionName, name) == 0) return true;
-                        return false;
-                    };
-                    if (have(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-                        instanceExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-                    if (have(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
-                        instanceExtensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
-                }
-            }
-        }
-
-        VkInstanceCreateInfo info{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-        info.pApplicationInfo = &app;
-        info.enabledExtensionCount = uint32_t(instanceExtensions.size());
-        info.ppEnabledExtensionNames = instanceExtensions.data();
-        VkResult r = vkCreateInstance(&info, nullptr, &g.instance);
-        if (r != VK_SUCCESS) { LOGW("pipeline: no Vulkan instance (%s)", Explain(r)); return false; }
-#if defined(PES17_VULKAN_DYNAMIC)
-        vk::loader::LoadInstance(g.instance);
-#endif
-
-        uint32_t count = 0;
-        vkEnumeratePhysicalDevices(g.instance, &count, nullptr);
-        if (!count) { LOGW("pipeline: no Vulkan device"); return false; }
-        std::vector<VkPhysicalDevice> devices(count);
-        vkEnumeratePhysicalDevices(g.instance, &count, devices.data());
-
-        // Prefer real hardware: a software rasteriser accepts SPIR-V a hardware
-        // compiler refuses, so validating against one proves less.
-        uint32_t chosen = 0;
-        for (uint32_t i = 0; i < count; i++)
-        {
-            VkPhysicalDeviceProperties p{};
-            vkGetPhysicalDeviceProperties(devices[i], &p);
-            if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
-                p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { chosen = i; break; }
-        }
-        g.physical = devices[chosen];
-
-        uint32_t families = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(g.physical, &families, nullptr);
-        std::vector<VkQueueFamilyProperties> props(families);
-        vkGetPhysicalDeviceQueueFamilyProperties(g.physical, &families, props.data());
-        uint32_t family = UINT32_MAX;
-        for (uint32_t i = 0; i < families; i++)
-            if (props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { family = i; break; }
-        if (family == UINT32_MAX) { LOGW("pipeline: no graphics queue"); return false; }
-
-        void* device = nullptr;
-        void* queue = nullptr;
-        if (!vk::pipeline::CreateDevice(g.physical, family, nullptr, 0, &device, &queue))
+        g.ownedProvider = vk::provider::Context::Create(true);
+        if (!g.ownedProvider) return false;
+        auto abandon = []() {
+            g.ownedProvider.reset();
+            g.instance = VK_NULL_HANDLE;
+            g.device = VK_NULL_HANDLE;
+            g.queue = VK_NULL_HANDLE;
+            g.family = 0;
+            g.ownsContext = false;
+            ResetDeviceSnapshot();
             return false;
-        g.device = static_cast<VkDevice>(device);
-        g.queue = static_cast<VkQueue>(queue);
-        g.family = family;
-        g.ownsDevice = true;
+        };
+        if (!g.ownedProvider->SelectHeadlessDevice() ||
+            !g.ownedProvider->CreateLogicalDevice(nullptr, 0))
+            return abandon();
+        g.instance = g.ownedProvider->InstanceHandle();
+        g.physical = g.ownedProvider->PhysicalHandle();
+        g.device = g.ownedProvider->LogicalHandle();
+        g.queue = g.ownedProvider->QueueHandle();
+        g.family = g.ownedProvider->QueueFamily();
+        g.deviceContext = g.ownedProvider->DeviceObject();
+        g.ownsContext = true;
         return true;
     }
 
@@ -948,39 +446,56 @@ namespace
     }
 }
 
-bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_t queueFamily,
-                              void* instance)
+bool vk::pipeline::Initialise(const vk::device::BorrowedContext* borrowedContext)
 {
-    if (g.device) return true;
-
-    if (device && physical)
+    if (g.device)
     {
-        g.instance = static_cast<VkInstance>(instance);
-        g.device = static_cast<VkDevice>(device);
-        g.physical = static_cast<VkPhysicalDevice>(physical);
-        g.queue = static_cast<VkQueue>(queue);
-        g.family = queueFamily;
-        g.ownsDevice = false;
+        const bool sameBorrowed = borrowedContext && borrowedContext->Complete() &&
+            !g.ownsContext && g.deviceContext == borrowedContext->device &&
+            g.instance == borrowedContext->instance->Handle();
+        const bool sameHeadless = !borrowedContext && g.ownsContext;
+        if (sameBorrowed || sameHeadless) return true;
+        LOGW("pipeline: refusing to reinitialise with a different Device context");
+        return false;
+    }
+
+    // A borrowed device is an all-or-nothing tuple. Falling through to the
+    // headless path when only some handles were supplied would silently ignore
+    // the caller's device and could create a second, unrelated GPU context.
+    if (borrowedContext && !borrowedContext->Complete())
+    {
+        LOGW("pipeline: incomplete borrowed Vulkan device context");
+        return false;
+    }
+    if (borrowedContext)
+    {
+        g.instance = static_cast<VkInstance>(borrowedContext->instance->Handle());
+        g.device = static_cast<VkDevice>(borrowedContext->device->Logical());
+        g.physical = static_cast<VkPhysicalDevice>(borrowedContext->device->Physical());
+        g.queue = static_cast<VkQueue>(borrowedContext->device->Queue());
+        g.family = borrowedContext->device->QueueFamily();
+        g.deviceContext = borrowedContext->device;
+        g.ownsContext = false;
     }
     else if (!BringUpHeadless())
     {
         return false;
     }
 
-    VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(g.physical, &props);
-    g.deviceProperties = props;
-    g.name = props.deviceName;
+    if (!g.deviceContext || !g.deviceContext->Complete() ||
+        !g.deviceContext->GetDeviceProperties(&g.deviceProperties, sizeof(g.deviceProperties)))
+    {
+        LOGW("pipeline: Provider supplied no complete Device capability snapshot");
+        Shutdown();
+        return false;
+    }
+    const VkPhysicalDeviceProperties props = g.deviceProperties;
+
     // A bug report is read against the driver's known faults.
     if (report::On())
     {
         VkPhysicalDeviceDriverProperties driver{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES };
-        if (props.apiVersion >= VK_API_VERSION_1_2)
-        {
-            VkPhysicalDeviceProperties2 more{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-            more.pNext = &driver;
-            vkGetPhysicalDeviceProperties2(g.physical, &more);
-        }
+        g.deviceContext->GetDriverProperties(&driver, sizeof(driver));
         LOGI("report: graphics %s (%04X:%04X), driver %s %s (%08X), Vulkan %u.%u.%u", props.deviceName,
              props.vendorID, props.deviceID, driver.driverName, driver.driverInfo, props.driverVersion,
              VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
@@ -989,65 +504,98 @@ bool vk::pipeline::Initialise(void* device, void* physical, void* queue, uint32_
 
     if (!CreateSetLayouts()) { Shutdown(); return false; }
     CreateCache();
-    LOGI("pipeline: layout ready on %s", g.name.c_str());
+    LOGI("pipeline: layout ready on %s", vk::pipeline::DeviceName());
     return true;
 }
 
 void vk::pipeline::Shutdown()
 {
-    if (!g.device) return;
+    if (!g.device)
+    {
+        // Presenter may have created a Device but failed before Pipeline
+        // adopted its borrowed context. Clear metadata from that attempt.
+        g.ownedProvider.reset();
+        g.instance = VK_NULL_HANDLE;
+        g.queue = VK_NULL_HANDLE;
+        g.family = 0;
+        g.ownsContext = false;
+        g.deviceContext = nullptr;
+        ResetDeviceSnapshot();
+        return;
+    }
     SaveCache();
+    // The fault callback is device-scoped. Clear it before an owned device is
+    // destroyed, and also when the device is borrowed and will be destroyed by
+    // the presenter after pipeline resources have gone away.
     if (g.cache) vkDestroyPipelineCache(g.device, g.cache, nullptr);
     if (g.layout) vkDestroyPipelineLayout(g.device, g.layout, nullptr);
     for (VkDescriptorSetLayout& set : g.sets)
         if (set) { vkDestroyDescriptorSetLayout(g.device, set, nullptr); set = VK_NULL_HANDLE; }
     g.cache = VK_NULL_HANDLE;
     g.layout = VK_NULL_HANDLE;
-    if (g.ownsDevice)
+    if (g.ownsContext)
     {
-#if defined(PES17_VULKAN_DYNAMIC)
-        vk::loader::ForgetDevice();
-#endif
-        vkDestroyDevice(g.device, nullptr);
-        if (g.instance) vkDestroyInstance(g.instance, nullptr);
-        g.instance = VK_NULL_HANDLE;
+        g.ownedProvider.reset();
     }
+    // Pipeline keeps only a borrowed copy of Presenter-owned handles. Clear
+    // those copies too: after Shutdown no accessor may expose a dead/stale
+    // context, even though Pipeline must not destroy the presenter's objects.
     g.device = VK_NULL_HANDLE;
-    g.physical = VK_NULL_HANDLE;
+    g.instance = VK_NULL_HANDLE;
+    g.deviceContext = nullptr;
+    ResetDeviceSnapshot();
     g.queue = VK_NULL_HANDLE;
+    g.family = 0;
+    g.ownsContext = false;
 }
 
 bool vk::pipeline::Ready() { return g.device != VK_NULL_HANDLE; }
-const char* vk::pipeline::DeviceName() { return g.name.c_str(); }
+bool vk::pipeline::GetMemoryProperties(void* properties, size_t size)
+{
+    return g.deviceContext && g.deviceContext->GetMemoryProperties(properties, size);
+}
+bool vk::pipeline::GetDeviceProperties(void* properties, size_t size)
+{
+    return g.deviceContext && g.deviceContext->GetDeviceProperties(properties, size);
+}
+bool vk::pipeline::DepthStencilResolveSampleZero()
+{
+    return g.deviceContext && g.deviceContext->DepthStencilResolveSampleZero();
+}
+bool vk::pipeline::GetPhysicalDeviceFeatures(void* features, size_t size)
+{
+    return g.deviceContext && g.deviceContext->GetPhysicalDeviceFeatures(features, size);
+}
+const char* vk::pipeline::DeviceName() { return g.deviceContext ? g.deviceContext->Name() : "none"; }
 void*    vk::pipeline::Instance() { return g.instance; }
 void*    vk::pipeline::Device() { return g.device; }
 void*    vk::pipeline::PhysicalDevice() { return g.physical; }
 void*    vk::pipeline::Queue() { return g.queue; }
 uint32_t vk::pipeline::QueueFamily() { return g.family; }
-bool     vk::pipeline::PreciseOcclusionQueries() { return g.preciseQueries; }
-float    vk::pipeline::MaxAnisotropy() { return g.maxAnisotropy; }
-bool     vk::pipeline::NonSeamlessCubes() { return g.nonSeamlessCubes; }
+bool     vk::pipeline::PreciseOcclusionQueries() { return g.deviceContext && g.deviceContext->PreciseOcclusionQueries(); }
+float    vk::pipeline::MaxAnisotropy() { return g.deviceContext ? g.deviceContext->MaxAnisotropy() : 1.0f; }
+bool     vk::pipeline::NonSeamlessCubes() { return g.deviceContext && g.deviceContext->NonSeamlessCubes(); }
 // PES17_NO_PIPELINE_LIBRARIES=1 builds whole pipelines at the first draw instead.
 bool     vk::pipeline::PipelineLibraries()
 {
     static const bool refused = env::Flag("PES17_NO_PIPELINE_LIBRARIES");
-    return g.pipelineLibraries && g.fastLinking && !refused;
+    return g.deviceContext && g.deviceContext->PipelineLibraries() && g.deviceContext->FastLinking() && !refused;
 }
-bool     vk::pipeline::HasDynamicRendering() { return g.hasDynamicRendering; }
-bool     vk::pipeline::HasExtendedDynamicState() { return g.hasExtendedDynamicState; }
-bool     vk::pipeline::LegacyMode() { return g.legacyMode; }
-bool     vk::pipeline::StaticStates() { return g.staticStates; }
-bool     vk::pipeline::TextureCompressionBC() { return g.textureCompressionBC; }
-bool     vk::pipeline::AstcSampled() { return g.astcSampled; }
+bool     vk::pipeline::HasDynamicRendering() { return g.deviceContext && g.deviceContext->HasDynamicRendering(); }
+bool     vk::pipeline::HasExtendedDynamicState() { return g.deviceContext && g.deviceContext->HasExtendedDynamicState(); }
+bool     vk::pipeline::LegacyMode() { return !g.deviceContext || g.deviceContext->LegacyMode(); }
+bool     vk::pipeline::StaticStates() { return !g.deviceContext || g.deviceContext->StaticStates(); }
+bool     vk::pipeline::TextureCompressionBC() { return g.deviceContext && g.deviceContext->TextureCompressionBC(); }
+bool     vk::pipeline::AstcSampled() { return g.deviceContext && g.deviceContext->AstcSampled(); }
 bool     vk::pipeline::BcFormatSampled(uint32_t xenosFormat)
 {
     switch (xenosFormat)
     {
-    case 18: case 51: return g.bcSampled[0];
-    case 19: case 52: return g.bcSampled[1];
-    case 20: case 53: return g.bcSampled[2];
-    case 59:          return g.bcSampled[3];
-    case 49:          return g.bcSampled[4];
+    case 18: case 51: return g.deviceContext && g.deviceContext->BcFormatSampled(0);
+    case 19: case 52: return g.deviceContext && g.deviceContext->BcFormatSampled(1);
+    case 20: case 53: return g.deviceContext && g.deviceContext->BcFormatSampled(2);
+    case 59:          return g.deviceContext && g.deviceContext->BcFormatSampled(3);
+    case 49:          return g.deviceContext && g.deviceContext->BcFormatSampled(4);
     default:          return false;
     }
 }

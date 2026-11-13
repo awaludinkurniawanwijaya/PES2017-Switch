@@ -457,16 +457,18 @@ uint32_t kernel::CreateThreadBlock(uint32_t threadId)
     return pcr;
 }
 
-void kernel::Unimplemented(const char* name)
+void kernel::Unimplemented(const char* name, uint32_t caller)
 {
     std::lock_guard g(g_unimplLock);
     auto [it, inserted] = g_unimpl.try_emplace(name, 0);
     it->second++;
-    if (inserted) LOGW("unimplemented: %s", name);
+    if (inserted) LOGW("unimplemented: %s first reached from guest %08X", name, caller);
     // And at every power of ten after that: a stub called thousands of times is
-    // a title polling for something it will never be given.
+    // a title polling for something it will never be given. Keep the latest
+    // guest return address in the periodic report to identify the active path.
     else if (it->second == 10 || it->second == 100 || it->second == 1000 || it->second % 10000 == 0)
-        LOGW("unimplemented: %s called %llu times", name, (unsigned long long)it->second);
+        LOGW("unimplemented: %s called %llu times (latest caller %08X)", name,
+             (unsigned long long)it->second, caller);
 }
 
 void kernel::ReportUnimplemented()

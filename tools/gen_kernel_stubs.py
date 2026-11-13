@@ -22,7 +22,7 @@ with open(out, "w") as o:
     o.write("// which ones the game actually reaches.\n")
     o.write('#include <ppc_recomp_shared.h>\n#include "kernel/kernel.h"\n\n')
     for n in missing:
-        o.write(f'PPC_FUNC(__imp__{n}) {{ kernel::Unimplemented("{n}"); ctx.r3.u64 = 0; }}\n')
+        o.write(f'PPC_FUNC(__imp__{n}) {{ kernel::Unimplemented("{n}", uint32_t(ctx.lr)); ctx.r3.u64 = 0; }}\n')
 
 unknown = sorted(implemented - set(need))
 print(f"kernel imports: {len(need)} needed, {len(implemented & set(need))} implemented, {len(missing)} stubbed")

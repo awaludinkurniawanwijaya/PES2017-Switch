@@ -8,52 +8,65 @@ This note records the source-level blockers found while preparing the native Swi
 
 - `switch/Makefile` builds `pes2017-switch-bootstrap.nro` with devkitA64/libnx.
 - `switch/source/main.cpp` initializes the libnx console and polls the + button.
+- The install start contract now treats `argc == 0` or `argc == 1` as a Homebrew Menu player launch on Switch; explicit arguments remain development launches. Host tests and a Switch compiler static-assert gate cover the distinction.
+- The full runtime selects `sdmc:/switch/PES2017/pes2017-switch.log` by default when no `PES17_LOG_FILE` is supplied, so hardware startup and GPU errors have a persistent SD destination. This source path still awaits a full game-runtime build and physical validation.
+- A first Horizon guest-memory backend now reserves a 4 GiB address range through libnx `virtmem`, maps one 512 MiB shared-memory object at the cached/physical/aperture windows, and maps non-bank committed pages with `svcMapPhysicalMemory`. The devkitA64 syntax gate passes; SVC permissions, full-size allocation, and address placement still need physical Switch validation.
 - The existing runtime is a separate CMake target. Its desktop entry point is `runtime/main.cpp`; Android starts `pes17::Run` from JNI.
-- The Switch bootstrap does not currently compile or link `runtime/`, `ppc/`, or any generated guest code.
+- The devkitA64 NRO workflow now syntax-compiles the actual `runtime/switch/platform.cpp` adapter, in addition to the install, audio, crash, stutter, and guest-memory seams. This validates the adapter against CI libnx headers, not its runtime behavior on hardware.
+- The Switch bootstrap compiles selected runtime units as syntax/link probes, but does not link the complete `runtime/`, generated `ppc/`, or any guest code.
 
 ## Integration blockers
 
 ### 1. Runtime build and entry point
 
-The top-level `CMakeLists.txt` currently selects Android, Windows, or the desktop/POSIX executable. It unconditionally expects generated `ppc/ppc_recomp.*.cpp`, `ppc/ppc_func_mapping.cpp`, `ppc/stubs_generated.cpp`, and a legally supplied `pes/default.xex` (normally extracted by the project's build pipeline). The current NRO Makefile has none of these inputs.
+The top-level CMake now has a `PES17_SWITCH` target and the devkitA64 toolchain file. It still requires generated `ppc/ppc_recomp.*.cpp`, `ppc/ppc_func_mapping.cpp`, `ppc/stubs_generated.cpp`, and the legally supplied matching `pes/default.xex`; these private inputs are intentionally absent from public CI.
 
-`runtime/main.cpp` also assumes a process-style launch with filesystem paths and arguments, includes POSIX `unistd.h`, uses `_exit`, `std::filesystem`, detached `std::thread` workers, and the desktop `main()` entry point. A Switch entry adapter and a build-system target are required before linking the runtime.
+`runtime/main.cpp` is shared by desktop and Switch builds. Its Homebrew Menu startup contract now accepts the zero-argument launch form, and its Switch path writes a default log to SD. The complete target has not yet been compiled or linked with the private PPC output, so remaining libc/thread/entrypoint assumptions must be found by that full build.
 
-### 2. Host platform services
+### 2. Guest memory model (critical blocker)
 
-`runtime/platform.h` defines the host services used by the runtime: thread identity/naming/priority/affinity, stack-sized worker threads, backtraces, and dynamic library loading.
+`runtime/guest_memory.cpp` now has a first Horizon-specific candidate: it reserves a contiguous 4 GiB range using libnx `virtmem`, creates one 512 MiB shared-memory object, maps it into the cached/physical/aperture windows, and uses `svcMapPhysicalMemory` for committed regions outside those windows. The devkitA64 syntax-only gate passes. The previous generic POSIX `mmap`/`memfd_create` path remains for Linux/Android and is not used for Switch.
 
-`runtime/platform.cpp` currently has Windows and POSIX implementations. The POSIX branch includes Linux/Android-specific headers and calls such as `sys/system_properties.h`, `gettid()`, `sched_setaffinity()`, `pthread_*`, `dlopen()`, and `dlsym()`. This is not a Switch implementation. Add a separately compiled `runtime/switch/platform.cpp` (or equivalent) implementing only services supported by libnx/libc, and guard unsupported operations explicitly.
+libnx documents shared-memory creation as privileged. A bootstrap probe now attempts the same 4 GiB reservation, maps one 4 KiB shared-memory object at the exact three guest window offsets, checks write coherence, and tests one extra committed page with `svcMapPhysicalMemory`. This only tests whether the primitive is available to the running homebrew process. It does not prove that a 512 MiB bank can be created, that the 4 GiB reservation and fixed guest windows are accepted, or that `svcMapPhysicalMemory` can commit the full runtime's additional pages.
 
-### 3. Controller input
+Treat this as an unvalidated backend until the probe and full-size mapping succeed on the physical Switch. If the homebrew process cannot create/map shared memory or commit pages at the chosen addresses, a different memory-layout or guest-address translation design is required; do not silently fall back to three independent copies.
 
-`runtime/kernel/input.cpp` currently selects either `PES17_ANDROID` or `PES17_USE_SDL`. The guest-facing XInput state is already represented in Xbox-compatible button/axis fields, so a Switch adapter can translate libnx `PadState` into those fields. The adapter must handle Joy-Con pair/single styles, analog stick ranges, triggers, disconnects, and controller-player mapping. The current bootstrap's + button polling is not connected to the guest XInput path.
+### 3. Host platform services
 
-### 4. Audio
+`runtime/platform.h` defines the host services used by the runtime. A separate `runtime/switch/platform.cpp` now implements thread creation/join, thread identity, basic priority changes, SDMC mounting, and the install working directory. Thread names, affinity policy, backtraces, and dynamic-library loading are intentionally limited or unavailable on Switch. The full runtime link and long-running worker behavior still need validation on hardware.
 
-`runtime/apu/audio.cpp` has Android AAudio and SDL output paths. A Switch output backend must feed the existing 48 kHz, six-channel float mixer frames to libnx audren (or another supported Switch audio service), including channel layout conversion, buffer lifetime, pacing, and clean shutdown. Until this exists, audio must be explicitly disabled rather than pretending it is implemented.
+### 4. Controller input
 
-### 5. Graphics (largest runtime blocker)
+`switch/source/input.cpp` translates libnx `PadState` into the guest XInput state, and `runtime/kernel/input.cpp` has a Switch branch for `XamInputGetState`/`XamInputSetState`. Face-button swaps are separate settings. This is still a partial controller implementation: triggers are digital, vibration is not implemented, and Joy-Con single/pair styles, disconnects, and player mapping require hardware validation. The user has deferred button-code testing until the game is playable.
 
-The current renderer is under `runtime/gpu/vulkan/` and expects Vulkan entry points, instance/device creation, swapchain/surface integration, and Vulkan shader/pipeline behavior. The libnx bootstrap does not provide a Vulkan surface or a compatible Vulkan loader. Switch homebrew commonly uses deko3d; that is a different API, not a drop-in Vulkan library.
+### 5. Audio
 
-A playable port therefore needs a deliberate renderer strategy:
-- implement a deko3d backend for the existing Xenos command processor and shader translation path; or
-- prove and document a compatible Vulkan implementation/runtime for the target environment before retaining the Vulkan backend.
+A first libnx `audout` sink now exists in `runtime/switch/audio.cpp` and is called by the Switch branch in `runtime/apu/audio.cpp`. It converts the existing 48 kHz planar big-endian 5.1 float frames to interleaved 48 kHz stereo signed 16-bit PCM, using an eight-buffer aligned pool. The Switch Makefile compiles the sink as part of the bootstrap and has a dedicated syntax-only audio gate.
 
-Simply defining `PES17_HAVE_VULKAN` or linking the existing Vulkan sources will not solve this.
+This is not an Audren renderer graph and is not hardware-validated. Actual output device selection, channel-order/mix-level verification, queue stability, suspend/resume and service shutdown remain open.
 
-### 6. Game data and generated code
+### 6. Graphics (largest runtime blocker)
+
+The current renderer is under `runtime/gpu/vulkan/` and already translates runtime Xenos microcode to SPIR-V. The libnx bootstrap does not provide a Vulkan surface or Vulkan implementation, so the renderer is not linked or usable yet.
+
+A promising alternative to a deko3d rewrite has been identified: [NXVK](https://github.com/PalindromicBreadLoaf/nxvk) ports Mesa NVK to Switch GM20B and includes the NAK Maxwell shader compiler. If its Vulkan implementation can be linked and presented through its libnx WSI, the existing Xenos-to-SPIR-V translator may remain intact. This is now the preferred feasibility spike, not a verified integration. Source inspection found a concrete loader mismatch: NXVK's smoke app calls `vk_icdGetInstanceProcAddr`, while this runtime's dynamic loader expects `vkGetInstanceProcAddr` and device-proc lookup. A static loaderless adapter plus the complete support-archive link set is required; merely linking `libnvk.a` is insufficient. It must first pass a reproducible GitHub Actions build, Vulkan smoke NRO, surface/present test, memory/size measurements, and a source/license audit. This project is GPL-3.0-only; NXVK says its new files are GPL-2.0-or-later and Mesa retains upstream licenses, so check the exact combination and notices before vendoring or distributing anything.
+
+The deko3d alternative remains a fallback. deko3d accepts DKSH with native Maxwell SM53 code, not SPIR-V; UAM is a host-side GLSL-to-DKSH compiler and cannot consume the current SPIR-V output. A deko3d route therefore still needs an Xenos-to-SM53 compiler or another viable runtime compiler strategy.
+
+The detailed feasibility analysis and dependency order are in [`docs/gpu-deko3d-port-plan.md`](../docs/gpu-deko3d-port-plan.md). Simply defining `PES17_HAVE_VULKAN`, linking Vulkan sources without a Switch Vulkan implementation, or forwarding SPIR-V to UAM will not solve this.
+
+### 7. Game data and generated code
 
 The guest PPC C++ files and title metadata are generated from the user's own legally obtained game executable by the existing XenonRecomp build pipeline. They are not generated by the current Switch workflow and proprietary game data must not be committed to this repository. The Switch runtime must load the required game files from SD storage and validate them before entering the guest.
 
 ## Recommended implementation sequence
 
-1. **Platform seam:** add a Switch-specific platform implementation and a Switch build option/target. Keep Android and desktop builds unchanged.
+1. **Guest memory seam:** implement and validate a Horizon-compatible 512 MiB physical-bank mapping across all three guest windows and the 4 GiB guest address reservation.
+2. **Platform seam:** add a Switch-specific platform implementation and a Switch build option/target. Keep Android and desktop builds unchanged.
 2. **Input seam:** extract the guest-facing controller state into a platform-neutral interface; add libnx HID polling and button/axis mapping; test the XInput kernel calls.
 3. **Filesystem and startup:** define an SD-card game-data layout, mount the filesystem through libnx, load the legally supplied image/assets, and enter `pes17::Run` from a Switch applet entry point.
 4. **Audio:** add audren output and a no-audio diagnostic build mode.
-5. **Renderer:** select and implement the deko3d renderer path (or a verified Vulkan path), then validate shaders, textures, render targets, synchronization, and presentation.
+5. **Renderer:** first prove the NXVK/Mesa NVK Vulkan path (including license, loader, WSI, memory and hardware smoke tests). If it fails, evaluate the deko3d path and its Xenos-to-SM53 compiler requirement. Then validate shaders, textures, render targets, synchronization, and presentation.
 6. **End-to-end bring-up:** build with real generated PPC sources and user-supplied game data; test boot, menus, match loading, controller play, audio, suspend/resume, and memory stability on hardware.
 
 ## Acceptance criteria

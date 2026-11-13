@@ -6,7 +6,11 @@
 #include <unordered_map>
 #include <cstring>
 #include <atomic>
-#include "../../kernel/kernel.h"
+#include "../../kernel/physical.h"
+
+// The renderer only needs this narrow kernel diagnostic hook, not kernel.h
+// (which pulls in the private XenonRecomp-generated PPC declarations).
+namespace kernel { void DumpYieldStacks(int perThread); }
 #include "../../guest_memory.h"
 #include <unordered_set>
 // Resolves: EDRAM copied out to a texture the title reads back, or the
@@ -929,8 +933,15 @@ void vk::renderer::Swap(uint32_t frontBuffer)
             }
 #endif
             g_drawLo = lo; g_drawHi = hi;
+#ifdef PES17_ANDROID
             g_noWriteBackCap = access((android::GetPaths().external + "/no_writeback_cap").c_str(), F_OK) == 0;
             g_noVertexReuse = access((android::GetPaths().external + "/no_vertex_reuse").c_str(), F_OK) == 0;
+#else
+            // These per-device diagnostic toggles are files in the Android app's
+            // external directory. Other platforms leave the workarounds disabled.
+            g_noWriteBackCap = false;
+            g_noVertexReuse = false;
+#endif
         }
     }
 #ifdef PES17_ANDROID
@@ -1014,6 +1025,7 @@ void vk::renderer::Swap(uint32_t frontBuffer)
                 // The process's CPU time (user + system, every thread) over the window, a frame, and
                 // whether the crowd was drawn in it (the flip is made after this report's frame).
                 static double lastCpu = 0.0;
+#if !defined(__SWITCH__)
                 rusage usage{};
                 getrusage(RUSAGE_SELF, &usage);
                 const double cpu = double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) +
@@ -1021,6 +1033,9 @@ void vk::renderer::Swap(uint32_t frontBuffer)
                 LOGI("perf: cpu %.2f ms a frame (%.0f%% of a core), crowd %s", (cpu - lastCpu) * 1000.0 / 600.0,
                      (cpu - lastCpu) / took * 100.0, CrowdOff() ? "off" : "on");
                 lastCpu = cpu;
+#else
+                (void)lastCpu;
+#endif
             }
             {
                 FenceWaits& waits = gpu::detail::g_fenceWaits;

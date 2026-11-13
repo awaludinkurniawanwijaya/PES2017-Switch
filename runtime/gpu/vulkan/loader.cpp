@@ -7,6 +7,8 @@
 
 #ifdef PES17_ANDROID
 #include "../../android/android.h"
+#elif defined(__SWITCH__)
+#include "switch_driver.h"
 #else
 #include <dlfcn.h>
 #endif
@@ -17,7 +19,7 @@
 
 extern "C"
 {
-    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddrFn = nullptr;
 
 #define PES17_VK_GLOBAL(name)   PFN_##name name = nullptr;
 #define PES17_VK_INSTANCE(name) PFN_##name name = nullptr;
@@ -62,6 +64,11 @@ bool vk::loader::Open(std::string& error)
 #ifdef PES17_ANDROID
     entry = android::driver::Open(error);
     g_description = android::driver::Description();
+#elif defined(__SWITCH__)
+    // Horizon has no system Vulkan loader. Keep the statically linked driver
+    // behind its own adapter; the Vulkan loader/provider code stays driver-agnostic.
+    entry = reinterpret_cast<void*>(vk::switch_driver::GetInstanceProcAddr());
+    g_description = vk::switch_driver::Description();
 #else
     // A desktop build with dynamic loading asked for: the system's loader.
     for (const char* name : { "libvulkan.so.1", "libvulkan.so" })
@@ -74,15 +81,23 @@ bool vk::loader::Open(std::string& error)
     }
     if (!entry) error = "libvulkan could not be loaded";
 #endif
-    if (!entry) return false;
+    if (!entry)
+    {
+        if (error.empty()) error = "Vulkan implementation entry point is unavailable";
+        LOGE("vulkan: %s", error.c_str());
+        return false;
+    }
 
-    vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(entry);
+    // A failed first attempt may be retried after the platform has made the
+    // driver available. Do not carry missing-symbol counts from that attempt.
+    g_missing = 0;
+    vkGetInstanceProcAddrFn = reinterpret_cast<PFN_vkGetInstanceProcAddr>(entry);
 
     // What can be had without an instance. vkEnumerateInstanceVersion is
     // Vulkan 1.1 and may be absent on a 1.0 implementation, which is not an
     // error -- the caller treats null as "1.0".
 #define PES17_VK_GLOBAL(name) \
-    Take(name, vkGetInstanceProcAddr(nullptr, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(nullptr, #name), #name, \
          std::strcmp(#name, "vkEnumerateInstanceVersion") != 0);
 #define PES17_VK_INSTANCE(name)
 #define PES17_VK_DEVICE(name)
@@ -91,6 +106,13 @@ bool vk::loader::Open(std::string& error)
 #undef PES17_VK_INSTANCE
 #undef PES17_VK_DEVICE
 
+    if (g_missing)
+    {
+        error = "the Vulkan implementation is missing " + std::to_string(g_missing) +
+                " required global entry point(s)";
+        LOGE("vulkan: %s (%s)", error.c_str(), g_description.c_str());
+        return false;
+    }
     if (!vkCreateInstance)
     {
         error = "the Vulkan library has no vkCreateInstance";
@@ -110,11 +132,11 @@ void vk::loader::LoadInstance(VkInstance instance)
     // enabled; the renderer checks for them itself.
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name) \
-    Take(name, vkGetInstanceProcAddr(instance, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(instance, #name), #name, \
          std::strstr(#name, "Surface") == nullptr && std::strstr(#name, "Debug") == nullptr && \
          std::strstr(#name, "Android") == nullptr);
 #define PES17_VK_DEVICE(name) \
-    Take(name, vkGetInstanceProcAddr(instance, #name), #name, \
+    Take(name, vkGetInstanceProcAddrFn(instance, #name), #name, \
          std::strstr(#name, "KHR") == nullptr && std::strstr(#name, "EXT") == nullptr);
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
@@ -124,24 +146,34 @@ void vk::loader::LoadInstance(VkInstance instance)
          g_missing ? " (some are missing, see above)" : "");
 }
 
-void vk::loader::LoadDevice(VkDevice device)
+bool vk::loader::LoadDevice(VkDevice device)
 {
     std::lock_guard lock(g_lock);
-    if (!vkGetDeviceProcAddr || !device) return;
+    if (!vkGetDeviceProcAddr || !device)
+    {
+        LOGW("vulkan: cannot load device dispatch without vkGetDeviceProcAddr and a device");
+        return false;
+    }
     uint32_t taken = 0;
+    uint32_t missing = 0;
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name)
 #define PES17_VK_DEVICE(name) \
-    if (auto address = vkGetDeviceProcAddr(device, #name)) \
+    name = reinterpret_cast<PFN_##name>(vkGetDeviceProcAddr(device, #name)); \
+    if (name) taken++; \
+    else if (std::strstr(#name, "KHR") == nullptr && std::strstr(#name, "EXT") == nullptr) \
     { \
-        name = reinterpret_cast<PFN_##name>(address); \
-        taken++; \
+        if (missing < 12) LOGW("vulkan: this device has no required core entry point %s", #name); \
+        missing++; \
     }
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
 #undef PES17_VK_INSTANCE
 #undef PES17_VK_DEVICE
     LOGI("vulkan: %u device entry points taken straight from the driver", taken);
+    if (missing)
+        LOGW("vulkan: device dispatch is incomplete (%u required core entry point(s) missing)", missing);
+    return missing == 0;
 }
 
 // The device is going: its entry points must not be called again, so they go
@@ -152,11 +184,26 @@ void vk::loader::ForgetDevice()
     if (!g_instance) return;
 #define PES17_VK_GLOBAL(name)
 #define PES17_VK_INSTANCE(name)
-#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddr(g_instance, #name));
+#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(g_instance, #name));
 #include "vulkan_functions.inc"
 #undef PES17_VK_GLOBAL
 #undef PES17_VK_INSTANCE
 #undef PES17_VK_DEVICE
+}
+
+
+void vk::loader::ForgetInstance()
+{
+    std::lock_guard lock(g_lock);
+    if (!g_instance) return;
+#define PES17_VK_GLOBAL(name)
+#define PES17_VK_INSTANCE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(VK_NULL_HANDLE, #name));
+#define PES17_VK_DEVICE(name) name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddrFn(VK_NULL_HANDLE, #name));
+#include "vulkan_functions.inc"
+#undef PES17_VK_GLOBAL
+#undef PES17_VK_INSTANCE
+#undef PES17_VK_DEVICE
+    g_instance = VK_NULL_HANDLE;
 }
 
 #endif  // PES17_VULKAN_DYNAMIC && PES17_HAVE_VULKAN

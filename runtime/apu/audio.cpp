@@ -25,6 +25,10 @@
 #include "../android/android.h"
 #endif
 
+#ifdef __SWITCH__
+#include "../switch/audio.h"
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -86,7 +90,16 @@ namespace
 
     void OpenOutput()
     {
-#ifdef PES17_ANDROID
+#ifdef __SWITCH__
+        if (OutputDisabled()) { LOGI("audio: output disabled (PES17_NO_AUDIO)"); return; }
+        if (!switch_audio::Initialise())
+        {
+            LOGW("audio: Switch audout unavailable; mixer continues silently");
+            return;
+        }
+        g_outputOpen = true;
+        LOGI("audio: Switch audout open; 48 kHz stereo PCM");
+#elif defined(PES17_ANDROID)
         if (OutputDisabled()) { LOGI("audio: output disabled (PES17_NO_AUDIO)"); return; }
         // AAudio, in its low-latency mode where the device has one. The sink
         // does the 5.1-to-stereo fold and any rate conversion the device
@@ -131,7 +144,9 @@ namespace
     // Frames of 5.333 ms the host still holds, or 0 without a device.
     uint32_t QueuedFrames()
     {
-#ifdef PES17_ANDROID
+#ifdef __SWITCH__
+        return switch_audio::QueuedFrames();
+#elif defined(PES17_ANDROID)
         return android::audio::QueuedFrames();
 #elif defined(PES17_USE_SDL)
         std::lock_guard<std::mutex> guard(g_streamLock);
@@ -279,6 +294,24 @@ void apu::audio::SubmitFrame(uint32_t handle, uint32_t samplesGuestAddress)
     const uint32_t i = handle & 0xFFFF;
     if ((handle & 0xFFFF0000u) != kHandleTag || i >= kMaxClients || !samplesGuestAddress) return;
     g_frames++;
+#ifdef __SWITCH__
+    if (!g_outputOpen) return;
+    if (switch_audio::QueuedFrames() > kHighWaterFrames) { g_dropped++; return; }
+    {
+        const uint32_t* in = reinterpret_cast<const uint32_t*>(guest::Base() + samplesGuestAddress);
+        alignas(16) float out[kFrameFloats];
+        for (uint32_t sample = 0; sample < kSamplesPerChannel; ++sample)
+            for (uint32_t channel = 0; channel < kChannels; ++channel)
+            {
+                uint32_t bits;
+                std::memcpy(&bits, &in[channel * kSamplesPerChannel + sample], 4);
+                bits = __builtin_bswap32(bits);
+                std::memcpy(&out[sample * kChannels + channel], &bits, 4);
+            }
+        if (!switch_audio::Submit(out, kSamplesPerChannel)) g_dropped++;
+    }
+    return;
+#endif
 #ifdef PES17_ANDROID
     if (!g_outputOpen) return;
     if (android::audio::QueuedFrames() > kHighWaterFrames) { g_dropped++; return; }

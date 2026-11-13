@@ -1,5 +1,6 @@
 // XamInput* -- gamepad state. Backed by SDL3 when available; otherwise reports
 // "no controller connected", which is a truthful answer the title handles.
+#include <cstring>
 #if __has_include(<ppc_recomp_shared.h>)
 #include <sys/stat.h>
 #include <ppc_recomp_shared.h>
@@ -11,6 +12,8 @@
 #include "../log.h"
 #include "../diagnostics.h"
 #include "../console.h"
+#include "../crash.h"
+#include "../platform.h"
 #include "../online/service.h"
 #include "../player.h"
 #include "../signin.h"
@@ -42,6 +45,10 @@
 #include <windows.h>
 #endif
 #include "trace.h"
+
+#ifdef __SWITCH__
+#include "../../switch/source/input.h"
+#endif
 
 namespace
 {
@@ -367,6 +374,68 @@ PPC_FUNC(__imp__XamInputGetState)
     auto* out = GuestPtr<XInputState>(sAddr);
     if (!out) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
 
+#ifdef __SWITCH__
+    // Switch exposes one primary XInput-compatible user through libnx HID.
+    // Additional guest users remain disconnected until multi-controller routing
+    // is implemented; never report phantom pads for them.
+    if (user != 0)
+    {
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    // The guest polls user zero once per frame on its main thread. Use that
+    // point to service Horizon applet events and honor an exit request before
+    // polling HID or submitting another frame.
+    if (platform::IsMainThread() && !switch_input::MainLoop())
+    {
+        crash::RequestExit("Nintendo Switch applet requested exit");
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    switch_input::State pad = switch_input::Poll();
+    if (!pad.connected)
+    {
+        *out = XInputState{};
+        ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+        return;
+    }
+    int16_t axes[4] = { pad.left_x, pad.left_y, pad.right_x, pad.right_y };
+    uint8_t triggers[2] = { pad.left_trigger, pad.right_trigger };
+    player::SawPad(pad.buttons, triggers[1]);
+    player::Press press = player::Press::None;
+    if (player::Steer(axes, press))
+        switch (press)
+        {
+        case player::Press::A:    pad.buttons |= 0x1000; break;
+        case player::Press::Up:   pad.buttons |= 0x0001; break;
+        case player::Press::Left: pad.buttons |= 0x0004; break;
+        case player::Press::Fire: triggers[1] = 255; break;
+        case player::Press::None: break;
+        }
+    Latch& latch = g_latch[0];
+    if (latch.buttons != pad.buttons ||
+        std::memcmp(latch.triggers, triggers, sizeof triggers) != 0 ||
+        std::memcmp(latch.axes, axes, sizeof axes) != 0)
+    {
+        ++latch.packet;
+        latch.buttons = pad.buttons;
+        std::memcpy(latch.triggers, triggers, sizeof triggers);
+        std::memcpy(latch.axes, axes, sizeof axes);
+    }
+    out->packet = latch.packet;
+    out->gamepad.buttons = pad.buttons;
+    out->gamepad.leftTrigger = triggers[0];
+    out->gamepad.rightTrigger = triggers[1];
+    out->gamepad.thumbLX = uint16_t(axes[0]);
+    out->gamepad.thumbLY = uint16_t(axes[1]);
+    out->gamepad.thumbRX = uint16_t(axes[2]);
+    out->gamepad.thumbRY = uint16_t(axes[3]);
+    ctx.r3.u64 = X_ERROR_SUCCESS;
+    return;
+#endif
+
 #ifdef PES17_ANDROID
     // A virtual pad from a file, for testing (tools/pad.sh): files/pad holds a
     // line per controller, `user buttons lx ly rx ry lt rt` (buttons in hex,
@@ -659,6 +728,25 @@ PPC_FUNC(__imp__XamInputGetCapabilities)
     uint32_t user = ctx.r3.u32;
     auto* caps = GuestPtr<XInputCapabilities>(ctx.r5.u32);
     if (!caps) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
+
+#ifdef __SWITCH__
+    if (user == 0 && switch_input::Poll().connected)
+    {
+        *caps = XInputCapabilities{};
+        caps->type = 1;
+        caps->subType = 1;
+        caps->gamepad.buttons = 0xF3FF;
+        caps->gamepad.leftTrigger = caps->gamepad.rightTrigger = 0xFF;
+        caps->gamepad.thumbLX = caps->gamepad.thumbLY = uint16_t(0xFFFF);
+        caps->gamepad.thumbRX = caps->gamepad.thumbRY = uint16_t(0xFFFF);
+        // Joy-Con vibration is not advertised until the rumble path is wired.
+        ctx.r3.u64 = X_ERROR_SUCCESS;
+        return;
+    }
+    *caps = XInputCapabilities{};
+    ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED;
+    return;
+#endif
 #ifdef PES17_ANDROID
     // A controller listed in files/pad (the virtual pad in XamInputGetState).
     bool listed = false;
@@ -719,6 +807,14 @@ PPC_FUNC(__imp__XamInputSetState)
     if (user >= 4) { ctx.r3.u64 = X_ERROR_DEVICE_NOT_CONNECTED; return; }
     auto* v = GuestPtr<XInputVibration>(ctx.r5.u32);
     if (!v) { ctx.r3.u64 = X_ERROR_BAD_ARGUMENTS; return; }
+#ifdef __SWITCH__
+    // The guest-facing capabilities currently advertise no motors. Treat a
+    // stale/optional rumble request as a successful no-op rather than failing
+    // an otherwise connected controller; native HD-rumble is a separate task.
+    ctx.r3.u64 = (user == 0 && switch_input::Poll().connected)
+                     ? X_ERROR_SUCCESS : X_ERROR_DEVICE_NOT_CONNECTED;
+    return;
+#endif
 #ifdef PES17_ANDROID
     // The phone's vibrator, or a pad that has motors of its own: the app
     // decides which, and whether the player wanted either.

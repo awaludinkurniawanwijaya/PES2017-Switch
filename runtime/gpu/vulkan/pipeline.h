@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <mutex>
+#include "device.h"
 
 // The Vulkan device the runtime draws on, the pipeline layout every translated
 // shader is built against, and the pipeline cache. The translator emits a fixed
@@ -14,23 +15,16 @@ namespace vk::pipeline
     // the offline tools use to put a translated shader in front of a real driver.
     // A borrowed device comes with its instance, which RenderDoc needs to name
     // the device a capture is of; it stays the lender's to destroy.
-    bool Initialise(void* device = nullptr, void* physical = nullptr,
-                    void* queue = nullptr, uint32_t queueFamily = 0,
-                    void* instance = nullptr);
+    // No context creates an owned headless Device; a context is borrowed.
+    bool Initialise(const device::BorrowedContext* borrowed = nullptr);
     void Shutdown();
     bool Ready();
-
-    // Creates the device the runtime draws on, with the features and extensions
-    // the renderer depends on, plus the caller's own (the swapchain, for the
-    // window). Both the presenter's device and the headless one come from here.
-    // Opaque handles: a VkPhysicalDevice in, a VkDevice and its VkQueue out.
-    // `features` is a pNext chain of feature structures the caller's
-    // extensions need, or null.
-    bool CreateDevice(void* physical, uint32_t queueFamily,
-                      const char* const* extraExtensions, uint32_t extraCount,
-                      void** device, void** queue, void* features = nullptr);
-    // Whether the physical device (a VkPhysicalDevice) offers a device extension.
-    bool DeviceHasExtension(void* physical, const char* name);
+    // Copies the immutable memory-property snapshot captured for the active device.
+    // `properties` must point to VkPhysicalDeviceMemoryProperties and `size` must match.
+    bool GetMemoryProperties(void* properties, size_t size);
+    bool GetDeviceProperties(void* properties, size_t size);
+    bool DepthStencilResolveSampleZero();
+    bool GetPhysicalDeviceFeatures(void* features, size_t size);
 
     const char* DeviceName();
     // Opaque, so this header stays free of the Vulkan headers: a VkInstance,

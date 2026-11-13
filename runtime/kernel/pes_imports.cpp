@@ -473,7 +473,28 @@ PPC_FUNC(__imp__RtlTimeFieldsToTime)
     std::tm tm{};
     tm.tm_year = Load16(f) - 1900; tm.tm_mon = Load16(f + 2) - 1; tm.tm_mday = Load16(f + 4);
     tm.tm_hour = Load16(f + 6); tm.tm_min = Load16(f + 8); tm.tm_sec = Load16(f + 10);
-    const int64_t seconds = int64_t(timegm(&tm));
+    // Convert the civil UTC date directly instead of using timegm(), which
+    // is a GNU/POSIX extension and is not provided by libnx/newlib.
+    // Normalize the month first, matching the normalization timegm() performs.
+    int64_t year = int64_t(Load16(f));
+    int64_t month = int64_t(Load16(f + 2));
+    const int64_t day = int64_t(Load16(f + 4));
+    year += (month - 1) / 12;
+    month = (month - 1) % 12 + 1;
+    if (month <= 0) { month += 12; --year; }
+
+    // Days since 1970-01-01 (proleptic Gregorian calendar).
+    const int64_t y = year - (month <= 2);
+    const int64_t era = (y >= 0 ? y : y - 399) / 400;
+    const uint32_t yoe = uint32_t(y - era * 400);
+    const uint32_t mp = uint32_t(month + (month > 2 ? -3 : 9));
+    const int64_t doy = (153 * int64_t(mp) + 2) / 5 + day - 1;
+    const int64_t doe = int64_t(yoe) * 365 + yoe / 4 - yoe / 100 + doy;
+    const int64_t days = era * 146097 + doe - 719468;
+    const int64_t seconds = days * 86400
+        + int64_t(Load16(f + 6)) * 3600
+        + int64_t(Load16(f + 8)) * 60
+        + int64_t(Load16(f + 10));
     const int64_t t = seconds * 10000000LL + int64_t(Load16(f + 12)) * 10000LL + kEpochDelta100ns;
     *GuestPtr<be32>(ctx.r4.u32) = uint32_t(uint64_t(t) >> 32);
     *GuestPtr<be32>(ctx.r4.u32 + 4) = uint32_t(t);

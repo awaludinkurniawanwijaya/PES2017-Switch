@@ -1,5 +1,54 @@
 #include <switch.h>
 #include <cstdio>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <shared_mutex>
+
+#include "input.h"
+#include "platform.h"
+#include "settings.h"
+#include "memory_alias_probe.h"
+
+namespace {
+    std::mutex g_probeMutex;
+    std::condition_variable g_probeCondition;
+    std::shared_mutex g_probeSharedMutex;
+    std::once_flag g_probeOnce;
+    unsigned g_probeOnceCount = 0;
+    bool g_probeReady = false;
+
+    void SyncProbeWorker(void*) {
+        std::call_once(g_probeOnce, [] { ++g_probeOnceCount; });
+        {
+            std::lock_guard lock(g_probeMutex);
+            g_probeReady = true;
+        }
+        g_probeCondition.notify_one();
+    }
+
+    bool RunSyncProbe() {
+        g_probeReady = false;
+        auto worker = platform::StartJoinableThread(
+            SyncProbeWorker, nullptr, 256 * 1024, "C++ sync probe");
+        if (!worker) return false;
+        bool ready = false;
+        {
+            std::unique_lock lock(g_probeMutex);
+            ready = g_probeCondition.wait_for(lock, std::chrono::seconds(3),
+                                              [] { return g_probeReady; });
+        }
+        platform::JoinThread(worker);
+        std::call_once(g_probeOnce, [] { ++g_probeOnceCount; });
+        {
+            std::unique_lock lock(g_probeSharedMutex);
+        }
+        {
+            std::shared_lock lock(g_probeSharedMutex);
+        }
+        return ready && g_probeOnceCount == 1;
+    }
+}
 
 int main(int argc, char* argv[]) {
     (void)argc;
@@ -7,25 +56,56 @@ int main(int argc, char* argv[]) {
 
     consoleInit(nullptr);
 
-    PadState pad{};
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    padInitializeDefault(&pad);
+    // Read the player-facing boolean options from config/PES.toml.
+    const Result sdResult = fsdevMountSdmc();
+    const bool sdMounted = R_SUCCEEDED(sdResult);
+    const bool inputConfigLoaded = sdMounted &&
+        settings::LoadInputConfig("sdmc:/switch/PES2017/config/PES.toml");
+    const settings::InputOptions inputOptions = settings::GetInputOptions();
+
+    switch_input::Initialize();
+    const bool syncOk = RunSyncProbe();
+    const auto memoryProbe = switch_memory_probe::Run();
 
     std::printf("PES 2017 - Nintendo Switch port\n");
     std::printf("--------------------------------\n");
     std::printf("Native libnx bootstrap is running.\n");
-    std::printf("The PES runtime is not connected yet.\n\n");
-    std::printf("Press + to exit.\n");
+    std::printf("C++ thread/synchronization probe: %s\n", syncOk ? "passed" : "FAILED");
+    std::printf("Guest RAM probe: %s\n", memoryProbe.available ? "PASSED" : "FAILED");
+    std::printf("  4 GiB reservation: %s (0x%08X)\n",
+                R_SUCCEEDED(memoryProbe.reserve) ? "OK" : "FAILED", unsigned(memoryProbe.reserve));
+    std::printf("  shared bank create: %s (0x%08X)\n",
+                R_SUCCEEDED(memoryProbe.create) ? "OK" : "FAILED", unsigned(memoryProbe.create));
+    std::printf("  fixed aliases: %s / %s / %s\n",
+                R_SUCCEEDED(memoryProbe.map[0]) ? "OK" : "FAILED",
+                R_SUCCEEDED(memoryProbe.map[1]) ? "OK" : "FAILED",
+                R_SUCCEEDED(memoryProbe.map[2]) ? "OK" : "FAILED");
+    std::printf("  extra page commit: %s; alias coherent: %s\n",
+                R_SUCCEEDED(memoryProbe.commit) ? "OK" : "FAILED",
+                memoryProbe.coherent ? "yes" : "no");
+    std::printf("Joy-Con / Pro Controller input test\n");
+    std::printf("Buttons: A/B/X/Y, D-pad, L/R, ZL/ZR\n");
+    std::printf("Sticks: left and right analog\n");
+    std::printf("Input config: %s\n", inputConfigLoaded ? "loaded" : "defaults (file missing or invalid)");
+    std::printf("  swap_a_b = %s\n", inputOptions.swapAB ? "true" : "false");
+    std::printf("  swap_x_y = %s\n", inputOptions.swapXY ? "true" : "false");
+    std::printf("Config: sdmc:/switch/PES2017/config/PES.toml\n");
+    std::printf("Press + to exit.\n\n");
 
-    while (appletMainLoop()) {
-        padUpdate(&pad);
-        const u64 down = padGetButtonsDown(&pad);
-        if (down & HidNpadButton_Plus) {
-            break;
-        }
+    while (switch_input::MainLoop()) {
+        const switch_input::State pad = switch_input::Poll();
+        std::printf("\x1b[8;1H");
+        std::printf("Controller: %s       \n", pad.connected ? "connected" : "not detected");
+        std::printf("Buttons:    %04X      \n", pad.buttons);
+        std::printf("Left stick: %6d %6d  \n", pad.left_x, pad.left_y);
+        std::printf("Right stick:%6d %6d  \n", pad.right_x, pad.right_y);
+        std::printf("Triggers:   %3u %3u    \n", pad.left_trigger, pad.right_trigger);
+
+        if (pad.buttons && (pad.buttons & 0x0010)) break;
         consoleUpdate(nullptr);
     }
 
+    if (sdMounted) fsdevUnmountDevice("sdmc");
     consoleExit(nullptr);
     return 0;
 }

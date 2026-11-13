@@ -59,7 +59,7 @@ namespace
     }
 
     constexpr uint32_t kFormat = 18;     // DXT1
-    constexpr int kVkFormat = 157;       // VK_FORMAT_ASTC_4x4_UNORM_BLOCK
+    constexpr gpu::TextureEncoding kEncoding = gpu::TextureEncoding::Astc4x4;
 
     bool WaitFor(bool (*ready)())
     {
@@ -98,31 +98,31 @@ namespace
         const gpu::TextureData source = Source();
         const gpu::TextureData converted = Converted(source);
         gpu::TextureData out;
-        int vkFormat = 0;
+        gpu::TextureEncoding encoding = gpu::TextureEncoding::Rgba8;
         uint64_t hash = 0;
         if (phase == "write")
         {
-            Check(!vk::texstore::Load(source, kFormat, out, vkFormat, hash), "an empty store has nothing");
+            Check(!vk::texstore::Load(source, kFormat, out, encoding, hash), "an empty store has nothing");
             Check(hash != 0, "a miss hands back the source's hash");
-            vk::texstore::Save(source, kFormat, hash, converted, kVkFormat);
+            vk::texstore::Save(source, kFormat, hash, converted, kEncoding);
             Check(WaitFor([] { return vk::texstore::Counts().saved == 1; }), "the record is written");
-            Check(vk::texstore::Load(source, kFormat, out, vkFormat, hash), "found again in the same session");
-            Check(Same(out, converted) && vkFormat == kVkFormat, "and read back whole");
+            Check(vk::texstore::Load(source, kFormat, out, encoding, hash), "found again in the same session");
+            Check(Same(out, converted) && encoding == kEncoding, "and read back whole");
         }
         else if (phase == "read")
         {
             Check(vk::texstore::Counts().records == 1, "the torn record is dropped, the whole one kept");
-            Check(vk::texstore::Load(source, kFormat, out, vkFormat, hash), "found in the next session");
-            Check(Same(out, converted) && vkFormat == kVkFormat, "byte for byte, with its levels");
+            Check(vk::texstore::Load(source, kFormat, out, encoding, hash), "found in the next session");
+            Check(Same(out, converted) && encoding == kEncoding, "byte for byte, with its levels");
             gpu::TextureData other = source;
             other.bytes[100] ^= 1;
-            Check(!vk::texstore::Load(other, kFormat, out, vkFormat, hash), "one byte off is another texture");
-            Check(!vk::texstore::Load(source, 20, out, vkFormat, hash), "another format is another texture");
+            Check(!vk::texstore::Load(other, kFormat, out, encoding, hash), "one byte off is another texture");
+            Check(!vk::texstore::Load(source, 20, out, encoding, hash), "another format is another texture");
         }
         else if (phase == "stale")
         {
             Check(vk::texstore::Counts().records == 0, "another encoder's file is started again");
-            Check(!vk::texstore::Load(source, kFormat, out, vkFormat, hash), "and holds nothing");
+            Check(!vk::texstore::Load(source, kFormat, out, encoding, hash), "and holds nothing");
         }
         return g_failures ? 1 : 0;
     }

@@ -17,8 +17,9 @@
 #include <unordered_map>
 #include <vector>
 
-#ifdef _WIN32
-// A desktop GPU samples BC itself, so nothing is converted and nothing is kept.
+#if defined(_WIN32) || defined(__SWITCH__)
+// A desktop GPU samples BC itself, and Horizon lacks positional POSIX I/O.
+// The persistent conversion cache is optional; Switch uses normal conversion.
 bool vk::texstore::Open() { return false; }
 bool vk::texstore::Load(const gpu::TextureData&, uint32_t, gpu::TextureData&, gpu::TextureEncoding&, uint64_t& hash)
 {

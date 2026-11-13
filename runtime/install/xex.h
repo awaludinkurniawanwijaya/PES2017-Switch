@@ -13,7 +13,7 @@ namespace install::xex
     struct Info
     {
         uint32_t titleId = 0;
-        uint32_t version = 0;       // XEX version, 0x0000000A on the disc
+        uint32_t version = 0;       // Execution-info version read from this XEX; do not assume a fixed disc version.
     };
 
     // The header fields a wrong disc is told apart by; false if it is not an XEX2.

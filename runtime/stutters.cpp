@@ -3,6 +3,7 @@
 #include "frame_rate.h"
 #include "log.h"
 #include "pacing_trace.h"
+#include "platform.h"
 
 #if PES17_DIAGNOSTICS
 
@@ -12,12 +13,11 @@
 #include <cstdio>
 #include <string>
 #include <mutex>
-#include <thread>
 #ifndef _WIN32
 #include <csignal>
 #include <unistd.h>
 #endif
-#include "kernel/kernel.h"
+namespace kernel { void ReportWaits(); }
 
 namespace
 {
@@ -94,10 +94,16 @@ namespace
             LOGW("STALL: no world frame since %.3f s; what every thread is doing follows",
                  Seconds(last));
             kernel::ReportWaits();
+#ifdef __SWITCH__
+            platform::PrintBacktrace("stutter watchdog");
+#else
             std::raise(SIGUSR2);
+#endif
         }
 #endif
     }
+
+    void WatchForStallsEntry(void*) { WatchForStalls(); }
 
     uint32_t LengthBucket(uint64_t lost)
     {
@@ -173,7 +179,11 @@ void stutters::Finished(uint64_t serial, bool world)
             g_inPlay.store(true, std::memory_order_relaxed);
             LOGI("stutters: in play at %.3f s, watching", Seconds(now));
             static std::once_flag watching;
-            std::call_once(watching, [] { std::thread(WatchForStalls).detach(); });
+            std::call_once(watching, [] {
+                if (!platform::StartThread(WatchForStallsEntry, nullptr, 256 * 1024,
+                                           "stutter watchdog"))
+                    LOGW("stutters: could not start stall watcher");
+            });
         }
         remember();
         return;

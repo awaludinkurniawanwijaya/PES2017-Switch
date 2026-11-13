@@ -121,6 +121,8 @@ if(WIN32)
     target_link_options(bc-test PRIVATE -static)
     target_link_options(volume-test PRIVATE -static)
     target_link_options(version-test PRIVATE -static)
+    target_link_options(settings-test PRIVATE -static)
+    target_link_options(install-start-contract-test PRIVATE -static)
 endif()
 
 # ---- the dynamic scene scale -------------------------------------------------
@@ -131,3 +133,35 @@ add_executable(dynamic-scale-test
     "${CMAKE_CURRENT_SOURCE_DIR}/dynamic_scale_test.cpp")
 target_include_directories(dynamic-scale-test PRIVATE "${PES17_RUNTIME}")
 add_test(NAME dynamic-scale COMMAND dynamic-scale-test)
+
+# ---- XEX execution-info target version --------------------------------------
+# The executable's execution-info version is metadata, not a hard-coded
+# parser restriction. Verify that 0x12 is accepted while other versions remain
+# readable, and reject malformed XEX headers before a local recompilation.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME xex-version
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/xex_version_test.py")
+
+# ---- independent Nintendo Switch face-button mapping --------------------
+# Keep this pure mapping test host-buildable: it checks the exact helper used
+# by the libnx HID adapter without requiring devkitPro or a physical console.
+add_executable(switch-input-mapping-test
+    "${CMAKE_CURRENT_SOURCE_DIR}/switch_input_mapping_test.cpp")
+target_include_directories(switch-input-mapping-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/..")
+add_test(NAME switch-input-mapping COMMAND switch-input-mapping-test)
+
+# ---- runtime .env settings --------------------------------------------------
+# The Switch HID adapter reads these process settings after pes17::Run loads
+# the install folder's .env. Verify the actual parser, including independent
+# options and precedence for settings already supplied by the process.
+add_executable(settings-test
+    "${CMAKE_CURRENT_SOURCE_DIR}/settings_test.cpp"
+    "${PES17_RUNTIME}/settings.cpp")
+target_include_directories(settings-test PRIVATE "${PES17_RUNTIME}")
+add_test(NAME settings COMMAND settings-test)
+
+# The install start contract differs on Switch because libnx may pass argc=0.
+add_executable(install-start-contract-test "${CMAKE_CURRENT_SOURCE_DIR}/install_start_contract_test.cpp")
+target_include_directories(install-start-contract-test PRIVATE "${PES17_RUNTIME}")
+add_test(NAME install-start-contract COMMAND install-start-contract-test)

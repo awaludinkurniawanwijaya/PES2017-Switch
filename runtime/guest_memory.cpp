@@ -4,7 +4,7 @@
 #include <ppc_config.h>
 
 #ifdef _WIN32
-#  error "the shared-bank memory model (one bank at 0x80000000/0xA0000000/0xC0000000) is POSIX-only so far"
+#  error "the shared-bank memory model is not implemented for Windows"
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 // The placeholder flags, for headers that predate them.
@@ -17,6 +17,13 @@
 #  ifndef MEM_PRESERVE_PLACEHOLDER
 #    define MEM_PRESERVE_PLACEHOLDER 0x00000002
 #  endif
+#elif defined(__SWITCH__)
+extern "C"
+{
+#  include <switch/result.h>
+#  include <switch/kernel/svc.h>
+#  include <switch/kernel/virtmem.h>
+}
 #else
 #  include <sys/mman.h>
 #  include <unistd.h>
@@ -32,6 +39,35 @@ namespace
 {
     uint8_t* g_base = nullptr;
     constexpr uint64_t kSpace = 0x100000000ull;   // full 32-bit guest space
+#ifdef __SWITCH__
+    VirtmemReservation* g_reservation = nullptr;
+    Handle g_physicalBank = INVALID_HANDLE;
+
+    constexpr bool SwitchCommitPageRange(uint32_t address, uint32_t size,
+                                         uint64_t& begin, uint64_t& end)
+    {
+        if (!size) return false;
+        constexpr uint64_t kPage = 0x1000;
+        const uint64_t requestBegin = uint64_t(address);
+        const uint64_t requestEnd = requestBegin + uint64_t(size);
+        if (requestEnd > kSpace) return false;
+        begin = requestBegin & ~(kPage - 1);
+        end = (requestEnd + kPage - 1) & ~(kPage - 1);
+        return end <= kSpace;
+    }
+
+    constexpr bool kLastPageRangeValid = [] {
+        uint64_t begin = 0, end = 0;
+        return SwitchCommitPageRange(0xFFFFFFF0u, 0x10u, begin, end) &&
+               begin == 0xFFFFF000ull && end == kSpace;
+    }();
+    constexpr bool kPastGuestEndRejected = [] {
+        uint64_t begin = 0, end = 0;
+        return !SwitchCommitPageRange(0xFFFFFFF0u, 0x11u, begin, end);
+    }();
+    static_assert(kLastPageRangeValid, "last guest page must remain committable");
+    static_assert(kPastGuestEndRejected, "guest commit must reject requests past 4 GiB");
+#endif
 }
 
 uint8_t* guest::Base() { return g_base; }
@@ -40,6 +76,38 @@ bool guest::Commit(uint32_t address, uint32_t size)
 {
 #ifdef _WIN32
     return VirtualAlloc(g_base + address, size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+#elif defined(__SWITCH__)
+    if (!g_base || !size) return false;
+    uint64_t begin = 0, end = 0;
+    // Guest pointers are 32-bit offsets into exactly one 4 GiB reservation.
+    // Reject out-of-range requests before deriving a host pointer.
+    if (!SwitchCommitPageRange(address, size, begin, end))
+    {
+        LOGE("guest: Switch commit %08X + %08X exceeds the 4 GiB guest address space",
+             address, size);
+        return false;
+    }
+    const uint64_t bankSize = uint64_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+    for (uint32_t window : { guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase })
+    {
+        const uint64_t windowBegin = window;
+        const uint64_t windowEnd = windowBegin + bankSize;
+        if (begin >= windowBegin && end <= windowEnd) return true;
+        if (begin < windowEnd && end > windowBegin)
+        {
+            LOGE("guest: Switch commit %08llX..%08llX overlaps physical bank window %08X",
+                 (unsigned long long)begin, (unsigned long long)end, window);
+            return false;
+        }
+    }
+    const Result rc = svcMapPhysicalMemory(g_base + begin, end - begin);
+    if (R_FAILED(rc))
+    {
+        LOGE("guest: svcMapPhysicalMemory(%08llX, %llu) failed: 0x%08X",
+             (unsigned long long)begin, (unsigned long long)(end - begin), unsigned(rc));
+        return false;
+    }
+    return true;
 #else
     // The reservation is already mapped read/write; pages are backed on touch.
     (void)address; (void)size;
@@ -139,6 +207,93 @@ namespace
                g_virtualAlloc2(nullptr, g_base + apertureEnd, size_t(kSpace - apertureEnd),
                                MEM_RESERVE | MEM_REPLACE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
     }
+#elif defined(__SWITCH__)
+    bool ReserveSpace()
+    {
+        // Reserve one contiguous 4 GiB guest address range in Horizon's ASLR
+        // region. virtmemAddReservation keeps libnx's own random mappings out
+        // of the range; the individual guest pages are mapped on Commit().
+        virtmemLock();
+        void* address = virtmemFindAslr(size_t(kSpace), 0x1000);
+        if (address) g_reservation = virtmemAddReservation(address, size_t(kSpace));
+        virtmemUnlock();
+        if (!address || !g_reservation)
+        {
+            LOGE("guest: could not reserve a contiguous 4 GiB Switch address range");
+            return false;
+        }
+        g_base = static_cast<uint8_t*>(address);
+        return true;
+    }
+
+    bool MapPhysicalAperture()
+    {
+        const size_t size = size_t(guest::kPhysicalEnd - guest::kPhysicalBase);
+
+        // Capture Horizon's actual process memory budget before requesting the
+        // 512 MiB Xbox 360 physical bank. This distinguishes a process resource
+        // limit from an address-space reservation or alias-mapping failure.
+        u64 resourceLimitValue = 0;
+        const Result limitHandleResult = svcGetInfo(
+            &resourceLimitValue, InfoType_ResourceLimit, 0, 0);
+        if (R_SUCCEEDED(limitHandleResult))
+        {
+            const Handle resourceLimit = static_cast<Handle>(resourceLimitValue);
+            s64 memoryCurrent = -1;
+            s64 memoryLimit = -1;
+            s64 memoryPeak = -1;
+            const Result currentResult = svcGetResourceLimitCurrentValue(
+                &memoryCurrent, resourceLimit, LimitableResource_Memory);
+            const Result maximumResult = svcGetResourceLimitLimitValue(
+                &memoryLimit, resourceLimit, LimitableResource_Memory);
+            const Result peakResult = svcGetResourceLimitPeakValue(
+                &memoryPeak, resourceLimit, LimitableResource_Memory);
+            LOGI("guest: Horizon memory resource current=%lld limit=%lld peak=%lld (MiB), query rc=%08X/%08X/%08X",
+                 (long long)(memoryCurrent < 0 ? -1 : memoryCurrent / 1048576),
+                 (long long)(memoryLimit < 0 ? -1 : memoryLimit / 1048576),
+                 (long long)(memoryPeak < 0 ? -1 : memoryPeak / 1048576),
+                 unsigned(currentResult), unsigned(maximumResult), unsigned(peakResult));
+        }
+        else
+        {
+            LOGW("guest: could not query Horizon resource-limit handle: 0x%08X",
+                 unsigned(limitHandleResult));
+        }
+
+        Result rc = svcCreateSharedMemory(&g_physicalBank, size, Perm_Rw, Perm_DontCare);
+        if (R_FAILED(rc))
+        {
+            LOGE("guest: svcCreateSharedMemory(%zu) failed: 0x%08X",
+                 size, unsigned(rc));
+            g_physicalBank = INVALID_HANDLE;
+            return false;
+        }
+
+        const uint32_t windows[] = {
+            guest::kCachedBase, guest::kPhysicalBase, guest::kApertureBase
+        };
+        size_t mapped = 0;
+        for (uint32_t window : windows)
+        {
+            rc = svcMapSharedMemory(g_physicalBank, g_base + window, size, Perm_Rw);
+            if (R_FAILED(rc))
+            {
+                LOGE("guest: mapping 512 MiB bank at %08X failed: 0x%08X",
+                     window, unsigned(rc));
+                while (mapped)
+                {
+                    --mapped;
+                    svcUnmapSharedMemory(g_physicalBank, g_base + windows[mapped], size);
+                }
+                svcCloseHandle(g_physicalBank);
+                g_physicalBank = INVALID_HANDLE;
+                return false;
+            }
+            ++mapped;
+        }
+        LOGI("guest: Switch shared 512 MiB bank mapped at cached/physical/aperture windows");
+        return true;
+    }
 #else
     bool ReserveSpace()
     {
@@ -196,7 +351,11 @@ namespace
 
 uint8_t* guest::Initialise()
 {
-#ifndef _WIN32
+#if defined(__SWITCH__)
+    // Horizon's guest mappings and svcMapPhysicalMemory are page-granular at
+    // 4 KiB. Do not route this native path through the POSIX sysconf API.
+    LOGI("host pages are %u bytes", 0x1000u);
+#elif !defined(_WIN32)
     // Worth a line: an Android 15 device has 16 KB pages, everything else
     // has 4 KB, and the difference decides whether memory protection can
     // work at the granularity the renderer wants (gpu/memory_watch.h).

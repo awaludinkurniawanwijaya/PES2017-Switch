@@ -10,7 +10,7 @@
 #include "../../signin.h"
 #include "../../online/service.h"
 
-#if !defined(PES17_HAVE_VULKAN) || (!defined(PES17_USE_SDL) && !defined(PES17_ANDROID))
+#if !defined(PES17_HAVE_VULKAN) || (!defined(PES17_USE_SDL) && !defined(PES17_ANDROID) && !defined(__SWITCH__))
 // Without a loader or a window system there is nothing to present to; the rest
 // of the runtime carries on headless.
 bool     vk::Start()           { return false; }
@@ -31,6 +31,7 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <memory>
 #include <shared_mutex>
 #include <thread>
 #include <chrono>
@@ -46,6 +47,12 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #endif
+#ifdef __SWITCH__
+#ifndef VK_USE_PLATFORM_VI_NN
+#define VK_USE_PLATFORM_VI_NN 1
+#endif
+#include <switch.h>
+#endif
 #ifdef PES17_ANDROID
 #include <android/native_window.h>
 #include "../../android/android.h"
@@ -57,6 +64,7 @@ std::string vk::PresenterReport() { return "presenter: none (headless build)\n";
 #endif
 #include <vulkan/vulkan.h>
 #include "loader.h"
+#include "provider.h"
 #include "util.h"
 #include "upscaler.h"
 #include "framegen.h"
@@ -87,12 +95,8 @@ namespace
         ANativeWindow* nativeWindow = nullptr;
         uint64_t generation = 0;
 #endif
-        VkInstance instance = VK_NULL_HANDLE;
+        std::unique_ptr<vk::provider::Context> providerOwner;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
-        VkPhysicalDevice physical = VK_NULL_HANDLE;
-        VkDevice device = VK_NULL_HANDLE;
-        uint32_t queueFamily = 0;
-        VkQueue queue = VK_NULL_HANDLE;
 
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         VkFormat swapchainFormat = VK_FORMAT_UNDEFINED;
@@ -130,7 +134,7 @@ namespace
             bool everUploaded = false;
         } overlay;
 
-        std::thread worker;
+        platform::ThreadHandle worker = nullptr;
         std::atomic<bool> running{ false };
         std::atomic<bool> ready{ false };
         std::atomic<uint64_t> presented{ 0 };
@@ -158,7 +162,7 @@ namespace
         // thread of its own, which is what the guest's blank follows.
         bool presentWait = false;
         PFN_vkWaitForPresentKHR waitForPresent = nullptr;
-        std::thread waiter;
+        platform::ThreadHandle waiter = nullptr;
         std::mutex waitLock;
         std::condition_variable waitWake;
         std::deque<uint64_t> waiting;        // present ids not yet seen on screen
@@ -180,6 +184,29 @@ namespace
 
     Presenter g;
 
+    VkInstance InstanceHandle()
+    {
+        return g.providerOwner ? g.providerOwner->InstanceHandle() : VK_NULL_HANDLE;
+    }
+
+    VkDevice DeviceHandle()
+    {
+        return g.providerOwner ? g.providerOwner->LogicalHandle() : VK_NULL_HANDLE;
+    }
+    VkPhysicalDevice PhysicalHandle()
+    {
+        return g.providerOwner ? g.providerOwner->PhysicalHandle() : VK_NULL_HANDLE;
+    }
+    VkQueue QueueHandle()
+    {
+        return g.providerOwner ? g.providerOwner->QueueHandle() : VK_NULL_HANDLE;
+    }
+    uint32_t QueueFamilyIndex()
+    {
+        return g.providerOwner ? g.providerOwner->QueueFamily() : 0;
+    }
+
+
     bool Check(VkResult r, const char* what)
     {
         if (r == VK_SUCCESS) return true;
@@ -187,219 +214,112 @@ namespace
         return false;
     }
 
+    // Vulkan enumeration is allowed to return VK_INCOMPLETE when the list
+    // changes between the count and data calls. Retry the pair instead of
+    // silently accepting a truncated device/extension list.
+    template <typename T, typename Enumerate>
+    bool EnumerateVector(std::vector<T>& values, Enumerate&& enumerate, const char* what)
+    {
+        constexpr unsigned kMaxAttempts = 8;
+        for (unsigned attempt = 0; attempt < kMaxAttempts; ++attempt)
+        {
+            uint32_t count = 0;
+            VkResult result = enumerate(&count, nullptr);
+            if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+            {
+                LOGW("vulkan: %s count failed (%d)", what, int(result));
+                return false;
+            }
+            values.resize(count);
+            if (!count) return true;
+
+            result = enumerate(&count, values.data());
+            if (result == VK_INCOMPLETE) continue;
+            if (result != VK_SUCCESS)
+            {
+                LOGW("vulkan: %s enumeration failed (%d)", what, int(result));
+                return false;
+            }
+            values.resize(count);
+            return true;
+        }
+        LOGW("vulkan: %s kept changing during enumeration", what);
+        return false;
+    }
+
     // Under VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation, what the layer
     // reports goes into this log. Left to itself it prints to stdout, which
     // is block-buffered into a file and never flushed at this runtime's exit:
     // a run with a hundred errors read as a clean one.
-    std::atomic<uint64_t> g_validationMessages{ 0 };
-    VkDebugUtilsMessengerEXT g_messenger = VK_NULL_HANDLE;
 
-    VKAPI_ATTR VkBool32 VKAPI_CALL Validation(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-                                              VkDebugUtilsMessageTypeFlagsEXT,
-                                              const VkDebugUtilsMessengerCallbackDataEXT* data,
-                                              void*)
-    {
-        const uint64_t n = g_validationMessages.fetch_add(1, std::memory_order_relaxed);
-        if (n < 500)
-            LOGW("validation %s: %s",
-                 severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "error" : "warning",
-                 data && data->pMessage ? data->pMessage : "?");
-        return VK_FALSE;
-    }
 
-    bool Validating()
-    {
-        const char* layers = std::getenv("VK_INSTANCE_LAYERS");
-        return layers && std::strstr(layers, "validation");
-    }
+
+
 
     // Whether the installed loader/driver offers an instance-level extension
     // (VK_KHR_get_physical_device_properties2, VK_KHR_maintenance1 ...).
-    bool InstanceHasExtension(const char* name)
-    {
-        uint32_t count = 0;
-        if (vkEnumerateInstanceExtensionProperties(name, &count, nullptr) != VK_SUCCESS || !count)
-            return false;
-        std::vector<VkExtensionProperties> offered(count);
-        if (vkEnumerateInstanceExtensionProperties(name, &count, offered.data()) != VK_SUCCESS)
-            return false;
-        for (const auto& e : offered)
-            if (std::strcmp(e.extensionName, name) == 0) return true;
-        return false;
-    }
+
+
+
 
     bool CreateInstance()
     {
-        std::vector<const char*> extensions;
-#ifdef PES17_ANDROID
-        // Android has one window system and it is always there.
-        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-        extensions.push_back("VK_KHR_android_surface");
-#else
-        uint32_t extensionCount = 0;
-        const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
-        if (!sdlExtensions) { LOGW("vulkan: SDL has no instance extensions (%s)", SDL_GetError()); return false; }
-        extensions.assign(sdlExtensions, sdlExtensions + extensionCount);
-#endif
-
-        VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
-        app.pApplicationName = "pes17recomp";
-        // 1.0 is the floor: negative viewport heights (VK_KHR_maintenance1
-        // before that) are an extension too, and 1.0 is the version the APK
-        // advertises on its Play-store device filter. Everything newer is
-        // optional and asked for by extension or checked at device time.
-        // The highest the loader will admit to, capped at 1.3. It matters:
-        // dynamic rendering and extended dynamic state are core there, and
-        // a driver that has them in core rather than as extensions can only
-        // be asked for them by an application that says it targets 1.3.
-        app.apiVersion = VK_API_VERSION_1_0;
-#if defined(PES17_VULKAN_DYNAMIC)
-        if (vkEnumerateInstanceVersion)
-#endif
-        {
-            uint32_t available = 0;
-            if (vkEnumerateInstanceVersion(&available) == VK_SUCCESS)
-            {
-                if (available >= VK_API_VERSION_1_3)
-                    app.apiVersion = VK_API_VERSION_1_3;
-                else if (available >= VK_API_VERSION_1_1)
-                    app.apiVersion = VK_API_VERSION_1_1;
-            }
-        }
-
-        // The loader would name these itself on Android; everywhere else they
-        // come from SDL's list. A 1.0 instance has to name what 1.1 and 1.2
-        // make core, because the runtime asks for maintenance1's negative
-        // viewport and for `vkGetPhysicalDeviceProperties2` / `...Features2`
-        // (properties2's pNext chain, the depth resolve and driver
-        // properties read here and in pipeline.cpp) and those are pre-1.1
-        // extensions behind both.
-        if (app.apiVersion < VK_API_VERSION_1_1)
-        {
-            if (vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties") &&
-                InstanceHasExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-                extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-            if (InstanceHasExtension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
-                extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
-        }
-
-        VkDebugUtilsMessengerCreateInfoEXT messenger{
-            VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
-        messenger.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                                    VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-        messenger.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
-        messenger.pfnUserCallback = Validation;
-        const bool validating = Validating();
-        if (validating) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-        VkInstanceCreateInfo info{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-        info.pNext = validating ? &messenger : nullptr;   // instance creation's own messages
-        info.pApplicationInfo = &app;
-        info.enabledExtensionCount = uint32_t(extensions.size());
-        info.ppEnabledExtensionNames = extensions.data();
-        if (!Check(vkCreateInstance(&info, nullptr, &g.instance), "vkCreateInstance")) return false;
-#if defined(PES17_VULKAN_DYNAMIC)
-        // Everything past this point is called through the driver's own
-        // entry points rather than a link-time symbol (loader.h).
-        vk::loader::LoadInstance(g.instance);
-#endif
-        if (validating)
-        {
-            auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-                vkGetInstanceProcAddr(g.instance, "vkCreateDebugUtilsMessengerEXT"));
-            if (!create || create(g.instance, &messenger, nullptr, &g_messenger) != VK_SUCCESS)
-                LOGW("vulkan: validation asked for, but its messages cannot be caught");
-            else
-                LOGI("vulkan: validation messages go to this log");
-        }
-        return true;
+        g.providerOwner = vk::provider::Context::Create(false);
+        return g.providerOwner != nullptr;
     }
 
-    bool PickDevice()
-    {
-        uint32_t count = 0;
-        vkEnumeratePhysicalDevices(g.instance, &count, nullptr);
-        if (!count) { LOGW("vulkan: no physical devices"); return false; }
-        std::vector<VkPhysicalDevice> devices(count);
-        vkEnumeratePhysicalDevices(g.instance, &count, devices.data());
 
-        // Prefer a discrete device, but take whatever can present.
-        VkPhysicalDevice fallback = VK_NULL_HANDLE;
-        uint32_t fallbackFamily = 0;
-        for (VkPhysicalDevice candidate : devices)
-        {
-            uint32_t families = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, nullptr);
-            std::vector<VkQueueFamilyProperties> properties(families);
-            vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, properties.data());
-
-            for (uint32_t i = 0; i < families; i++)
-            {
-                if (!(properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
-                VkBool32 canPresent = VK_FALSE;
-                vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, g.surface, &canPresent);
-                if (!canPresent) continue;
-
-                VkPhysicalDeviceProperties info{};
-                vkGetPhysicalDeviceProperties(candidate, &info);
-                if (info.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-                {
-                    g.physical = candidate; g.queueFamily = i;
-                    LOGI("vulkan: %s", info.deviceName);
-                    return true;
-                }
-                if (!fallback) { fallback = candidate; fallbackFamily = i; }
-                break;
-            }
-        }
-        if (!fallback) { LOGW("vulkan: no device can present to the window"); return false; }
-        g.physical = fallback; g.queueFamily = fallbackFamily;
-        VkPhysicalDeviceProperties info{};
-        vkGetPhysicalDeviceProperties(g.physical, &info);
-        LOGI("vulkan: %s", info.deviceName);
-        return true;
-    }
 
     // The renderer draws on this device when there is a window, so it is made
     // the way pipeline.cpp makes its own, with the swapchain beside.
     bool CreateDevice()
     {
+        // The swapchain and optional present timing are WSI policy, so keep their
+        // extension/feature negotiation beside the presenter rather than Provider.
         std::vector<const char*> extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-        // Present ids and waiting on them say when a frame reached the
-        // screen, which is the display's clock.
         VkPhysicalDevicePresentIdFeaturesKHR presentId{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
-        VkPhysicalDevicePresentWaitFeaturesKHR presentWait{
+        VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
         void* features = nullptr;
-        if (vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
-            vk::pipeline::DeviceHasExtension(g.physical, VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
+        g.presentWait = false;
+        if (vk::provider::DeviceHasExtension(PhysicalHandle(), VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+            vk::provider::DeviceHasExtension(PhysicalHandle(), VK_KHR_PRESENT_WAIT_EXTENSION_NAME))
         {
-            presentId.pNext = &presentWait;
+            presentId.pNext = &presentWaitFeatures;
             VkPhysicalDeviceFeatures2 query{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
             query.pNext = &presentId;
-            vkGetPhysicalDeviceFeatures2(g.physical, &query);
-            if (presentId.presentId && presentWait.presentWait)
+            vkGetPhysicalDeviceFeatures2(PhysicalHandle(), &query);
+            if (presentId.presentId && presentWaitFeatures.presentWait)
             {
                 extensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
-                presentWait.pNext = nullptr;
+                presentWaitFeatures.pNext = nullptr;
                 features = &presentId;
                 g.presentWait = true;
             }
         }
-        void* device = nullptr;
-        void* queue = nullptr;
-        if (!vk::pipeline::CreateDevice(g.physical, g.queueFamily, extensions.data(),
-                                        uint32_t(extensions.size()), &device, &queue, features))
+        if (!g.providerOwner || !g.providerOwner->CreateLogicalDevice(
+                extensions.data(), uint32_t(extensions.size()), features))
+        {
+            g.presentWait = false;
             return false;
-        g.device = static_cast<VkDevice>(device);
-        g.queue = static_cast<VkQueue>(queue);
+        }
+#if defined(PES17_VULKAN_DYNAMIC)
+        // Swapchain commands are mandatory for every dynamic window-system
+        // presenter, not only Horizon. Static-link builds resolve these symbols
+        // at link time; dynamic drivers must be checked before WSI calls.
+        if (!vkCreateSwapchainKHR || !vkDestroySwapchainKHR ||
+            !vkGetSwapchainImagesKHR || !vkAcquireNextImageKHR || !vkQueuePresentKHR)
+        {
+            LOGW("vulkan: the selected implementation is missing required swapchain dispatch functions");
+            return false;
+        }
+#endif
         if (g.presentWait)
         {
             g.waitForPresent = reinterpret_cast<PFN_vkWaitForPresentKHR>(
-                vkGetDeviceProcAddr(g.device, "vkWaitForPresentKHR"));
+                vkGetDeviceProcAddr(DeviceHandle(), "vkWaitForPresentKHR"));
             g.presentWait = g.waitForPresent != nullptr;
         }
         if (!g.presentWait)
@@ -407,11 +327,19 @@ namespace
                  " (VK_KHR_present_wait); the guest's blank keeps its own 60 Hz clock");
         return true;
     }
-
     bool CreateSwapchain()
     {
         VkSurfaceCapabilitiesKHR caps{};
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g.physical, g.surface, &caps);
+        if (!Check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalHandle(), g.surface, &caps),
+                   "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+            return false;
+        // The renderer copies its completed image into the presentation image.
+        // Do not create a swapchain with usage flags the VI surface did not grant.
+        if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+        {
+            LOGW("vulkan: VI surface does not support transfer-destination swapchain images");
+            return false;
+        }
         // The surface says what size it is, except where the window system
         // leaves it to the application (both dimensions at the maximum), and
         // then the window's own size in pixels is the answer, held within
@@ -426,6 +354,9 @@ namespace
                 width = ANativeWindow_getWidth(g.nativeWindow);
                 height = ANativeWindow_getHeight(g.nativeWindow);
             }
+#elif defined(__SWITCH__)
+            width = int(kWidth);
+            height = int(kHeight);
 #else
             SDL_GetWindowSizeInPixels(g.window, &width, &height);
 #endif
@@ -436,11 +367,12 @@ namespace
         }
         if (!g.extent.width || !g.extent.height) return false;   // minimised: nothing to make
 
-        uint32_t formatCount = 0;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, &formatCount, nullptr);
-        if (!formatCount) return false;
-        std::vector<VkSurfaceFormatKHR> formats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(g.physical, g.surface, &formatCount, formats.data());
+        std::vector<VkSurfaceFormatKHR> formats;
+        if (!EnumerateVector(formats,
+                [](uint32_t* count, VkSurfaceFormatKHR* data) {
+                    return vkGetPhysicalDeviceSurfaceFormatsKHR(PhysicalHandle(), g.surface, count, data);
+                }, "surface formats") || formats.empty())
+            return false;
         VkSurfaceFormatKHR chosen = formats[0];
         for (const auto& f : formats)
             if (f.format == VK_FORMAT_B8G8R8A8_UNORM) { chosen = f; break; }
@@ -448,13 +380,17 @@ namespace
 
         VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
         info.surface = g.surface;
-        info.minImageCount = std::max(caps.minImageCount, 2u);
+        const uint32_t preferredImages = caps.maxImageCount
+                                            ? std::min(2u, caps.maxImageCount) : 2u;
+        info.minImageCount = std::max(caps.minImageCount, preferredImages);
         info.imageFormat = chosen.format;
         info.imageColorSpace = chosen.colorSpace;
         info.imageExtent = g.extent;
         info.imageArrayLayers = 1;
-        // The renderer's frame is blitted in, so a transfer destination.
-        info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        // The renderer only blits completed frames into the swapchain;
+        // requesting color-attachment usage as well needlessly rejects WSI
+        // implementations that expose transfer-destination images only.
+        info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         // How the frame sits on the panel.
         //
@@ -485,7 +421,29 @@ namespace
         else if (caps.currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
             LOGW("vulkan: the surface will not take an identity transform; the picture may be"
                  " rotated");
-        info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+            info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        else
+        {
+            constexpr VkCompositeAlphaFlagBitsKHR choices[] = {
+                VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+                VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+                VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
+            };
+            bool foundAlpha = false;
+            for (VkCompositeAlphaFlagBitsKHR choice : choices)
+                if (caps.supportedCompositeAlpha & choice)
+                {
+                    info.compositeAlpha = choice;
+                    foundAlpha = true;
+                    break;
+                }
+            if (!foundAlpha)
+            {
+                LOGW("vulkan: surface exposes no supported composite-alpha mode");
+                return false;
+            }
+        }
         info.presentMode = VK_PRESENT_MODE_FIFO_KHR;      // always supported
         info.clipped = VK_TRUE;
         // The one being replaced, if any, so the driver can carry over what it
@@ -494,12 +452,16 @@ namespace
         info.oldSwapchain = old;
 
         VkSwapchainKHR made = VK_NULL_HANDLE;
-        const bool ok = Check(vkCreateSwapchainKHR(g.device, &info, nullptr, &made),
+        const bool ok = Check(vkCreateSwapchainKHR(DeviceHandle(), &info, nullptr, &made),
                               "vkCreateSwapchainKHR");
         {
             // Nothing waits on a present of the old one once it is gone.
             std::unique_lock life(g.swapchainLife);
-            if (old) vkDestroySwapchainKHR(g.device, old, nullptr);
+            if (old) vkDestroySwapchainKHR(DeviceHandle(), old, nullptr);
+            // Image handles belong to the swapchain just destroyed. Do not
+            // leave stale handles visible if replacement creation/enumeration
+            // fails and the presenter falls back to its no-swapchain path.
+            g.images.clear();
             g.swapchain = ok ? made : VK_NULL_HANDLE;
             std::lock_guard waiting(g.waitLock);
             g.waiting.clear();
@@ -508,11 +470,18 @@ namespace
         if (!ok) return false;
         g.swapchainsMade++;
 
-        uint32_t imageCount = 0;
-        vkGetSwapchainImagesKHR(g.device, g.swapchain, &imageCount, nullptr);
-        g.images.resize(imageCount);
-        vkGetSwapchainImagesKHR(g.device, g.swapchain, &imageCount, g.images.data());
-        LOGI("vulkan: swapchain %ux%u, %u images", g.extent.width, g.extent.height, imageCount);
+        if (!EnumerateVector(g.images,
+                [](uint32_t* count, VkImage* data) {
+                    return vkGetSwapchainImagesKHR(DeviceHandle(), g.swapchain, count, data);
+                }, "swapchain images") || g.images.empty())
+        {
+            LOGW("vulkan: the created swapchain exposes no images");
+            g.images.clear();
+            vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
+            g.swapchain = VK_NULL_HANDLE;
+            return false;
+        }
+        LOGI("vulkan: swapchain %ux%u, %zu images", g.extent.width, g.extent.height, g.images.size());
         return true;
     }
 
@@ -520,8 +489,8 @@ namespace
     {
         VkCommandPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = g.queueFamily;
-        if (!Check(vkCreateCommandPool(g.device, &poolInfo, nullptr, &g.pool), "vkCreateCommandPool"))
+        poolInfo.queueFamilyIndex = QueueFamilyIndex();
+        if (!Check(vkCreateCommandPool(DeviceHandle(), &poolInfo, nullptr, &g.pool), "vkCreateCommandPool"))
             return false;
 
         for (auto& frame : g.frames)
@@ -530,15 +499,15 @@ namespace
             allocate.commandPool = g.pool;
             allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocate.commandBufferCount = 1;
-            if (!Check(vkAllocateCommandBuffers(g.device, &allocate, &frame.commands), "vkAllocateCommandBuffers"))
+            if (!Check(vkAllocateCommandBuffers(DeviceHandle(), &allocate, &frame.commands), "vkAllocateCommandBuffers"))
                 return false;
 
             VkSemaphoreCreateInfo semaphore{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
             VkFenceCreateInfo fence{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
             fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            if (!Check(vkCreateSemaphore(g.device, &semaphore, nullptr, &frame.acquired), "vkCreateSemaphore") ||
-                !Check(vkCreateSemaphore(g.device, &semaphore, nullptr, &frame.rendered), "vkCreateSemaphore") ||
-                !Check(vkCreateFence(g.device, &fence, nullptr, &frame.inFlight), "vkCreateFence"))
+            if (!Check(vkCreateSemaphore(DeviceHandle(), &semaphore, nullptr, &frame.acquired), "vkCreateSemaphore") ||
+                !Check(vkCreateSemaphore(DeviceHandle(), &semaphore, nullptr, &frame.rendered), "vkCreateSemaphore") ||
+                !Check(vkCreateFence(DeviceHandle(), &fence, nullptr, &frame.inFlight), "vkCreateFence"))
                 return false;
         }
         return true;
@@ -552,7 +521,7 @@ namespace
     {
         VkFence fences[kFramesInFlight];
         for (uint32_t i = 0; i < kFramesInFlight; i++) fences[i] = g.frames[i].inFlight;
-        vk::pipeline::Failed(vkWaitForFences(g.device, kFramesInFlight, fences, VK_TRUE, UINT64_MAX),
+        vk::pipeline::Failed(vkWaitForFences(DeviceHandle(), kFramesInFlight, fences, VK_TRUE, UINT64_MAX),
                              "the presenter's fences before a resize");
         if (CreateSwapchain()) g.remakeSwapchain = false;
     }
@@ -579,6 +548,7 @@ namespace
     }
 
     void Waiter();
+    void WaiterEntry(void*) { Waiter(); }
 
     // The guest's blank follows the display when the display runs at the
     // console's 60 Hz and the device can say when a present reaches it. A
@@ -587,12 +557,16 @@ namespace
     void FollowTheDisplay()
     {
         double hz = 0;
-#ifdef PES17_ANDROID
+#if defined(PES17_ANDROID)
         // Display.getRefreshRate, as the app reported it. A phone that can
         // run at 90 or 120 is asked for 60 by the app where it can, because
         // the console's frame is a 60 Hz frame and a display at 90 shows
         // every other one twice.
         hz = android::RefreshHz();
+        g.exactRate = false;
+#elif defined(__SWITCH__)
+        // Horizon's VI display mode for the default applet is 60 Hz.
+        hz = 60.0;
         g.exactRate = false;
 #else
         if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(g.window)))
@@ -614,7 +588,14 @@ namespace
         else
             LOGI("vulkan: the display runs at %.3f Hz, not 60; the guest's blank keeps its own"
                  " clock", hz);
-        g.waiter = std::thread(Waiter);
+        g.waiter = platform::StartJoinableThread(WaiterEntry, nullptr, 1024 * 1024,
+                                                  "vulkan present wait");
+        if (!g.waiter)
+        {
+            g.presentWait = false;
+            g.nominalNs = 0;
+            LOGW("vulkan: could not start present-wait worker; using the guest's 60 Hz clock");
+        }
     }
 
     // How much longer the guest's blank may be than the display's while
@@ -690,7 +671,7 @@ namespace
             {
                 std::shared_lock life(g.swapchainLife);
                 if (g.swapchain)
-                    r = g.waitForPresent(g.device, g.swapchain, id, 20'000'000);   // 20 ms
+                    r = g.waitForPresent(DeviceHandle(), g.swapchain, id, 20'000'000);   // 20 ms
             }
             if (r == VK_TIMEOUT) continue;   // still waiting; lets a resize in
             const int64_t at = Nanoseconds();
@@ -720,10 +701,10 @@ namespace
     void DestroyOverlay()
     {
         auto& o = g.overlay;
-        if (o.image) vkDestroyImage(g.device, o.image, nullptr);
-        if (o.imageMemory) vkFreeMemory(g.device, o.imageMemory, nullptr);
-        if (o.staging) vkDestroyBuffer(g.device, o.staging, nullptr);
-        if (o.stagingMemory) vkFreeMemory(g.device, o.stagingMemory, nullptr);
+        if (o.image) vkDestroyImage(DeviceHandle(), o.image, nullptr);
+        if (o.imageMemory) vkFreeMemory(DeviceHandle(), o.imageMemory, nullptr);
+        if (o.staging) vkDestroyBuffer(DeviceHandle(), o.staging, nullptr);
+        if (o.stagingMemory) vkFreeMemory(DeviceHandle(), o.stagingMemory, nullptr);
         o.image = VK_NULL_HANDLE; o.imageMemory = VK_NULL_HANDLE;
         o.staging = VK_NULL_HANDLE; o.stagingMemory = VK_NULL_HANDLE;
         o.mapped = nullptr; o.width = o.height = 0; o.everUploaded = false;
@@ -733,7 +714,8 @@ namespace
     {
         auto& o = g.overlay;
         VkPhysicalDeviceMemoryProperties memory{};
-        vkGetPhysicalDeviceMemoryProperties(g.physical, &memory);
+        if (!vk::pipeline::GetMemoryProperties(&memory, sizeof(memory)))
+        { LOGW("presenter: device memory properties are unavailable"); return false; }
 
         VkImageCreateInfo image{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
         image.imageType = VK_IMAGE_TYPE_2D;
@@ -745,29 +727,29 @@ namespace
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
         image.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         image.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        if (!Check(vkCreateImage(g.device, &image, nullptr, &o.image), "the sign-in screen's image")) return false;
+        if (!Check(vkCreateImage(DeviceHandle(), &image, nullptr, &o.image), "the sign-in screen's image")) return false;
         VkMemoryRequirements needs{};
-        vkGetImageMemoryRequirements(g.device, o.image, &needs);
+        vkGetImageMemoryRequirements(DeviceHandle(), o.image, &needs);
         VkMemoryAllocateInfo allocate{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         allocate.allocationSize = needs.size;
         allocate.memoryTypeIndex = vk::util::FindMemory(memory, needs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         if (allocate.memoryTypeIndex == UINT32_MAX ||
-            !Check(vkAllocateMemory(g.device, &allocate, nullptr, &o.imageMemory), "the sign-in screen's memory") ||
-            !Check(vkBindImageMemory(g.device, o.image, o.imageMemory, 0), "the sign-in screen's memory"))
+            !Check(vkAllocateMemory(DeviceHandle(), &allocate, nullptr, &o.imageMemory), "the sign-in screen's memory") ||
+            !Check(vkBindImageMemory(DeviceHandle(), o.image, o.imageMemory, 0), "the sign-in screen's memory"))
             return false;
 
         VkBufferCreateInfo buffer{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         buffer.size = VkDeviceSize(width) * height * 4;
         buffer.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        if (!Check(vkCreateBuffer(g.device, &buffer, nullptr, &o.staging), "the sign-in screen's buffer")) return false;
-        vkGetBufferMemoryRequirements(g.device, o.staging, &needs);
+        if (!Check(vkCreateBuffer(DeviceHandle(), &buffer, nullptr, &o.staging), "the sign-in screen's buffer")) return false;
+        vkGetBufferMemoryRequirements(DeviceHandle(), o.staging, &needs);
         allocate.allocationSize = needs.size;
         allocate.memoryTypeIndex = vk::util::FindMemory(memory, needs.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (allocate.memoryTypeIndex == UINT32_MAX ||
-            !Check(vkAllocateMemory(g.device, &allocate, nullptr, &o.stagingMemory), "the sign-in screen's buffer") ||
-            !Check(vkBindBufferMemory(g.device, o.staging, o.stagingMemory, 0), "the sign-in screen's buffer") ||
-            !Check(vkMapMemory(g.device, o.stagingMemory, 0, VK_WHOLE_SIZE, 0, &o.mapped), "the sign-in screen's buffer"))
+            !Check(vkAllocateMemory(DeviceHandle(), &allocate, nullptr, &o.stagingMemory), "the sign-in screen's buffer") ||
+            !Check(vkBindBufferMemory(DeviceHandle(), o.staging, o.stagingMemory, 0), "the sign-in screen's buffer") ||
+            !Check(vkMapMemory(DeviceHandle(), o.stagingMemory, 0, VK_WHOLE_SIZE, 0, &o.mapped), "the sign-in screen's buffer"))
             return false;
         o.width = width;
         o.height = height;
@@ -789,7 +771,7 @@ namespace
             // The other frames' commands may still be reading the image and
             // the buffer; this happens at a press of a button, not per frame.
             for (const Frame& other : g.frames)
-                if (&other != &frame) vkWaitForFences(g.device, 1, &other.inFlight, VK_TRUE, UINT64_MAX);
+                if (&other != &frame) vkWaitForFences(DeviceHandle(), 1, &other.inFlight, VK_TRUE, UINT64_MAX);
             if (resized)
             {
                 DestroyOverlay();
@@ -834,14 +816,14 @@ namespace
     bool Acquire(Frame*& slot, uint32_t& imageIndex)
     {
         Frame& frame = g.frames[g.frameIndex];
-        if (vk::pipeline::Failed(vkWaitForFences(g.device, 1, &frame.inFlight, VK_TRUE, UINT64_MAX),
+        if (vk::pipeline::Failed(vkWaitForFences(DeviceHandle(), 1, &frame.inFlight, VK_TRUE, UINT64_MAX),
                                  "the presenter's fence"))
             return false;
 
         // FIFO: this is where the window waits for the display, with the
         // frame it will show still in the queue, so the queue's length is
         // how far the renderer is ahead of the screen.
-        VkResult acquired = vkAcquireNextImageKHR(g.device, g.swapchain, UINT64_MAX,
+        VkResult acquired = vkAcquireNextImageKHR(DeviceHandle(), g.swapchain, UINT64_MAX,
                                                   frame.acquired, VK_NULL_HANDLE, &imageIndex);
         // Out of date: nothing was acquired, and the semaphore is untouched;
         // remade next frame. Suboptimal: an image was acquired and is shown,
@@ -856,7 +838,7 @@ namespace
     // Starts `frame`'s commands with swapchain image `image` made ready to be copied into.
     void Begin(Frame& frame, VkImage image)
     {
-        vkResetFences(g.device, 1, &frame.inFlight);
+        vkResetFences(DeviceHandle(), 1, &frame.inFlight);
         vkResetCommandBuffer(frame.commands, 0);
 
         VkCommandBufferBeginInfo begin{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -900,7 +882,7 @@ namespace
         const uint32_t pictureWidth = uint32_t(blit.dstOffsets[1].x - blit.dstOffsets[0].x);
         const uint32_t pictureHeight = uint32_t(blit.dstOffsets[1].y - blit.dstOffsets[0].y);
         const VkImage upscaled = vk::upscale::Enabled()
-            ? vk::upscale::Record(g.device, g.physical, frame.commands, g.frameIndex, picture,
+            ? vk::upscale::Record(DeviceHandle(), PhysicalHandle(), frame.commands, g.frameIndex, picture,
                                   width, height, pictureWidth, pictureHeight)
             : VK_NULL_HANDLE;
         (upscaled ? g.upscaledPresents : g.blitPresents).fetch_add(1, std::memory_order_relaxed);
@@ -945,14 +927,14 @@ namespace
         VkResult submitRes = VK_SUCCESS;
         {
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            submitRes = vkQueueSubmit(g.queue, 1, &submit, frame.inFlight);
+            submitRes = vkQueueSubmit(QueueHandle(), 1, &submit, frame.inFlight);
         }
         if (submitRes != VK_SUCCESS)
         {
             vk::pipeline::Failed(submitRes, "the presenter's submission");
             VkSubmitInfo emptySubmit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            vkQueueSubmit(g.queue, 1, &emptySubmit, frame.inFlight);
+            vkQueueSubmit(QueueHandle(), 1, &emptySubmit, frame.inFlight);
             return false;
         }
         // The copy is in the queue ahead of anything the renderer submits from
@@ -981,7 +963,7 @@ namespace
         // device is a failure.
         const VkResult presented = [&] {
             std::lock_guard queueLock(vk::pipeline::QueueMutex());
-            return vkQueuePresentKHR(g.queue, &present);
+            return vkQueuePresentKHR(QueueHandle(), &present);
         }();
         if (presented == VK_ERROR_OUT_OF_DATE_KHR ||
             (presented == VK_SUBOPTIMAL_KHR && !g.suboptimalIsExpected))
@@ -1042,7 +1024,7 @@ namespace
         const bool picture = shown.image && shown.width && shown.height;
         vk::framegen::Result generated;
         if (picture && vk::framegen::Wanted(frame_rate::Limit(), g.periodNs))
-            generated = vk::framegen::Record(g.device, g.physical, frame.commands, shown.image,
+            generated = vk::framegen::Record(DeviceHandle(), PhysicalHandle(), frame.commands, shown.image,
                                              shown.width, shown.height, Nanoseconds(), g.periodNs, shown.serial);
         else if (picture)
             vk::framegen::Reset();
@@ -1076,39 +1058,27 @@ namespace
 
     void Teardown()
     {
-        if (g.device)
+        if (DeviceHandle())
         {
-            vkDeviceWaitIdle(g.device);
+            vkDeviceWaitIdle(DeviceHandle());
             DestroyOverlay();
-            vk::upscale::Destroy(g.device);
-            vk::framegen::Destroy(g.device);
+            vk::upscale::Destroy(DeviceHandle());
+            vk::framegen::Destroy(DeviceHandle());
             for (auto& frame : g.frames)
             {
-                if (frame.acquired) vkDestroySemaphore(g.device, frame.acquired, nullptr);
-                if (frame.rendered) vkDestroySemaphore(g.device, frame.rendered, nullptr);
-                if (frame.inFlight) vkDestroyFence(g.device, frame.inFlight, nullptr);
+                if (frame.acquired) vkDestroySemaphore(DeviceHandle(), frame.acquired, nullptr);
+                if (frame.rendered) vkDestroySemaphore(DeviceHandle(), frame.rendered, nullptr);
+                if (frame.inFlight) vkDestroyFence(DeviceHandle(), frame.inFlight, nullptr);
             }
-            if (g.pool) vkDestroyCommandPool(g.device, g.pool, nullptr);
-            if (g.swapchain) vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
-#if defined(PES17_VULKAN_DYNAMIC)
-            vk::loader::ForgetDevice();
-#endif
-            vkDestroyDevice(g.device, nullptr);
+            if (g.pool) vkDestroyCommandPool(DeviceHandle(), g.pool, nullptr);
+            if (g.swapchain) vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
             g.pool = VK_NULL_HANDLE;
             g.swapchain = VK_NULL_HANDLE;
-            g.device = VK_NULL_HANDLE;
             for (auto& frame : g.frames) frame = Frame{};
         }
-        if (g.surface) vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
-        if (g_messenger)
-        {
-            LOGI("vulkan: %llu validation messages", (unsigned long long)g_validationMessages.load());
-            if (auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                    vkGetInstanceProcAddr(g.instance, "vkDestroyDebugUtilsMessengerEXT")))
-                destroy(g.instance, g_messenger, nullptr);
-            g_messenger = VK_NULL_HANDLE;
-        }
-        if (g.instance) vkDestroyInstance(g.instance, nullptr);
+        if (g.providerOwner) g.providerOwner->DestroyDevice();
+        if (g.surface) vkDestroySurfaceKHR(InstanceHandle(), g.surface, nullptr);
+        g.providerOwner.reset();
 #ifdef PES17_USE_SDL
         if (g.window) SDL_DestroyWindow(g.window);
         g.window = nullptr;
@@ -1122,8 +1092,26 @@ namespace
         }
 #endif
         g.surface = VK_NULL_HANDLE;
-        g.instance = VK_NULL_HANDLE;
     }
+
+#ifdef __SWITCH__
+    // Horizon VI owns the default applet window. Match BO2's Switch Vulkan
+    // presenter contract and keep the platform surface boundary here.
+    bool CreateSurfaceForWindow()
+    {
+#if defined(PES17_VULKAN_DYNAMIC)
+        if (!vkCreateViSurfaceNN)
+        {
+            LOGE("vulkan: this driver has no VK_NN_vi_surface");
+            return false;
+        }
+#endif
+        VkViSurfaceCreateInfoNN info{ VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN };
+        info.window = nwindowGetDefault();
+        return Check(vkCreateViSurfaceNN(InstanceHandle(), &info, nullptr, &g.surface),
+                     "vkCreateViSurfaceNN");
+    }
+#endif
 
 #ifdef PES17_ANDROID
     // The Vulkan surface for the window the activity handed over.
@@ -1140,7 +1128,7 @@ namespace
 #endif
         VkAndroidSurfaceCreateInfoKHR info{ VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
         info.window = g.nativeWindow;
-        return Check(vkCreateAndroidSurfaceKHR(g.instance, &info, nullptr, &g.surface),
+        return Check(vkCreateAndroidSurfaceKHR(InstanceHandle(), &info, nullptr, &g.surface),
                      "vkCreateAndroidSurfaceKHR");
     }
 
@@ -1152,18 +1140,18 @@ namespace
     {
         const uint64_t generation = android::WindowGeneration();
 
-        if (g.device)
+        if (DeviceHandle())
         {
             // Nothing of ours may still be reading or presenting the images.
             // The renderer submits to the same queue, so its lock is what
             // makes waiting for the device meaningful.
             std::lock_guard held(vk::pipeline::QueueMutex());
-            vk::pipeline::Failed(vkDeviceWaitIdle(g.device), "the device before a surface change");
+            vk::pipeline::Failed(vkDeviceWaitIdle(DeviceHandle()), "the device before a surface change");
         }
         if (g.swapchain)
         {
             std::unique_lock life(g.swapchainLife);
-            vkDestroySwapchainKHR(g.device, g.swapchain, nullptr);
+            vkDestroySwapchainKHR(DeviceHandle(), g.swapchain, nullptr);
             g.swapchain = VK_NULL_HANDLE;
             std::lock_guard waiting(g.waitLock);
             g.waiting.clear();
@@ -1171,7 +1159,7 @@ namespace
         }
         if (g.surface)
         {
-            vkDestroySurfaceKHR(g.instance, g.surface, nullptr);
+            vkDestroySurfaceKHR(InstanceHandle(), g.surface, nullptr);
             g.surface = VK_NULL_HANDLE;
         }
         if (g.nativeWindow)
@@ -1192,6 +1180,14 @@ namespace
         LOGI("vulkan: presenting to the new surface (%ux%u)", g.extent.width, g.extent.height);
     }
 #endif
+
+    bool InitialisePipelineOnPresenterDevice()
+    {
+        const vk::device::BorrowedContext context{
+            g.providerOwner ? g.providerOwner->InstanceObject() : nullptr,
+            g.providerOwner ? g.providerOwner->DeviceObject() : nullptr };
+        return vk::pipeline::Initialise(&context);
+    }
 
     bool Bring()
     {
@@ -1218,7 +1214,7 @@ namespace
             android::SetStatus("Failed to create Vulkan surface for Android window");
             return false;
         }
-        if (!PickDevice()) {
+        if (!g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface)) {
             android::SetStatus("No Vulkan physical device found");
             return false;
         }
@@ -1234,8 +1230,32 @@ namespace
             android::SetStatus("Failed to create Vulkan presentation frames");
             return false;
         }
-        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        if (!InitialisePipelineOnPresenterDevice())
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         android::SetStatus((std::string("Running on ") + vk::pipeline::DeviceName()).c_str());
+        return true;
+#elif defined(__SWITCH__)
+        // The active path is the BO2 Mesa Horizon SDK, statically linked
+        // through the public Vulkan entry point. Do not apply NXVK-specific
+        // environment flags or describe this as the old NXVK route.
+        LOGI("vulkan: starting the BO2 Mesa Horizon SDK path on Switch");
+        std::string error;
+        if (!vk::loader::Opened() && !vk::loader::Open(error))
+        {
+            LOGE("vulkan: %s", error.c_str());
+            return false;
+        }
+        if (!CreateInstance() || !CreateSurfaceForWindow() ||
+            !g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+            return false;
+        if (!InitialisePipelineOnPresenterDevice())
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         return true;
 #else
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
@@ -1252,19 +1272,23 @@ namespace
                                     (g.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
         if (!g.window) { LOGW("vulkan: no window (%s)", SDL_GetError()); return false; }
         if (!CreateInstance()) return false;
-        if (!SDL_Vulkan_CreateSurface(g.window, g.instance, nullptr, &g.surface))
+        if (!SDL_Vulkan_CreateSurface(g.window, InstanceHandle(), nullptr, &g.surface))
         {
             LOGW("vulkan: no surface (%s)", SDL_GetError());
             return false;
         }
-        if (!PickDevice() || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
+        if (!g.providerOwner || !g.providerOwner->SelectPresentationDevice(g.surface) || !CreateDevice() || !CreateSwapchain() || !CreateFrames())
             return false;
         SDL_ShowWindow(g.window);
         SDL_RaiseWindow(g.window);
         // Everything else that touches the GPU -- the texture cache, the
         // renderer -- allocates against this device rather than one of its own,
         // because an image cannot be shared between two.
-        vk::pipeline::Initialise(g.device, g.physical, g.queue, g.queueFamily, g.instance);
+        if (!InitialisePipelineOnPresenterDevice())
+        {
+            LOGW("vulkan: renderer pipeline initialization failed");
+            return false;
+        }
         return true;
 #endif
     }
@@ -1278,6 +1302,11 @@ namespace
 #endif
         if (!Bring())
         {
+            // Bring may fail after creating only part of the Vulkan object
+            // graph (instance, VI surface, device, swapchain, or frame sync).
+            // Release that partial graph here: Start() reports headless mode
+            // and the caller is not required to invoke Stop() after failure.
+            Teardown();
             LOGW("vulkan: presenting disabled, continuing headless");
             g.running = false;
             g.ready = true;
@@ -1304,7 +1333,7 @@ namespace
                 g.wake.wait_for(lock, std::chrono::milliseconds(32));
                 continue;
             }
-#else
+#elif !defined(__SWITCH__)
             SDL_Event event;
             while (SDL_PollEvent(&event))
                 // Not `g.running = false`: that stops the pump, and with nothing
@@ -1379,7 +1408,7 @@ namespace
                 else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
                          event.type == SDL_EVENT_WINDOW_RESIZED)
                     g.remakeSwapchain = true;
-#endif  // PES17_ANDROID
+#endif  // platform event pump
 
             // A frame to show, or 16 ms to go round the events again. Until the
             // renderer has finished one, the window shows its own colour.
@@ -1397,6 +1426,8 @@ namespace
         LOGI("vulkan: presenter stopped after %llu frames, %llu swapchains",
              (unsigned long long)g.presented.load(), (unsigned long long)g.swapchainsMade);
     }
+
+    void WorkerEntry(void*) { Worker(); }
 }
 
 bool vk::Start()
@@ -1408,7 +1439,15 @@ bool vk::Start()
     if (!window) return false;
 
     g.running = true;
-    g.worker = std::thread(Worker);
+    g.worker = platform::StartJoinableThread(WorkerEntry, nullptr, 2 * 1024 * 1024,
+                                              "vulkan presenter");
+    if (!g.worker)
+    {
+        g.running = false;
+        g.ready = true;
+        LOGE("vulkan: could not start presenter worker");
+        return false;
+    }
     while (!g.ready.load(std::memory_order_acquire)) std::this_thread::yield();
     return g.running.load();
 }
@@ -1467,14 +1506,16 @@ uint64_t vk::GuestBlankPeriod()
 // stopping and destroying are two steps rather than one.
 void vk::StopPresenting()
 {
-    if (!g.worker.joinable()) return;
+    if (!g.worker) return;
     g.running = false;
     { std::lock_guard lock(g.lock); g.wake.notify_all(); g.takenWake.notify_all(); }
     { std::lock_guard lock(g.waitLock); g.waitWake.notify_all(); }
-    g.worker.join();
-    if (g.waiter.joinable())
+    platform::JoinThread(g.worker);
+    g.worker = nullptr;
+    if (g.waiter)
     {
-        g.waiter.join();
+        platform::JoinThread(g.waiter);
+        g.waiter = nullptr;
         LOGI("vulkan: the display's blank measured %.1f us; frames behind the one on screen"
              " when it was shown: 0 x%llu, 1 x%llu, 2 x%llu, 3+ x%llu; the guest's blank ran"
              " at the display's for %llu, longer for %llu",
@@ -1520,10 +1561,11 @@ std::string vk::PresenterReport()
     add("framegen: %s now, %llu frames made\n", vk::framegen::Wanted(frame_rate::Limit(), g.periodNs) ? "on" : "off",
         (unsigned long long)vk::framegen::MadeFrames());
 
-    if (g.physical)
+    if (PhysicalHandle())
     {
         VkPhysicalDeviceProperties props{};
-        vkGetPhysicalDeviceProperties(g.physical, &props);
+        if (!vk::pipeline::GetDeviceProperties(&props, sizeof(props)))
+        { add("device: physical-device properties unavailable\\n"); return out; }
         add("device: %s, type %u, vendor 0x%x, device 0x%x\n", props.deviceName, unsigned(props.deviceType),
             props.vendorID, props.deviceID);
         add("vulkan: API %u.%u.%u, driver version 0x%x (%u.%u.%u)\n", VK_API_VERSION_MAJOR(props.apiVersion),
@@ -1531,7 +1573,8 @@ std::string vk::PresenterReport()
             VK_API_VERSION_MAJOR(props.driverVersion), VK_API_VERSION_MINOR(props.driverVersion),
             VK_API_VERSION_PATCH(props.driverVersion));
         VkPhysicalDeviceFeatures features{};
-        vkGetPhysicalDeviceFeatures(g.physical, &features);
+        if (!vk::pipeline::GetPhysicalDeviceFeatures(&features, sizeof(features)))
+        { add("features: physical-device features unavailable\\n"); return out; }
         add("features: textureCompressionBC %d, ASTC_LDR %d, ETC2 %d, sampleRateShading %d, independentBlend %d\n",
             int(features.textureCompressionBC), int(features.textureCompressionASTC_LDR),
             int(features.textureCompressionETC2), int(features.sampleRateShading), int(features.independentBlend));
@@ -1540,18 +1583,22 @@ std::string vk::PresenterReport()
             props.limits.maxPerStageDescriptorSamplers);
         if (g.surface)
         {
-            uint32_t modes = 0;
-            vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, &modes, nullptr);
-            std::vector<VkPresentModeKHR> list(modes);
-            if (modes) vkGetPhysicalDeviceSurfacePresentModesKHR(g.physical, g.surface, &modes, list.data());
+            std::vector<VkPresentModeKHR> list;
+            if (!EnumerateVector(list,
+                    [](uint32_t* count, VkPresentModeKHR* data) {
+                        return vkGetPhysicalDeviceSurfacePresentModesKHR(PhysicalHandle(), g.surface, count, data);
+                    }, "surface present modes"))
+                list.clear();
             out += "surface present modes:";
             for (VkPresentModeKHR mode : list) { add(" %d", int(mode)); }
             out += "\n";
         }
-        uint32_t count = 0;
-        vkEnumerateDeviceExtensionProperties(g.physical, nullptr, &count, nullptr);
-        std::vector<VkExtensionProperties> extensions(count);
-        if (count) vkEnumerateDeviceExtensionProperties(g.physical, nullptr, &count, extensions.data());
+        std::vector<VkExtensionProperties> extensions;
+        if (!EnumerateVector(extensions,
+                [](uint32_t* count, VkExtensionProperties* data) {
+                    return vkEnumerateDeviceExtensionProperties(PhysicalHandle(), nullptr, count, data);
+                }, "device extensions"))
+            extensions.clear();
         out += "device extensions:";
         for (const VkExtensionProperties& e : extensions) { out += ' '; out += e.extensionName; }
         out += "\n";

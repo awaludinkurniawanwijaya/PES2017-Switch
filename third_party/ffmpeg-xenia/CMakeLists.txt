@@ -253,6 +253,13 @@ if(MW2_FFMPEG_PORTABLE)
 
 #endif
 ")
+    # Horizon's devkitA64 sysroot has no sys/mman.h. FFmpeg's av_file_map()
+    # already has a portable malloc()+read() fallback when HAVE_MMAP is zero;
+    # the XMA decoder does not need mmap semantics on Switch.
+    if(PES17_SWITCH)
+        file(APPEND "${MW2_FFMPEG_PORTABLE_DIR}/config.h"
+"\n/* Horizon has no POSIX mmap, sysconf, or iconv interfaces. */\n#undef HAVE_MMAP\n#define HAVE_MMAP 0\n#undef HAVE_SYSCONF\n#define HAVE_SYSCONF 0\n#undef CONFIG_ICONV\n#define CONFIG_ICONV 0\n")
+    endif()
     target_include_directories(ffmpeg_xma BEFORE PRIVATE "${MW2_FFMPEG_PORTABLE_DIR}")
     message(STATUS "XMA decoder: portable C (${CMAKE_SYSTEM_PROCESSOR}); no NEON dispatch")
 endif()
@@ -262,6 +269,9 @@ target_include_directories(ffmpeg_xma
 target_compile_definitions(ffmpeg_xma PRIVATE
     HAVE_AV_CONFIG_H _ISOC11_SOURCE _FILE_OFFSET_BITS=64 _LARGEFILE_SOURCE
     _POSIX_C_SOURCE=200112 _XOPEN_SOURCE=600 _GNU_SOURCE PIC)
+if(PES17_SWITCH)
+    target_compile_definitions(ffmpeg_xma PRIVATE __SWITCH__=1)
+endif()
 # Third-party C; its warnings are not ours to fix.
 # Newer clang makes an incompatible pointer an error; FFmpeg's codec tables rely on it.
 target_compile_options(ffmpeg_xma PRIVATE -w -std=gnu17 -fno-strict-aliasing -fomit-frame-pointer

@@ -22,11 +22,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Android brings its own window, input and audio (runtime/android/), so SDL is
-# off there whatever the cache says -- and a default the Gradle build does not
-# have to repeat.
-if(ANDROID)
-    set(PES17_USE_SDL OFF CACHE BOOL "Use SDL3 (not on Android)" FORCE)
+# Android and Switch provide native window/input/audio backends, so SDL is
+# disabled for either target regardless of a stale cache value.
+option(PES17_SWITCH "Build the native Nintendo Switch NRO with libnx and BO2-style Vulkan architecture (static NVK driver)" OFF)
+if(ANDROID AND PES17_SWITCH)
+    message(FATAL_ERROR "PES17_SWITCH cannot be combined with Android")
+endif()
+if(ANDROID OR PES17_SWITCH)
+    set(PES17_USE_SDL OFF CACHE BOOL "Use SDL3 (not on native platforms)" FORCE)
 endif()
 option(PES17_USE_SDL "Use SDL3 for gamepad input (and later window/audio)" ON)
 option(PES17_TRACE_INDIRECT "Report indirect calls with no recompiled target instead of jumping to null" ON)
@@ -44,11 +47,17 @@ set(PES17_TITLE "sp")
 set(PES17_VERSION "tu0")
 set(PES17_PPC_DIR "${CMAKE_SOURCE_DIR}/ppc")
 
-file(GLOB PPC_SOURCES CONFIGURE_DEPENDS "${PES17_PPC_DIR}/ppc_recomp.*.cpp")
-list(APPEND PPC_SOURCES "${PES17_PPC_DIR}/ppc_func_mapping.cpp")
-if(NOT PPC_SOURCES)
-    message(FATAL_ERROR "${PES17_PPC_DIR} is empty -- run TITLE=${PES17_TITLE} VERSION=${PES17_VERSION} ./build.sh first to generate it")
+file(GLOB PPC_RECOMP_SOURCES CONFIGURE_DEPENDS "${PES17_PPC_DIR}/ppc_recomp.*.cpp")
+set(PPC_MAPPING_SOURCE "${PES17_PPC_DIR}/ppc_func_mapping.cpp")
+set(PPC_STUB_SOURCE "${PES17_PPC_DIR}/stubs_generated.cpp")
+if(NOT PPC_RECOMP_SOURCES OR NOT EXISTS "${PPC_MAPPING_SOURCE}" OR NOT EXISTS "${PPC_STUB_SOURCE}")
+    message(FATAL_ERROR
+        "Generated PES 2017 PPC output is incomplete in ${PES17_PPC_DIR}. "
+        "Run TITLE=${PES17_TITLE} VERSION=${PES17_VERSION} ./build.sh with the legally obtained "
+        "matching pes/default.xex before configuring the full runtime target. "
+        "Required: ppc_recomp.*.cpp, ppc_func_mapping.cpp, and stubs_generated.cpp.")
 endif()
+set(PPC_SOURCES ${PPC_RECOMP_SOURCES} "${PPC_MAPPING_SOURCE}")
 
 add_library(ppc_recomp STATIC ${PPC_SOURCES})
 set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/third_party/XenonRecomp/thirdparty/simde")
@@ -91,6 +100,26 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS
      "${CMAKE_SOURCE_DIR}/runtime/apu/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/install/*.cpp"
      "${CMAKE_SOURCE_DIR}/runtime/gpu/xe/*.cpp")
+
+if(PES17_SWITCH)
+    # Replace desktop POSIX implementations with libnx adapters. Filter by
+    # suffix rather than exact absolute path: CMake's glob may retain a
+    # differently-normalized path, which would otherwise compile POSIX-only
+    # sources (for example debug_watch.cpp includes sys/mman.h) for Horizon.
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/platform\\.cpp$")
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/gpu/debug_watch\\.cpp$")
+    list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/runtime/gpu/memory_watch\\.cpp$")
+    foreach(_PES17_SWITCH_SOURCE IN LISTS RUNTIME_SOURCES)
+        if(_PES17_SWITCH_SOURCE MATCHES "/runtime/(platform\\.cpp|gpu/(debug_watch|memory_watch)\\.cpp)$")
+            message(FATAL_ERROR "POSIX-only source unexpectedly selected for Switch: ${_PES17_SWITCH_SOURCE}")
+        endif()
+    endforeach()
+    list(APPEND RUNTIME_SOURCES
+        "${CMAKE_SOURCE_DIR}/runtime/switch/platform.cpp"
+        "${CMAKE_SOURCE_DIR}/runtime/switch/audio.cpp"
+        "${CMAKE_SOURCE_DIR}/runtime/switch/memory_watch.cpp"
+        "${CMAKE_SOURCE_DIR}/switch/source/input.cpp")
+endif()
 
 # Xenia's shader interpreter, vendored with shims for the rex/ headers it
 # includes; runs memory-export vertex shaders on the CPU (runtime/gpu/xe).
@@ -176,8 +205,12 @@ else()
         "${PES17_PPC_DIR}/stubs_generated.cpp")
 endif()
 target_link_libraries(pes17 PRIVATE ppc_recomp)
-# ppc_recomp_shared.h declares a function taking uint8_t before every includer has <cstdint>.
-target_compile_options(pes17 PRIVATE $<$<COMPILE_LANGUAGE:CXX>:SHELL:-include cstdint>)
+# ppc_recomp_shared.h declares uint8_t before every includer has <cstdint>.
+# Use one umbrella header and one -include pair: CMake de-duplicates repeated
+# options, so separate -include pairs can leave a header path as a source input.
+target_compile_options(pes17 PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:-include>"
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/runtime/switch/forced_includes.h>")
 target_compile_definitions(pes17 PRIVATE ${PES17_ONLINE_DEFINITIONS})
 if(PES17_DIAGNOSTICS)
     target_compile_definitions(pes17 PRIVATE PES17_DIAGNOSTICS=1)
@@ -185,7 +218,128 @@ else()
     target_compile_definitions(pes17 PRIVATE PES17_DIAGNOSTICS=0)
 endif()
 target_include_directories(pes17 PRIVATE "${CMAKE_SOURCE_DIR}/runtime")
+if(PES17_SWITCH)
+    target_include_directories(pes17 PRIVATE
+        "${CMAKE_SOURCE_DIR}/switch/source"
+        "${CMAKE_SOURCE_DIR}/switch/include"
+        "$ENV{DEVKITPRO}/libnx/include"
+        "$ENV{DEVKITPRO}/portlibs/switch/include")
+    target_compile_definitions(pes17 PRIVATE
+        __SWITCH__=1 PES17_VULKAN_DYNAMIC=1 VK_NO_PROTOTYPES=1 _GNU_SOURCE=1 _DEFAULT_SOURCE=1)
+    # Vulkan loader declarations are included by runtime/switch/forced_includes.h.
+    target_compile_options(pes17 PRIVATE
+        -ffunction-sections -fdata-sections -pthread)
+    target_link_options(pes17 PRIVATE -pthread -Wl,--gc-sections)
+    target_link_directories(pes17 PRIVATE
+        "$ENV{DEVKITPRO}/portlibs/switch/lib"
+        "$ENV{DEVKITPRO}/libnx/lib")
+    option(PES17_SWITCH_USE_LEGACY_NXVK
+        "Use the archived NXVK portlib instead of the BO2 Mesa Horizon SDK" OFF)
+    if(DEFINED ENV{PES17_SWITCH_VULKAN_SDK})
+        set(_PES17_SWITCH_VULKAN_SDK "$ENV{PES17_SWITCH_VULKAN_SDK}")
+    elseif(DEFINED ENV{MESA_SDK})
+        # BO2's tools/toolchain.sh exports MESA_SDK to this exact SDK directory.
+        set(_PES17_SWITCH_VULKAN_SDK "$ENV{MESA_SDK}")
+    else()
+        set(_PES17_SWITCH_VULKAN_SDK "")
+    endif()
+    set(PES17_SWITCH_VULKAN_SDK "${_PES17_SWITCH_VULKAN_SDK}" CACHE PATH
+        "Mesa Horizon SDK portlibs/switch directory containing lib/libvulkan.a")
+    if(PES17_SWITCH_USE_LEGACY_NXVK)
+        # Backup-only path. It remains available for bisecting old experiments,
+        # but is not the active Vulkan build direction.
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SWITCH_VULKAN_DRIVER REQUIRED nxvk)
+        target_compile_definitions(pes17 PRIVATE PES17_SWITCH_USE_LEGACY_NXVK=1)
+        target_link_options(pes17 PRIVATE -Wl,-z,notext -Wl,-u,nvk_GetInstanceProcAddr)
+        target_link_libraries(pes17 PRIVATE
+            nvk
+            "-Wl,--start-group" nvk_support z expat "-Wl,--end-group"
+            nx)
+        message(STATUS "Switch Vulkan: legacy NXVK backup path")
+    else()
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/lib/libvulkan.a")
+            message(FATAL_ERROR
+                "PES17_SWITCH_VULKAN_SDK must point to the BO2 Mesa Horizon SDK "
+                "portlibs/switch directory (missing lib/libvulkan.a): '${PES17_SWITCH_VULKAN_SDK}'")
+        endif()
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/include/vulkan/vulkan.h")
+            message(FATAL_ERROR
+                "Mesa Horizon SDK Vulkan headers not found under '${PES17_SWITCH_VULKAN_SDK}/include'")
+        endif()
+        # BO2's build_mesa.sh produces libvulkan.a; its separate
+        # build_zstd_switch.sh step installs libzstd.a into this same SDK.
+        if(NOT EXISTS "${PES17_SWITCH_VULKAN_SDK}/lib/libzstd.a")
+            message(FATAL_ERROR
+                "Mesa Horizon SDK is missing lib/libzstd.a. Run BO2 tools/build_zstd_switch.sh after build_mesa.sh.")
+        endif()
+        foreach(_PES17_SWITCH_ARCHIVE IN ITEMS
+                "${DEVKITPRO}/portlibs/switch/lib/libexpat.a"
+                "${DEVKITPRO}/portlibs/switch/lib/libz.a"
+                "${DEVKITPRO}/libnx/lib/libnx.a")
+            if(NOT EXISTS "${_PES17_SWITCH_ARCHIVE}")
+                message(FATAL_ERROR "Required devkitPro Switch archive is missing: ${_PES17_SWITCH_ARCHIVE}")
+            endif()
+        endforeach()
+        enable_language(C)
+        target_sources(pes17 PRIVATE "${CMAKE_SOURCE_DIR}/switch/mesa/elf_stubs.c")
+        target_include_directories(pes17 PRIVATE "${PES17_SWITCH_VULKAN_SDK}/include")
+        target_link_directories(pes17 PRIVATE "${PES17_SWITCH_VULKAN_SDK}/lib")
+        # Match BO2's rexglue_switch.cmake archive order. Repeating the static
+        # archives lets the linker resolve cross-archive references without
+        # relying on a platform-specific linker-group feature.
+        target_link_libraries(pes17 PRIVATE
+            vulkan expat zstd z nx
+            vulkan expat zstd z nx
+            stdc++ m)
+        target_link_options(pes17 PRIVATE -pthread -Wl,-z,notext -Wl,-u,vkGetInstanceProcAddr)
+        message(STATUS "Switch Vulkan: BO2 Mesa Horizon SDK (${PES17_SWITCH_VULKAN_SDK})")
+    endif()
+endif()
 # The runtime checks the disc's executable against this hash before installing.
+# The selected local executable is PES 2017 Europe XEX v0x12. Validate its
+# execution-info metadata whenever the private input is present; the SHA-256
+# below then binds installation to the exact same bytes used for recompilation.
+set(PES17_EXPECTED_XEX_VERSION "0x00000012" CACHE STRING "Expected PES 2017 XEX execution-info version")
+set(PES17_EXPECTED_TITLE_ID "0x4A3007D1" CACHE STRING "Expected PES 2017 Xbox 360 title ID")
+if(EXISTS "${CMAKE_SOURCE_DIR}/pes/default.xex")
+    if(NOT EXISTS "${PES17_PPC_DIR}/XEX_TARGET")
+        message(FATAL_ERROR "ppc/XEX_TARGET is missing; regenerate PPC output with ./build.sh for the selected XEX")
+    endif()
+    file(STRINGS "${PES17_PPC_DIR}/XEX_TARGET" PES17_PPC_TARGET_LINES)
+    set(PES17_PPC_TARGET_TITLE_ID "")
+    set(PES17_PPC_TARGET_VERSION "")
+    set(PES17_PPC_TARGET_SHA256 "")
+    foreach(PES17_PPC_TARGET_LINE IN LISTS PES17_PPC_TARGET_LINES)
+        if(PES17_PPC_TARGET_LINE MATCHES "^title_id=(.*)$")
+            set(PES17_PPC_TARGET_TITLE_ID "${CMAKE_MATCH_1}")
+        elseif(PES17_PPC_TARGET_LINE MATCHES "^version=(.*)$")
+            set(PES17_PPC_TARGET_VERSION "${CMAKE_MATCH_1}")
+        elseif(PES17_PPC_TARGET_LINE MATCHES "^sha256=([0-9a-fA-F]+)$")
+            set(PES17_PPC_TARGET_SHA256 "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+    file(SHA256 "${CMAKE_SOURCE_DIR}/pes/default.xex" PES17_INPUT_XEX_SHA256)
+    if(NOT PES17_PPC_TARGET_TITLE_ID STREQUAL PES17_EXPECTED_TITLE_ID OR
+       NOT PES17_PPC_TARGET_VERSION STREQUAL PES17_EXPECTED_XEX_VERSION OR
+       NOT PES17_PPC_TARGET_SHA256 STREQUAL PES17_INPUT_XEX_SHA256 OR
+       (PES17_XEX_SHA256_SP AND NOT PES17_XEX_SHA256_SP STREQUAL PES17_INPUT_XEX_SHA256))
+        message(FATAL_ERROR "Generated ppc/ does not match pes/default.xex (target version=${PES17_PPC_TARGET_VERSION}, input SHA-256=${PES17_INPUT_XEX_SHA256}); rerun ./build.sh with the selected XEX")
+    endif()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/verify_xex.py"
+            "${CMAKE_SOURCE_DIR}/pes/default.xex"
+            --title-id "${PES17_EXPECTED_TITLE_ID}"
+            --version "${PES17_EXPECTED_XEX_VERSION}"
+        RESULT_VARIABLE PES17_XEX_VERIFY_RESULT
+        OUTPUT_VARIABLE PES17_XEX_VERIFY_OUTPUT
+        ERROR_VARIABLE PES17_XEX_VERIFY_ERROR)
+    if(NOT PES17_XEX_VERIFY_RESULT EQUAL 0)
+        message(FATAL_ERROR "PES 2017 XEX target validation failed:\n${PES17_XEX_VERIFY_OUTPUT}\n${PES17_XEX_VERIFY_ERROR}")
+    endif()
+    message(STATUS "${PES17_XEX_VERIFY_OUTPUT}")
+endif()
 if(NOT PES17_XEX_SHA256_SP)
     if(EXISTS "${CMAKE_SOURCE_DIR}/pes/default.xex")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/pes/default.xex")
@@ -218,6 +372,20 @@ if(WIN32)
     endif()
 elseif(ANDROID)
     include(cmake/android.cmake)
+elseif(PES17_SWITCH)
+    # A Switch NRO is packaged from the linked ELF; it is not a normal desktop
+    # executable and must not export a host-style -rdynamic symbol table.
+    set(PES17_SWITCH_NACP "${CMAKE_BINARY_DIR}/pes17.nacp")
+    set(PES17_SWITCH_NRO "${CMAKE_BINARY_DIR}/pes17.nro")
+    add_custom_command(TARGET pes17 POST_BUILD
+        COMMAND "$ENV{DEVKITPRO}/tools/bin/nacptool"
+            --create "PES 2017" "PES2017-Switch" "0.1.0" "${PES17_SWITCH_NACP}"
+        COMMAND "$ENV{DEVKITPRO}/tools/bin/elf2nro"
+            "$<TARGET_FILE:pes17>" "${PES17_SWITCH_NRO}"
+            --icon="$ENV{DEVKITPRO}/libnx/default_icon.jpg"
+            --nacp="${PES17_SWITCH_NACP}"
+        BYPRODUCTS "${PES17_SWITCH_NACP}" "${PES17_SWITCH_NRO}"
+        COMMENT "Packaging PES 2017 Nintendo Switch NRO")
 else()
     # -rdynamic so backtrace_symbols can resolve the sub_XXXXXXXX guest functions.
     set_target_properties(pes17 PROPERTIES ENABLE_EXPORTS ON)
@@ -243,6 +411,14 @@ endif()
 
 # ---- XMA decoder ----------------------------------------------------------
 add_subdirectory(third_party/ffmpeg-xenia)
+# devkitPro's sysroot may also provide FFmpeg headers. The runtime requires
+# Xenia's fork, which adds AV_CODEC_ID_XMAFRAMES; put that exact fetched source
+# tree ahead of sysroot include paths so xma.cpp cannot pick stock FFmpeg.
+FetchContent_GetProperties(ffmpeg_xma SOURCE_DIR PES17_FFMPEG_XMA_SOURCE_DIR)
+if(NOT EXISTS "${PES17_FFMPEG_XMA_SOURCE_DIR}/libavcodec/codec_id.h")
+    message(FATAL_ERROR "Xenia FFmpeg codec_id.h was not fetched")
+endif()
+target_include_directories(pes17 BEFORE PRIVATE "${PES17_FFMPEG_XMA_SOURCE_DIR}")
 target_link_libraries(pes17 PRIVATE ffmpeg_xma)
 
 # ---- Vulkan ----------------------------------------------------------------
@@ -259,11 +435,19 @@ elseif(ANDROID)
     # this here keeps the Vulkan block below as it is.
     set(Vulkan_FOUND TRUE)
     set(Vulkan_LIBRARY "loaded at run time")
+elseif(PES17_SWITCH)
+    # Vulkan entry points are resolved through the isolated Switch driver adapter.
+    set(Vulkan_FOUND TRUE)
+    if(PES17_SWITCH_USE_LEGACY_NXVK)
+        set(Vulkan_LIBRARY "legacy NXVK backup driver")
+    else()
+        set(Vulkan_LIBRARY "BO2 Mesa Horizon SDK (static NVK)")
+    endif()
 else()
     find_package(Vulkan)
 endif()
 if(Vulkan_FOUND)
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT PES17_SWITCH)
         target_link_libraries(pes17 PRIVATE Vulkan::Vulkan)
     endif()
     target_compile_definitions(pes17 PRIVATE PES17_HAVE_VULKAN=1)
@@ -272,12 +456,12 @@ else()
     message(STATUS "Vulkan not found -- building without a window")
 endif()
 
-if(NOT WIN32 AND NOT ANDROID)
+if(NOT WIN32 AND NOT ANDROID AND NOT PES17_SWITCH)
     target_link_libraries(pes17 PRIVATE pthread)
 endif()
 
 # The two tools below are for working on the renderer, on Linux.
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT PES17_SWITCH)
 # ---- offline shader translation -------------------------------------------
 # The translator has to live in the runtime, because the title hands the GPU
 # microcode while it runs. Building it as a tool too gives a fast loop against
@@ -286,6 +470,9 @@ add_executable(translate-shader
     "${CMAKE_SOURCE_DIR}/tools/translate_shader.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/shader_translator.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/pipeline.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/device.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/instance.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/provider.cpp"
     # The device this tool brings up is the runtime's own, so it answers for the
     # same Snapdragon workaround (bc_decoder.cpp, vk::bc::AdrenoMode).
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/bc_decoder.cpp"
@@ -311,6 +498,9 @@ add_executable(upload-texture
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/image_memory.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/texture_formats.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/pipeline.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/device.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/instance.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/provider.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/shader_translator.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/gpu/vulkan/spirv.cpp")
 target_include_directories(upload-texture PRIVATE "${CMAKE_SOURCE_DIR}/runtime")
@@ -340,7 +530,9 @@ endif()
 # the disc's executables and is in no repository, so a CI runner has none of it
 # (.github/workflows/tests.yml). Including it here is what keeps a local `ctest`
 # running exactly what CI runs.
-add_subdirectory(tests)
+if(NOT PES17_SWITCH)
+    add_subdirectory(tests)
+endif()
 endif()
 
 # ---- launcher --------------------------------------------------------------

@@ -184,17 +184,25 @@ namespace
     void NoteFrameCost()
     {
         if constexpr (!diag::kOn) return;
-        timespec cpu{};
-        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu);
-        const int64_t cpuNow = int64_t(cpu.tv_sec) * 1000000000 + cpu.tv_nsec;
         const int64_t wallNow = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
+
         if (g.lastSwapWall)
         {
-            g.frameCpu[FrameBin(double(cpuNow - g.lastSwapCpu) / 1e6)]++;
+#if defined(CLOCK_THREAD_CPUTIME_ID)
+            // Preserve per-consumer-thread CPU timing where the platform exposes it.
+            timespec cpu{};
+            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu) == 0)
+            {
+                const int64_t cpuNow = int64_t(cpu.tv_sec) * 1000000000LL + cpu.tv_nsec;
+                if (g.lastSwapCpu)
+                    g.frameCpu[FrameBin(double(cpuNow - g.lastSwapCpu) / 1e6)]++;
+                g.lastSwapCpu = cpuNow;
+            }
+#endif
+            // Wall-time sampling is portable and remains available on libnx/newlib.
             g.frameWall[FrameBin(double(wallNow - g.lastSwapWall) / 1e6)]++;
         }
-        g.lastSwapCpu = cpuNow;
         g.lastSwapWall = wallNow;
     }
 
@@ -1284,7 +1292,11 @@ void gpu::detail::ReportCommandProcessor()
                       (unsigned long long)n[5], (unsigned long long)n[6]);
         return std::string(line);
     };
-    LOGI("gpu: frames by the consumer's CPU time, swap to swap: %s", bins(g.frameCpu).c_str());
+#if defined(CLOCK_THREAD_CPUTIME_ID)
+    LOGI("gpu: frames by consumer-thread CPU time, swap to swap: %s", bins(g.frameCpu).c_str());
+#else
+    LOGI("gpu: consumer-thread CPU timing unavailable on this platform");
+#endif
     LOGI("gpu: frames by wall time, swap to swap: %s", bins(g.frameWall).c_str());
     for (uint32_t t = 0; t < 4; t++)
         if (g.typeCount[t]) LOGI("  type %u: %llu", t, (unsigned long long)g.typeCount[t].load());

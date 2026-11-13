@@ -1,15 +1,21 @@
 #pragma once
-// What the player set in the launcher (launcher/settings.cpp) or wrote by
-// hand, kept in the file .env as a line each of NAME=value. Any PES17_ switch
-// can be there (docs/switches.md).
+// General runtime environment switches plus the player's native input options.
 #include <filesystem>
 #include <string>
 
 namespace settings
 {
-    // Puts the file's switches in the environment, where the rest of the
-    // runtime reads them. One already set there is left as it is, so a
-    // switch given on the command line still decides. Called once, before
-    // anything reads a switch. Returns what it set, for the log.
+    struct InputOptions
+    {
+        bool swapAB = false;
+        bool swapXY = false;
+    };
+
+    // Imports PES17_* entries from the legacy runtime .env file.
     std::string Load(const std::filesystem::path& file);
+
+    // Reads the [input] table from config/PES.toml. Missing or invalid
+    // boolean values retain the safe default (false).
+    bool LoadInputConfig(const std::filesystem::path& file);
+    InputOptions GetInputOptions();
 }
