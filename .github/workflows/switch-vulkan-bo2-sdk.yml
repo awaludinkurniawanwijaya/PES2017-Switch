@@ -194,8 +194,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          zip -qr "$RUNNER_TEMP/pes17-switch-complete-source.zip" . \\
-            -x './.git/*' './.private-ppc/.git/*' './build-switch/*'
+          zip -qr "$RUNNER_TEMP/pes17-switch-complete-source.zip" . -x './.git/*' './.private-ppc/.git/*' './build-switch/*'
 
       - name: Upload complete build source
         uses: actions/upload-artifact@v4
