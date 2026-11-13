@@ -237,9 +237,9 @@ namespace
         u64 systemResourceSize = 0;
         u64 systemResourceUsed = 0;
         const Result systemResourceSizeResult = svcGetInfo(
-            &systemResourceSize, InfoType_SystemResourceSizeTotal, 0, 0);
+            &systemResourceSize, InfoType_SystemResourceSizeTotal, CUR_PROCESS_HANDLE, 0);
         const Result systemResourceUsedResult = svcGetInfo(
-            &systemResourceUsed, InfoType_SystemResourceSizeUsed, 0, 0);
+            &systemResourceUsed, InfoType_SystemResourceSizeUsed, CUR_PROCESS_HANDLE, 0);
         LOGI("guest: Horizon system resource size=%llu used=%llu bytes, query rc=%08X/%08X",
              (unsigned long long)systemResourceSize,
              (unsigned long long)systemResourceUsed,
