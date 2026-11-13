@@ -1,0 +1,49 @@
+name: Package PES2017 source without PPC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-without-ppc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout latest source
+        uses: actions/checkout@v4
+
+      - name: Create source ZIP without generated PPC
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f pes2017/CMakeLists.txt
+          mkdir -p dist
+          zip -qr dist/PES2017-Switch-source-no-PPC.zip pes2017 \
+            -x 'pes2017/ppc/*' \
+               'pes2017/.private-ppc/*' \
+               'pes2017/**/ppc/*' \
+               'pes2017/**/.private-ppc/*'
+          unzip -tq dist/PES2017-Switch-source-no-PPC.zip
+          if unzip -Z1 dist/PES2017-Switch-source-no-PPC.zip | grep -E '(^|/)(\.private-ppc|ppc)/'; then
+            echo 'Generated PPC content was unexpectedly included.'
+            exit 1
+          fi
+          echo 'ZIP size:'
+          du -h dist/PES2017-Switch-source-no-PPC.zip
+          echo 'File count:'
+          unzip -Z1 dist/PES2017-Switch-source-no-PPC.zip | wc -l
+          sha256sum dist/PES2017-Switch-source-no-PPC.zip
+
+      - name: Upload source ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes2017-source-no-ppc
+          path: dist/PES2017-Switch-source-no-PPC.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
