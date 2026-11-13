@@ -1,0 +1,135 @@
+name: PES 2017 full Nintendo Switch NRO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "pes2017/runtime/switch/**"
+      - "pes2017/runtime/guest_memory.*"
+      - "pes2017/runtime/gpu/vulkan/**"
+      - "pes2017/switch/**"
+      - "pes2017/CMakeLists.txt"
+      - "pes2017/cmake/**"
+      - "pes2017/build-switch.sh"
+      - ".github/workflows/switch-full-nro.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pes17-full-switch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-full-pes17:
+    name: Compile and package full PES 2017 NRO
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out PES 2017 source
+        uses: actions/checkout@v4
+
+      - name: Check out private generated PPC source
+        uses: actions/checkout@v4
+        with:
+          repository: awaludinkurniawanwijaya/PES2017-Switch-PPC
+          token: ${{ secrets.PES17_PPC_READ_TOKEN }}
+          ref: main
+          path: pes2017/.private-ppc
+          persist-credentials: false
+
+      - name: Validate and stage generated PPC source
+        working-directory: pes2017
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=".private-ppc/ppc/XEX_TARGET"
+          test -s "$target" || { echo "::error::Private PPC repo is missing ppc/XEX_TARGET"; exit 1; }
+          grep -Fx 'title_id=0x4A3007D1' "$target"
+          grep -Fx 'version=0x00000012' "$target"
+          grep -Fx 'sha256=b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6' "$target"
+          compgen -G '.private-ppc/ppc/ppc_recomp.*.cpp' >/dev/null
+          test -s .private-ppc/ppc/ppc_func_mapping.cpp
+          test -s .private-ppc/ppc/stubs_generated.cpp
+          mkdir -p ppc
+          cp -a .private-ppc/ppc/. ppc/
+          python3 tools/gen_kernel_stubs.py
+          echo "PPC title identity verified and private generated sources staged."
+
+      - name: Download and verify pinned BO2 Switch build kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/AlvaroEPena/bo2-360-nx/releases/download/Release-1.1.0/bo2-360-nx-release-1.1.0-switch%2Bwindows-build-kit.zip"
+          archive="$RUNNER_TEMP/bo2-switch-build-kit.zip"
+          curl --fail --location --retry 3 "$url" --output "$archive"
+          echo "5c973a38b0921650ebfddf47fd9064f46f5aefa60d019a84371cfb0af328a26f  $archive" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/bo2-kit"
+          unzip -q "$archive" -d "$RUNNER_TEMP/bo2-kit"
+          manifest_path="$(find "$RUNNER_TEMP/bo2-kit" -type f -path '*/runtime/manifest.json' -print -quit)"
+          test -n "$manifest_path"
+          runtime_dir="$(dirname "$manifest_path")"
+          python3 - "$manifest_path" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              manifest = json.load(f)
+          assert manifest["commit"] == "897abae89ca1836abe119581883b435d80edc6fe", manifest.get("commit")
+          assert manifest["mesa"]["base"] == "danfromtico/mesa-switch 1a8c1a66d6f", manifest.get("mesa")
+          print("Verified pinned BO2 runtime and Mesa source.")
+          PY
+          sdk="$runtime_dir/switch/portlibs"
+          test -s "$sdk/lib/libvulkan.a"
+          test -s "$sdk/lib/libzstd.a"
+          test -s "$sdk/include/vulkan/vulkan.h"
+          echo "BO2_MESA_SDK=$sdk" >> "$GITHUB_ENV"
+
+      - name: Compile and package full PES 2017 NRO
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull devkitpro/devkita64:latest
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$BO2_MESA_SDK:/mesa-sdk:ro" \
+            -w /work/pes2017 \
+            devkitpro/devkita64:latest \
+            bash -euc '
+              export DEVKITPRO=/opt/devkitpro
+              export DEVKITA64="$DEVKITPRO/devkitA64"
+              export PATH="$DEVKITA64/bin:$DEVKITPRO/tools/bin:$PATH"
+              cmake -S /work/pes2017 -B /tmp/pes17-full-switch \
+                -DCMAKE_TOOLCHAIN_FILE=/work/pes2017/cmake/switch-toolchain.cmake \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DPES17_SWITCH=ON \
+                -DPES17_DIAGNOSTICS=OFF \
+                -DPES17_LOGGING=ON \
+                -DPES17_USE_SDL=OFF \
+                -DPES17_SWITCH_VULKAN_SDK=/mesa-sdk \
+                -DPES17_XEX_SHA256_SP=b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6
+              cmake --build /tmp/pes17-full-switch --target pes17 --parallel 2
+              test -s /tmp/pes17-full-switch/pes17.nro
+              sha256sum /tmp/pes17-full-switch/pes17.nro
+              mkdir -p /work/pes2017/build-switch
+              cp /tmp/pes17-full-switch/pes17.nro /work/pes2017/build-switch/pes17.nro
+            '
+
+      - name: Verify NRO and write checksum
+        working-directory: pes2017
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build-switch/pes17.nro
+          file build-switch/pes17.nro
+          sha256sum build-switch/pes17.nro | tee build-switch/pes17.nro.sha256
+          ls -lh build-switch/pes17.nro
+
+      - name: Upload full PES 2017 Switch NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes17-switch-full-nro
+          path: |
+            pes2017/build-switch/pes17.nro
+            pes2017/build-switch/pes17.nro.sha256
+          if-no-files-found: error
+          retention-days: 7
