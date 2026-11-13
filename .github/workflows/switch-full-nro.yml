@@ -1,4 +1,5 @@
 name: PES 2017 full Nintendo Switch NRO
+# Rebuild trigger for latest guest-memory mapping fix
 
 on:
   workflow_dispatch:
