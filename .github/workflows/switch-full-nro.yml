@@ -81,16 +81,16 @@ jobs:
         run: |
           set -euo pipefail
           cd "$SOURCE_DIR"
-          target="../.private-ppc/ppc/XEX_TARGET"
+          target="$GITHUB_WORKSPACE/.private-ppc/ppc/XEX_TARGET"
           test -s "$target" || { echo "::error::Private PPC repo is missing ppc/XEX_TARGET"; exit 1; }
           grep -Fx 'title_id=0x4A3007D1' "$target"
           grep -Fx 'version=0x00000012' "$target"
           grep -Fx 'sha256=b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6' "$target"
-          compgen -G '../.private-ppc/ppc/ppc_recomp.*.cpp' >/dev/null
-          test -s ../.private-ppc/ppc/ppc_func_mapping.cpp
-          test -s ../.private-ppc/ppc/stubs_generated.cpp
+          compgen -G "$GITHUB_WORKSPACE/.private-ppc/ppc/ppc_recomp.*.cpp" >/dev/null
+          test -s "$GITHUB_WORKSPACE/.private-ppc/ppc/ppc_func_mapping.cpp"
+          test -s "$GITHUB_WORKSPACE/.private-ppc/ppc/stubs_generated.cpp"
           mkdir -p ppc
-          cp -a ../.private-ppc/ppc/. ppc/
+          cp -a "$GITHUB_WORKSPACE/.private-ppc/ppc/." ppc/
           python3 tools/gen_kernel_stubs.py
           echo "PPC title identity verified and private generated sources staged."
 
