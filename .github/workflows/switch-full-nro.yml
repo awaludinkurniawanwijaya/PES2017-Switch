@@ -40,22 +40,57 @@ jobs:
         run: |
           set -euo pipefail
           archive="${RUNNER_TEMP}/pes17-source-archive/pes17-switch-complete-source.zip"
-          test -s "$archive"
-          echo "Outer artifact archive: $(stat -c%s "$archive") bytes"
-          unzip -tq "$archive"
           source_dir="${RUNNER_TEMP}/pes17-source"
-          outer_dir="${RUNNER_TEMP}/pes17-outer"
-          mkdir -p "$outer_dir" "$source_dir"
-          unzip -oq "$archive" -d "$outer_dir"
-          inner_archive="$outer_dir/pes17-switch-complete-source.zip"
-          test -s "$inner_archive"
-          echo "Inner source archive: $(stat -c%s "$inner_archive") bytes"
-          unzip -tq "$inner_archive"
-          unzip -oq "$inner_archive" -d "$source_dir"
-          test -s "$source_dir/CMakeLists.txt"
-          test -s "$source_dir/cmake/switch-toolchain.cmake"
-          echo "dir=$source_dir" >> "$GITHUB_OUTPUT"
-          echo "Extracted source to temporary runner directory; main repository remains without pes2017/."
+          test -s "$archive"
+          mkdir -p "$source_dir"
+          echo "Outer artifact archive: $(stat -c%s "$archive") bytes"
+          python3 - "$archive" "$source_dir" "$GITHUB_OUTPUT" <<'PY'
+          import io
+          import pathlib
+          import sys
+          import zipfile
+
+          outer_path, destination, output_path = sys.argv[1:]
+          destination_path = pathlib.Path(destination)
+          nested_name = "pes17-switch-complete-source.zip"
+
+          with zipfile.ZipFile(outer_path, "r") as outer:
+              candidates = [
+                  name for name in outer.namelist()
+                  if pathlib.PurePosixPath(name).name == nested_name
+              ]
+              if len(candidates) != 1:
+                  raise SystemExit(
+                      f"Expected exactly one nested {nested_name}; found: {candidates}"
+                  )
+              nested_bytes = outer.read(candidates[0])
+
+          print(f"Nested source archive: {len(nested_bytes)} bytes")
+          with zipfile.ZipFile(io.BytesIO(nested_bytes), "r") as inner:
+              bad_member = inner.testzip()
+              if bad_member is not None:
+                  raise SystemExit(f"Corrupt source archive member: {bad_member}")
+              for member in inner.infolist():
+                  member_path = pathlib.PurePosixPath(member.filename)
+                  if member_path.is_absolute() or ".." in member_path.parts:
+                      raise SystemExit(f"Unsafe archive path: {member.filename}")
+              inner.extractall(destination_path)
+              names = inner.namelist()
+              print(f"Validated {len(names)} source archive entries.")
+
+          required = [
+              destination_path / "CMakeLists.txt",
+              destination_path / "cmake" / "switch-toolchain.cmake",
+          ]
+          missing = [str(path) for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit(f"Required source files missing after extraction: {missing}")
+
+          with open(output_path, "a", encoding="utf-8") as output:
+              output.write(f"dir={destination_path}\\n")
+          print("Source extraction and root-layout validation succeeded.")
+          PY
+          echo "Main repository remains without pes2017/."
 
       - name: Install the approved Cool Edition NRO icon
         shell: bash
