@@ -298,12 +298,19 @@ int pes17::Run(int argc, char** argv)
     crash::RegisterThread("main thread");
     platform::SetThreadAffinity(platform::ThreadAffinityRole::PrimeCore);
     player::Record();
+    LOGI("startup: kernel initialisation begin");
     kernel::Initialise(launch.gameRoot);
+    LOGI("startup: kernel initialisation complete");
+    LOGI("startup: GPU initialisation begin");
     gpu::Initialise();
+    LOGI("startup: GPU initialisation complete");
+    LOGI("startup: XMA audio initialisation begin");
     apu::xma::Initialise();
+    LOGI("startup: XMA audio initialisation complete");
 
     // PPC grows down; leave a zeroed backchain at the top.
     constexpr uint32_t kStackSize = 1u << 20;
+    LOGI("startup: guest stack allocation begin (%u bytes)", kStackSize);
     uint32_t stackBase = kernel::AllocateGuest(kStackSize, 0x1000);
     if (!stackBase) { LOGE("could not allocate guest stack"); return 1; }
     uint32_t stackTop = (stackBase + kStackSize - 0x100) & ~0xFu;
@@ -311,6 +318,7 @@ int pes17::Run(int argc, char** argv)
     // r13 is the Xbox 360 thread pointer (KPCR). The recompiled code makes ~1100
     // r13-relative accesses and reads its own thread id out of
     // KPCR.CurrentThread -> KTHREAD.ThreadId, so the block must be populated.
+    LOGI("startup: main thread block allocation begin");
     uint32_t pcr = kernel::CreateThreadBlock(1);
     if (!pcr) { LOGE("could not allocate the thread block"); return 1; }
 
@@ -321,6 +329,7 @@ int pes17::Run(int argc, char** argv)
     ctx.fpscr.loadFromHost();
 
     uint32_t entry = T_ENTRY_POINT;   // the XEX header's ENTRY_POINT, from title.h
+    LOGI("startup: resolving guest entry point %08X", entry);
     PPCFunc* fn = kernel::GuestFunction(entry);
     if (!fn) { LOGE("no recompiled function at entry point %08X", entry); return 1; }
 

@@ -379,7 +379,7 @@ elseif(PES17_SWITCH)
     set(PES17_SWITCH_NRO "${CMAKE_BINARY_DIR}/pes17.nro")
     add_custom_command(TARGET pes17 POST_BUILD
         COMMAND "$ENV{DEVKITPRO}/tools/bin/nacptool"
-            --create "PES 2017" "PES2017-Switch" "0.1.0" "${PES17_SWITCH_NACP}"
+            --create "Pro Evolution Soccer 2017" "PES2017-Switch" "0.1.0" "${PES17_SWITCH_NACP}"
         COMMAND "$ENV{DEVKITPRO}/tools/bin/elf2nro"
             "$<TARGET_FILE:pes17>" "${PES17_SWITCH_NRO}"
             --icon="$ENV{DEVKITPRO}/libnx/default_icon.jpg"

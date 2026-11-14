@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "pes2017/runtime/main.cpp"
       - "pes2017/runtime/switch/**"
       - "pes2017/runtime/guest_memory.*"
       - "pes2017/runtime/gpu/vulkan/**"

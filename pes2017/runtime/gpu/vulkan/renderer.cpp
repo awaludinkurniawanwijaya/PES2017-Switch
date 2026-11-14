@@ -51,6 +51,7 @@ using namespace vk::renderer::detail;
 static void RollbackInitialise()
 {
     if (!g.device) return;
+    LOGI("renderer: checkpoint F - descriptor sets updated");
     for (uint32_t i = 0; i < kPresentImages; i++)
     {
         if (g.present[i]) vkDestroyImage(g.device, g.present[i], nullptr);
@@ -339,6 +340,8 @@ bool vk::renderer::Initialise()
 #endif
     LOGI("renderer: render passes are opened over %s", g.smallPasses ? "the area their draws touch" : "the whole surface");
 
+    LOGI("renderer: checkpoint A - render-pass setup complete");
+
     // GPU timing of the render passes (files/gpu_timing).
     {
         VkPhysicalDeviceProperties props{};
@@ -372,6 +375,7 @@ bool vk::renderer::Initialise()
         }
     }
 
+    LOGI("renderer: checkpoint B - timestamp setup complete");
     VkFenceCreateInfo fence{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
     for (State::Slot& slot : g.slots)
         if (vkCreateFence(g.device, &fence, nullptr, &slot.fence) != VK_SUCCESS)
@@ -384,6 +388,8 @@ bool vk::renderer::Initialise()
         RollbackInitialise();
         return false;
     }
+
+    LOGI("renderer: checkpoint C - fences created");
 
     // Constants, vertex data and indices all live in the arena, which is why
     // it carries every usage at once.
@@ -430,6 +436,8 @@ bool vk::renderer::Initialise()
         g.arena = VK_NULL_HANDLE;
     }
     if (!g.arenaBytes) { LOGW("renderer: no frame arena"); RollbackInitialise(); return false; }
+
+    LOGI("renderer: checkpoint D - frame arena allocated (%u MiB)", g.arenaBytes >> 20);
 
     // A slot's share has to hold everything one submission copies -- a frame's
     // is about 50 MB here against the 512 MB asked for, so three shares fit with
@@ -479,6 +487,7 @@ bool vk::renderer::Initialise()
         LOGI("renderer: running in legacy mode without dynamic rendering / dynamic state commands");
     }
 
+    LOGI("renderer: checkpoint E - device command dispatch ready");
     VkDescriptorPoolSize sizes[2]{};
     sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     sizes[0].descriptorCount = bindings::kConstantBlocks;
@@ -557,14 +566,19 @@ bool vk::renderer::Initialise()
         g.presentMemory[i] = image.memory;
     }
 
+    LOGI("renderer: checkpoint G - presentation images created");
     LOGI("renderer: ready on %s, depth %s, %u MB frame arena%s", vk::pipeline::DeviceName(),
          g.depthFormat == VK_FORMAT_D24_UNORM_S8_UINT ? "D24S8" : "D32S8", g.arenaBytes >> 20,
          g.shadowBase ? " and a shadow of guest memory behind it" : ", no shadow of guest memory");
+    LOGI("renderer: checkpoint H - preparation begin");
     StartPreparing();
+    LOGI("renderer: checkpoint I - pipeline preparation started");
     PrewarmFromCache();
+    LOGI("renderer: checkpoint J - pipeline cache prewarm complete");
     // A lost device ends the run, the way closing the window does.
     vk::pipeline::OnDeviceLost(crash::RequestExit);
     vk::record::Start();
+    LOGI("renderer: checkpoint K - command recorder started");
     g.ready = true;
     return true;
 }
