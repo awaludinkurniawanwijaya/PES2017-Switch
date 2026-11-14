@@ -1,24 +1,16 @@
 name: PES 2017 full Nintendo Switch NRO
-# Rebuild trigger for latest guest-memory mapping fix
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "pes2017/runtime/main.cpp"
-      - "pes2017/switch/icon.jpg"
-      - "pes2017/runtime/switch/**"
-      - "pes2017/runtime/guest_memory.*"
-      - "pes2017/runtime/gpu/vulkan/**"
-      - "pes2017/switch/**"
-      - "pes2017/CMakeLists.txt"
-      - "pes2017/cmake/**"
-      - "pes2017/build-switch.sh"
+      - "assets/pes2017-icon-cool.jpg"
       - ".github/workflows/switch-full-nro.yml"
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: pes17-full-switch-${{ github.ref }}
@@ -30,8 +22,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - name: Check out PES 2017 source
+      - name: Check out packaging repository
         uses: actions/checkout@v4
+
+      - name: Download archived PES 2017 source
+        uses: actions/download-artifact@v4
+        with:
+          name: pes17-switch-complete-source
+          path: ${{ runner.temp }}/pes17-source-archive
+          repository: ${{ github.repository }}
+          run-id: 43372321370
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract source outside the main repository
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find "${RUNNER_TEMP}/pes17-source-archive" -type f -name 'pes17-switch-complete-source.zip' -print -quit)"
+          test -n "$archive"
+          unzip -tq "$archive"
+          source_dir="${RUNNER_TEMP}/pes17-source"
+          mkdir -p "$source_dir"
+          unzip -q "$archive" -d "$source_dir"
+          test -s "$source_dir/CMakeLists.txt"
+          test -s "$source_dir/cmake/switch-toolchain.cmake"
+          test -s "$source_dir/switch/icon.jpg"
+          echo "dir=$source_dir" >> "$GITHUB_OUTPUT"
+          echo "Extracted source to temporary runner directory; main repository remains without pes2017/."
+
+      - name: Install the approved Cool Edition NRO icon
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.source.outputs.dir }}
+        run: |
+          set -euo pipefail
+          icon="$GITHUB_WORKSPACE/assets/pes2017-icon-cool.jpg"
+          test -s "$icon" || {
+            echo "::error::Approved Cool Edition image is not present at assets/pes2017-icon-cool.jpg. Upload the exact reviewed JPG to this path before building."
+            exit 1
+          }
+          install -m 0644 "$icon" "$SOURCE_DIR/switch/icon.jpg"
+          file "$SOURCE_DIR/switch/icon.jpg"
 
       - name: Check out private generated PPC source
         uses: actions/checkout@v4
@@ -39,24 +71,26 @@ jobs:
           repository: awaludinkurniawanwijaya/PES2017-Switch-PPC
           token: ${{ secrets.PES17_PPC_READ_TOKEN }}
           ref: main
-          path: pes2017/.private-ppc
+          path: .private-ppc
           persist-credentials: false
 
       - name: Validate and stage generated PPC source
-        working-directory: pes2017
         shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.source.outputs.dir }}
         run: |
           set -euo pipefail
-          target=".private-ppc/ppc/XEX_TARGET"
+          cd "$SOURCE_DIR"
+          target="../.private-ppc/ppc/XEX_TARGET"
           test -s "$target" || { echo "::error::Private PPC repo is missing ppc/XEX_TARGET"; exit 1; }
           grep -Fx 'title_id=0x4A3007D1' "$target"
           grep -Fx 'version=0x00000012' "$target"
           grep -Fx 'sha256=b914ec9a1abb3a9b42a64255b6aa8ff27312da126f7c18f8c880106b832779e6' "$target"
-          compgen -G '.private-ppc/ppc/ppc_recomp.*.cpp' >/dev/null
-          test -s .private-ppc/ppc/ppc_func_mapping.cpp
-          test -s .private-ppc/ppc/stubs_generated.cpp
+          compgen -G '../.private-ppc/ppc/ppc_recomp.*.cpp' >/dev/null
+          test -s ../.private-ppc/ppc/ppc_func_mapping.cpp
+          test -s ../.private-ppc/ppc/stubs_generated.cpp
           mkdir -p ppc
-          cp -a .private-ppc/ppc/. ppc/
+          cp -a ../.private-ppc/ppc/. ppc/
           python3 tools/gen_kernel_stubs.py
           echo "PPC title identity verified and private generated sources staged."
 
@@ -89,13 +123,14 @@ jobs:
 
       - name: Compile and package full PES 2017 NRO
         shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.source.outputs.dir }}
         run: |
           set -euo pipefail
           docker pull devkitpro/devkita64:latest
           docker run --rm \
-            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$SOURCE_DIR:/work/pes2017" \
             -v "$BO2_MESA_SDK:/mesa-sdk:ro" \
-            -w /work/pes2017 \
             devkitpro/devkita64:latest \
             bash -euc '
               export DEVKITPRO=/opt/devkitpro
@@ -118,24 +153,22 @@ jobs:
             '
 
       - name: Verify NRO and write checksum
-        working-directory: pes2017
         shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.source.outputs.dir }}
         run: |
           set -euo pipefail
-          test -s build-switch/pes17.nro
-          # Docker runs as root and creates build-switch as root-owned.
-          # Restore runner ownership so checksum creation and artifact upload can read/write it.
-          sudo chown -R "$USER:$(id -gn)" build-switch
-          file build-switch/pes17.nro
-          sha256sum build-switch/pes17.nro | tee build-switch/pes17.nro.sha256
-          ls -lh build-switch/pes17.nro
+          test -s "$SOURCE_DIR/build-switch/pes17.nro"
+          sha256sum "$SOURCE_DIR/build-switch/pes17.nro" | tee "$SOURCE_DIR/build-switch/pes17.nro.sha256"
+          file "$SOURCE_DIR/build-switch/pes17.nro"
+          ls -lh "$SOURCE_DIR/build-switch/pes17.nro"
 
       - name: Upload full PES 2017 Switch NRO
         uses: actions/upload-artifact@v4
         with:
           name: pes17-switch-full-nro
           path: |
-            pes2017/build-switch/pes17.nro
-            pes2017/build-switch/pes17.nro.sha256
+            ${{ runner.temp }}/pes17-source/build-switch/pes17.nro
+            ${{ runner.temp }}/pes17-source/build-switch/pes17.nro.sha256
           if-no-files-found: error
           retention-days: 7
