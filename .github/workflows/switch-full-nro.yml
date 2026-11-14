@@ -98,7 +98,7 @@ jobs:
           with open(output_path, "a", encoding="utf-8") as output:
               output.write(f"dir={destination_path}\n")
           print("Source extraction and root-layout validation succeeded.")
-          PYY
+          PY
           echo "Main repository remains without pes2017/."
 
       - name: Install the approved Cool Edition NRO icon
