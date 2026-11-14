@@ -50,46 +50,55 @@ jobs:
           import sys
           import zipfile
 
-          outer_path, destination, output_path = sys.argv[1:]
+          archive_path, destination, output_path = sys.argv[1:]
           destination_path = pathlib.Path(destination)
           nested_name = "pes17-switch-complete-source.zip"
 
-          with zipfile.ZipFile(outer_path, "r") as outer:
-              candidates = [
-                  name for name in outer.namelist()
-                  if pathlib.PurePosixPath(name).name == nested_name
-              ]
-              if len(candidates) != 1:
-                  raise SystemExit(
-                      f"Expected exactly one nested {nested_name}; found: {candidates}"
-                  )
-              nested_bytes = outer.read(candidates[0])
-
-          print(f"Nested source archive: {len(nested_bytes)} bytes")
-          with zipfile.ZipFile(io.BytesIO(nested_bytes), "r") as inner:
-              bad_member = inner.testzip()
+          def validate_and_extract(zf):
+              bad_member = zf.testzip()
               if bad_member is not None:
                   raise SystemExit(f"Corrupt source archive member: {bad_member}")
-              for member in inner.infolist():
+              for member in zf.infolist():
                   member_path = pathlib.PurePosixPath(member.filename)
                   if member_path.is_absolute() or ".." in member_path.parts:
                       raise SystemExit(f"Unsafe archive path: {member.filename}")
-              inner.extractall(destination_path)
-              names = inner.namelist()
-              print(f"Validated {len(names)} source archive entries.")
+              zf.extractall(destination_path)
+              required = (
+                  destination_path / "CMakeLists.txt",
+                  destination_path / "cmake" / "switch-toolchain.cmake",
+              )
+              missing = [str(path) for path in required if not path.is_file()]
+              if missing:
+                  raise SystemExit(f"Required source files missing after extraction: {missing}")
+              print(f"Extracted and validated {len(zf.namelist())} entries.")
 
-          required = [
-              destination_path / "CMakeLists.txt",
-              destination_path / "cmake" / "switch-toolchain.cmake",
-          ]
-          missing = [str(path) for path in required if not path.is_file()]
-          if missing:
-              raise SystemExit(f"Required source files missing after extraction: {missing}")
+          with zipfile.ZipFile(archive_path, "r") as outer:
+              outer_names = outer.namelist()
+              # actions/download-artifact may already expose the artifact's ZIP
+              # payload directly. Handle that canonical case first.
+              if "CMakeLists.txt" in outer_names and "cmake/switch-toolchain.cmake" in outer_names:
+                  print("Detected direct source ZIP; extracting it without another nesting layer.")
+                  validate_and_extract(outer)
+              else:
+                  candidates = [
+                      name for name in outer_names
+                      if pathlib.PurePosixPath(name).name == nested_name
+                  ]
+                  if len(candidates) != 1:
+                      raise SystemExit(
+                          f"Expected direct source ZIP or exactly one nested {nested_name}; "
+                          f"found nested candidates: {candidates}; "
+                          f"first archive entries: {outer_names[:12]}"
+                      )
+                  nested_bytes = outer.read(candidates[0])
+                  print(f"Detected wrapped source ZIP ({len(nested_bytes)} bytes).")
+                  with zipfile.ZipFile(io.BytesIO(nested_bytes), "r") as inner:
+                      validate_and_extract(inner)
 
           with open(output_path, "a", encoding="utf-8") as output:
-              output.write(f"dir={destination_path}\\n")
+              output.write(f"dir={destination_path}\n")
           print("Source extraction and root-layout validation succeeded.")
-          PY
+          PYY
           echo "Main repository remains without pes2017/."
 
       - name: Install the approved Cool Edition NRO icon
