@@ -44,10 +44,15 @@ jobs:
           unzip -tq "$archive"
           source_dir="${RUNNER_TEMP}/pes17-source"
           mkdir -p "$source_dir"
-          unzip -q "$archive" -d "$source_dir"
+          outer_dir="${RUNNER_TEMP}/pes17-outer"
+          mkdir -p "$outer_dir" "$source_dir"
+          unzip -q "$archive" -d "$outer_dir"
+          inner_archive="$(find "$outer_dir" -type f -name '*.zip' -print -quit)"
+          test -n "$inner_archive"
+          unzip -tq "$inner_archive"
+          unzip -q "$inner_archive" -d "$source_dir"
           test -s "$source_dir/CMakeLists.txt"
           test -s "$source_dir/cmake/switch-toolchain.cmake"
-          test -s "$source_dir/switch/icon.jpg"
           echo "dir=$source_dir" >> "$GITHUB_OUTPUT"
           echo "Extracted source to temporary runner directory; main repository remains without pes2017/."
 
@@ -63,7 +68,18 @@ jobs:
             exit 1
           }
           install -m 0644 "$icon" "$SOURCE_DIR/switch/icon.jpg"
+          python3 - "$SOURCE_DIR/CMakeLists.txt" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+          old = '--icon="$ENV{DEVKITPRO}/libnx/default_icon.jpg"'
+          new = '--icon="${CMAKE_SOURCE_DIR}/switch/icon.jpg"'
+          if old not in s:
+              raise SystemExit("Expected NRO icon packaging line was not found")
+          p.write_text(s.replace(old, new, 1))
+          PY
           file "$SOURCE_DIR/switch/icon.jpg"
+          grep -n 'switch/icon.jpg' "$SOURCE_DIR/CMakeLists.txt"
 
       - name: Check out private generated PPC source
         uses: actions/checkout@v4
